@@ -292,9 +292,14 @@ export default function Orders() {
                 preferred_driver_expires_at: o.preferred_driver_expires_at
             }));
 
-            // Sound on new pending order
-            const hasNewPending = items.some(o => (o.status === 'pending' || o.status === 'pendiente_pago') && (!orders.find(prev => prev.id === o.id)));
-            if (hasNewPending && orders.length > 0) {
+            // Sound on new pending order or incoming payment proof to verify
+            const hasNewActionable = items.some(o => {
+                const prev = orders.find(p => p.id === o.id);
+                if ((o.status === 'pending' || o.status === 'pendiente_pago') && !prev) return true;
+                if (o.status === 'pending_verification' && prev?.status !== 'pending_verification') return true;
+                return false;
+            });
+            if (hasNewActionable && orders.length > 0) {
                 const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
                 audio.play().catch(e => console.log("Audio play blocked"));
             }

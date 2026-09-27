@@ -1,16 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
-import { Navigation, Clock, CheckCircle2, Bike, Motorbike, MapPin, Phone, ArrowLeft, Store, Star, Wallet, X, Loader2, ImageIcon, Upload, CreditCard as CreditCardIcon, AlertCircle, Copy, MessageCircle, UserCheck } from 'lucide-react';
+import {
+    Navigation, Clock, CheckCircle2, Bike, Motorbike, MapPin, Phone, ArrowLeft,
+    Store, Star, Wallet, X, Loader2, Upload, AlertCircle, Copy,
+    ChevronRight, Package, CreditCard, CheckCircle,
+    Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
-import DeliveryPaymentModal from '../components/DeliveryPaymentModal';
 import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
 import OrderChatWindow from '../components/chat/OrderChatWindow';
-import AddressPicker from '../components/AddressPicker';
-import InAppCall from '../components/InAppCall';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
@@ -28,6 +30,55 @@ const mapOptions: google.maps.MapOptions = {
     styles: googleMapsDarkStyles
 };
 
+// ─── Geo Distance Calculator ────────────────────────────────────────────────
+function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Radio de la Tierra en km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return Number((R * c).toFixed(1));
+}
+
+// ─── Flow Step Resolver ─────────────────────────────────────────────────────
+function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
+    // Paso 4: En tránsito / Repartidor asignado en viaje / Entregado
+    if (transportRequest) {
+        if (['in_progress', 'arriving', 'completed'].includes(transportRequest.status)) {
+            return 4;
+        }
+    }
+    if (['in_transit', 'delivering', 'delivered', 'completed'].includes(order?.status)) {
+        return 4;
+    }
+
+    // Paso 3: Selección de repartidor o preparación
+    if (transportRequest?.status === 'accepted') return 4;
+    if (transportRequest?.status === 'searching') return 3;
+    if ([
+        'awaiting_delivery_payment',
+        'verificando_pago_delivery',
+        'buscando_piloto',
+        'finding_driver',
+        'driver_assigned',
+        'preparing'
+    ].includes(order?.status)) {
+        return 3;
+    }
+
+    // Paso 2: Pago al negocio (stock verificado o comprobante reportado)
+    if (['awaiting_payment', 'pending_verification', 'pendiente_pago'].includes(order?.status)) {
+        return 2;
+    }
+
+    // Paso 1: Confirmación de stock pendiente o acción requerida
+    return 1;
+}
+
+const STEP_LABELS = ['Confirmación', 'Pago', 'Envío', 'En camino'];
+
 export default function TrackOrder() {
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
@@ -37,297 +88,206 @@ export default function TrackOrder() {
 
     const { orderId } = useParams();
     const navigate = useNavigate();
+    const { bcvRate } = useCurrency();
+    const { user } = useAuth();
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    // ── Core data state ──────────────────────────────────────────────────────
     const [order, setOrder] = useState<any>(null);
     const [driver, setDriver] = useState<DeliveryDriver | null>(null);
     const [restaurant, setRestaurant] = useState<any>(null);
     const [loading, setLoading] = useState(true);
-    const [showReviewModal, setShowReviewModal] = useState(false);
-    const { bcvRate } = useCurrency();
-    const { user } = useAuth();
-    const [hasPaidRestaurant, setHasPaidRestaurant] = useState(false);
-    const [showDeliveryPaymentModal, setShowDeliveryPaymentModal] = useState(false);
-    
-    // New payment states
-    const [paymentReference, setPaymentReference] = useState('');
-    const [isUploading, setIsUploading] = useState(false);
-    const [pendingCountdown, setPendingCountdown] = useState(120);
-    const [showStockWhatsapp, setShowStockWhatsapp] = useState(false);
-    const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
     const [transportRequest, setTransportRequest] = useState<any>(null);
-    const [driverLocation, setDriverLocation] = useState<{lat: number, lng: number} | null>(null);
-    const [activeTab, setActiveTab] = useState<'order' | 'delivery'>('order');
-    const [showCall, setShowCall] = useState(false);
-    
-    const [infoStep, setInfoStep] = useState<number | null>(null);
-    const [editDelivery, setEditDelivery] = useState({
-        deliveryMethod: 'app_delivery',
-        vehicleType: 'moto',
-        addressName: '',
-        addressReference: '',
-        lat: 0,
-        lng: 0
-    });
-    const [isEditingAddress, setIsEditingAddress] = useState(false);
-    const [showAddressPicker, setShowAddressPicker] = useState(false);
-    const [isUpdatingAddress, setIsUpdatingAddress] = useState(false);
+    const [driverLocation, setDriverLocation] = useState<{ lat: number; lng: number } | null>(null);
+    const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-    // Platform Finance Config
-    const [platformConfig, setPlatformConfig] = useState<any>(null);
-    const [deliveryPaymentReference, setDeliveryPaymentReference] = useState('');
-    const [deliveryPaymentProofFile, setDeliveryPaymentProofFile] = useState<File | null>(null);
-    const [isUploadingDeliveryReport, setIsUploadingDeliveryReport] = useState(false);
+    // ── UI Modals & Sheets ───────────────────────────────────────────────────
+    const [showChat, setShowChat] = useState(false);
+    const [showReviewModal, setShowReviewModal] = useState(false);
+    const [showPagoMovilModal, setShowPagoMovilModal] = useState(false);
+
+    // ── Step 2 Payment State ─────────────────────────────────────────────────
+    const [paymentReference, setPaymentReference] = useState('');
+    const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+    const [paymentProofPreview, setPaymentProofPreview] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+
+    // ── Step 3 Delivery Selection State ──────────────────────────────────────
     const [deliverySettings, setDeliverySettings] = useState<any>(null);
-    const [selectedVehicle, setSelectedVehicle] = useState<'moto' | 'carro'>('moto');
+    const [selectedVehicle, setSelectedVehicle] = useState<'moto' | 'carro' | 'ejecutivo'>('moto');
+    const [isSubmittingDelivery, setIsSubmittingDelivery] = useState(false);
 
-
-
-    useEffect(() => {
-        if (order) {
-            setEditDelivery({
-                deliveryMethod: order.deliveryMethod || 'app_delivery',
-                vehicleType: order.vehicleType || 'moto',
-                addressName: order.address?.name || '',
-                addressReference: order.address?.reference || '',
-                lat: order.address?.lat || 0,
-                lng: order.address?.lng || 0
-            });
-        }
-    }, [order?.deliveryMethod, order?.vehicleType, order?.address?.name, order?.address?.reference]);
-
+    // ── Auto-open review modal on delivery completion ────────────────────────
     useEffect(() => {
         if (order && !order.hasReviewed && !order.has_reviewed) {
-            const isDelivered = order.status === 'delivered';
-            const isPickupDone = (order.deliveryMethod === 'pickup' || order.delivery_method === 'pickup') && (order.status === 'ready' || order.status === 'completed');
+            const isDelivered = order.status === 'delivered' || order.status === 'completed';
+            const isPickupDone = (order.deliveryMethod === 'pickup' || order.delivery_method === 'pickup')
+                && (order.status === 'ready' || order.status === 'completed');
             if (isDelivered || isPickupDone) {
                 setShowReviewModal(true);
             }
         }
-    }, [order]);
+    }, [order?.status]);
 
+    // ── Data Fetching + Realtime Subscriptions ───────────────────────────────
     useEffect(() => {
         if (!orderId) return;
 
-        // Fetch Platform Config for Delivery Payment
-        supabase.from('system_configs').select('*').eq('id', 'finances').maybeSingle().then(({ data }) => {
-            if (data) {
-                setPlatformConfig(data);
-            }
-        });
-
-        // Fetch Delivery Settings for Fees
         supabase.from('app_settings').select('*').eq('id', 'delivery_settings').maybeSingle().then(({ data }) => {
-            if (data) {
-                setDeliverySettings(data);
-            }
+            if (data) setDeliverySettings(data);
         });
 
-        // 1. Fetch & Listen to Order
+        // 1. Fetch Order and Store
         supabase.from('orders').select('*').eq('id', orderId).maybeSingle().then(async ({ data: orderData }) => {
             if (orderData) {
                 setOrder(orderData);
                 const rId = orderData.restaurantId || orderData.restaurant_id;
-                if (rId && (!restaurant || restaurant.id !== rId)) {
+                if (rId) {
                     const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
-                    if (rData) {
-                        setRestaurant({ id: rData.id, ...rData });
-                    }
+                    if (rData) setRestaurant({ id: rData.id, ...rData });
                 }
             }
             setLoading(false);
         });
 
+        // 2. Realtime Order Changes
         const orderChannel = supabase.channel(`order_track_${orderId}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'orders',
-                filter: `id=eq.${orderId}`
-            }, async (payload) => {
-                if (payload.new) {
-                    const orderData: any = payload.new;
-                    setOrder(orderData);
-
-                    const rId = orderData.restaurantId || orderData.restaurant_id;
-                    if (rId && (!restaurant || restaurant.id !== rId)) {
-                        const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
-                        if (rData) {
-                            setRestaurant({ id: rData.id, ...rData });
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `id=eq.${orderId}` },
+                async (payload) => {
+                    if (payload.new) {
+                        const orderData: any = payload.new;
+                        setOrder(orderData);
+                        const rId = orderData.restaurantId || orderData.restaurant_id;
+                        if (rId && (!restaurant || restaurant.id !== rId)) {
+                            const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
+                            if (rData) setRestaurant({ id: rData.id, ...rData });
                         }
                     }
-                }
-            })
-            .subscribe();
+                }).subscribe();
 
-        // 2. Fetch & Listen to Transport Request
+        // 3. Fetch Transport Request
         const fetchTransport = async () => {
             const { data: trList } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .or(`orderId.eq.${orderId},order_id.eq.${orderId}`)
-                .order('createdAt', { ascending: false })
+                .or(`order_id.eq.${orderId},id.eq.${order?.transport_request_id || '00000000-0000-0000-0000-000000000000'}`)
+                .order('created_at', { ascending: false })
                 .limit(1);
 
             if (trList && trList.length > 0) {
                 const trData = trList[0];
                 setTransportRequest({ id: trData.id, ...trData });
-
-                const dId = trData.driverId || trData.driver_id;
-                if (dId && (!driver || driver.id !== dId)) {
+                const dId = trData.driver_id || trData.driverId;
+                if (dId) {
                     const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
-                    if (dData) {
-                        setDriver({ id: dData.id, ...dData } as DeliveryDriver);
-                    }
+                    if (dData) setDriver({ id: dData.id, ...dData } as DeliveryDriver);
                 }
             }
         };
         fetchTransport();
 
+        // 4. Realtime Transport Request Changes
         const transportChannel = supabase.channel(`tr_track_${orderId}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'transport_requests',
-                filter: `order_id=eq.${orderId}`
-            }, async (payload) => {
-                if (payload.new) {
-                    const trData: any = payload.new;
-                    setTransportRequest({ id: trData.id, ...trData });
-
-                    const dId = trData.driverId || trData.driver_id;
-                    if (dId && (!driver || driver.id !== dId)) {
-                        const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
-                        if (dData) {
-                            setDriver({ id: dData.id, ...dData } as DeliveryDriver);
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests', filter: `order_id=eq.${orderId}` },
+                async (payload) => {
+                    if (payload.new) {
+                        const trData: any = payload.new;
+                        setTransportRequest({ id: trData.id, ...trData });
+                        const dId = trData.driver_id || trData.driverId;
+                        if (dId) {
+                            const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
+                            if (dData) setDriver({ id: dData.id, ...dData } as DeliveryDriver);
                         }
                     }
-                }
-            })
-            .subscribe();
+                }).subscribe();
 
         return () => {
             supabase.removeChannel(orderChannel);
             supabase.removeChannel(transportChannel);
         };
-    }, [orderId]);
+    }, [orderId, order?.transport_request_id]);
 
-    // Listen to Driver Live Location if available
+    // ── Driver GPS Tracking ──────────────────────────────────────────────────
     useEffect(() => {
-        const driverId = transportRequest?.driverId || transportRequest?.driver_id;
+        const driverId = transportRequest?.driver_id || transportRequest?.driverId;
         if (!driverId) return;
 
         supabase.from('driver_locations').select('*').eq('driver_id', driverId).maybeSingle().then(({ data }) => {
-            if (data) {
-                setDriverLocation(data as any);
-            }
+            if (data) setDriverLocation(data as any);
         });
 
         const locChannel = supabase.channel(`driver_loc_${driverId}`)
-            .on('postgres_changes', {
-                event: '*',
-                schema: 'public',
-                table: 'driver_locations',
-                filter: `driver_id=eq.${driverId}`
-            }, (payload) => {
-                if (payload.new) {
-                    setDriverLocation(payload.new as any);
-                }
-            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'driver_locations', filter: `driver_id=eq.${driverId}` },
+                (payload) => { if (payload.new) setDriverLocation(payload.new as any); })
             .subscribe();
 
-        return () => {
-            supabase.removeChannel(locChannel);
-        };
-    }, [transportRequest?.driverId, transportRequest?.driver_id]);
+        return () => { supabase.removeChannel(locChannel); };
+    }, [transportRequest?.driver_id, transportRequest?.driverId]);
 
-    // Live geolocation for the "blue dot"
+    // ── User Geolocation ─────────────────────────────────────────────────────
     useEffect(() => {
         if (!navigator.geolocation) return;
-        
         const watchId = navigator.geolocation.watchPosition(
-            (pos) => {
-                setUserLocation({
-                    lat: pos.coords.latitude,
-                    lng: pos.coords.longitude
-                });
-            },
-            (err) => console.error("Geolocation error:", err),
+            (pos) => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+            (err) => console.error('Geolocation error:', err),
             { enableHighAccuracy: true }
         );
-
         return () => navigator.geolocation.clearWatch(watchId);
     }, []);
 
-    // Pending stock countdown
-    useEffect(() => {
-        let timer: any;
-        if (order?.status === 'pending' && !order.stockConfirmed && pendingCountdown > 0) {
-            timer = setInterval(() => {
-                setPendingCountdown(prev => {
-                    if (prev <= 1) {
-                        setShowStockWhatsapp(true);
-                        clearInterval(timer);
-                        return 0;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-        } else if (order?.stockConfirmed) {
-            setPendingCountdown(0);
-        }
-        }, [order?.status, order?.stockConfirmed, pendingCountdown]);
+    // ── Handle Payment Proof Image Selection ─────────────────────────────────
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        setPaymentProofFile(file);
+        const reader = new FileReader();
+        reader.onloadend = () => setPaymentProofPreview(reader.result as string);
+        reader.readAsDataURL(file);
+    };
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-            </div>
-        );
-    }
+    // ── Handlers ─────────────────────────────────────────────────────────────
 
-    if (!order) {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-[60vh] px-6 text-center">
-                <Motorbike className="w-16 h-16 text-slate-300 mb-4" />
-                <h2 className="text-xl font-black text-slate-900 mb-2">Pedido no encontrado</h2>
-                <button onClick={() => navigate('/')} className="text-slate-900 font-bold">Volver al inicio</button>
-            </div>
-        );
-    }
-
-    if (order.status === 'cancelled') {
-        return (
-            <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-slate-50">
-                <div className="w-24 h-24 bg-red-100 text-red-500 flex items-center justify-center rounded-[2.5rem] mb-6 shadow-xl shadow-red-500/20">
-                    <X className="w-10 h-10" />
-                </div>
-                <h2 className="text-2xl font-black text-slate-900 mb-2">Pedido Cancelado</h2>
-                <p className="text-slate-500 font-medium mb-8">El pedido ha sido cancelado satisfactoriamente.</p>
-                <button onClick={() => navigate('/')} className="bg-slate-900 text-white rounded-2xl px-8 py-4 font-black shadow-xl hover:bg-slate-800 transition-colors">Volver al inicio</button>
-            </div>
-        );
-    }
-
+    // Paso 2: Reportar Pago al Negocio
     const handleRestaurantPaid = async () => {
-        if(!orderId || !order) return;
-        
+        if (!orderId || !order) return;
         setIsUploading(true);
+
         try {
-            const updates: any = {
+            let uploadedProofUrl: string | null = order.payment_proof_url || null;
+
+            // Subir comprobante a storage si se adjuntó archivo
+            if (paymentProofFile) {
+                const ext = paymentProofFile.name.split('.').pop() || 'jpg';
+                const filePath = `payment_proofs/order_${orderId}_${Date.now()}.${ext}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, paymentProofFile, { upsert: true });
+                if (!upErr) {
+                    const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    uploadedProofUrl = publicUrl;
+                }
+            }
+
+            // Actualizar la orden
+            await supabase.from('orders').update({
                 restaurantPaymentClientConfirmed: true,
                 restaurant_payment_client_confirmed: true,
                 status: 'pending_verification',
-                paymentReference: paymentReference,
-                payment_reference: paymentReference,
+                paymentReference: paymentReference || null,
+                payment_reference: paymentReference || null,
+                paymentProofUrl: uploadedProofUrl,
+                payment_proof_url: uploadedProofUrl,
                 updated_at: new Date().toISOString()
-            };
+            }).eq('id', orderId);
 
-            await supabase.from('orders').update(updates).eq('id', orderId);
+            // Enviar mensaje con el comprobante al chat
+            const msgText = paymentReference
+                ? `📢 He realizado el pago. Referencia: ${paymentReference}. Favor verificar.`
+                : '📢 He realizado el pago. Favor verificar.';
 
-            // Enviar mensaje automático al chat
             await supabase.from('messages').insert({
                 order_id: orderId,
                 orderId: orderId,
-                text: `📢 He realizado el pago. Referencia: ${paymentReference}. Favor validar.`,
+                text: msgText,
+                image_url: uploadedProofUrl,
                 sender_id: user?.uid || 'guest',
                 senderId: user?.uid || 'guest',
                 sender_name: order.userName || 'Cliente',
@@ -338,7 +298,7 @@ export default function TrackOrder() {
                 createdAt: new Date().toISOString()
             });
 
-            toast.success('Información de pago enviada al negocio');
+            toast.success('¡Comprobante enviado al negocio exitosamente!');
         } catch (error) {
             console.error(error);
             toast.error('Ocurrió un error al enviar la información de pago');
@@ -347,13 +307,42 @@ export default function TrackOrder() {
         }
     };
 
+    // Paso 2: Pago en sitio (PickUp)
+    const handlePayOnSite = async () => {
+        if (!orderId) return;
+        try {
+            await supabase.from('orders').update({
+                deliveryMethod: 'pickup',
+                delivery_method: 'pickup',
+                deliveryFee: 0,
+                delivery_fee: 0,
+                paymentMethod: 'Pagar en el Local',
+                payment_method: 'Pagar en el Local',
+                status: 'preparing',
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                text: '🏪 Seleccioné pagar directamente en el local al retirar mi compra.',
+                sender_id: user?.uid || 'guest',
+                sender_name: order?.userName || 'Cliente',
+                sender_role: 'client',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success('Modo pago en sitio confirmado');
+        } catch (error) {
+            toast.error('Error al actualizar método');
+        }
+    };
+
+    // Paso 1: Eliminar ítem agotado
     const handleRemoveMissingItem = async (itemId: string) => {
         if (!order || !orderId) return;
-        
         const newItems = order.items.filter((item: any) => item.id !== itemId);
-        const newSubtotal = newItems.reduce((acc: number, item: any) => acc + (item.price * item.quantity), 0);
+        const newSubtotal = newItems.reduce((acc: number, item: any) => acc + (Number(item.price) * Number(item.quantity)), 0);
         const newTotal = newSubtotal + (order.deliveryFee || order.delivery_fee || 0);
-
         try {
             await supabase.from('orders').update({
                 items: newItems,
@@ -363,12 +352,13 @@ export default function TrackOrder() {
                 missing_items: (order.missing_items || order.missingItems || []).filter((id: string) => id !== itemId),
                 updated_at: new Date().toISOString()
             }).eq('id', orderId);
+            toast.success('Producto eliminado');
         } catch (error) {
-            console.error("Error removing item:", error);
-            toast.error("Error al eliminar producto");
+            toast.error('Error al eliminar producto');
         }
     };
 
+    // Paso 1: Confirmar cambios tras resolver ítems agotados
     const handleConfirmStockChanges = async () => {
         if (!orderId) return;
         try {
@@ -380,32 +370,26 @@ export default function TrackOrder() {
                 missing_items: [],
                 updated_at: new Date().toISOString()
             }).eq('id', orderId);
-            
-            // Enviar mensaje automático al chat
+
             await supabase.from('messages').insert({
                 order_id: orderId,
-                orderId: orderId,
-                text: "🔄 *El cliente ha realizado cambios en su pedido.* Favor verificar stock nuevamente.",
+                text: '🔄 *El cliente actualizó su pedido.* Favor verificar stock nuevamente.',
                 sender_id: user?.uid || 'guest',
-                senderId: user?.uid || 'guest',
                 sender_name: order.userName || 'Cliente',
-                senderName: order.userName || 'Cliente',
                 sender_role: 'client',
-                senderRole: 'client',
-                created_at: new Date().toISOString(),
-                createdAt: new Date().toISOString()
+                created_at: new Date().toISOString()
             });
 
-            toast.success("Cambios confirmados. Esperando verificación del restaurante.");
+            toast.success('Cambios confirmados. Notificando a la tienda.');
         } catch (error) {
-            console.error("Error confirming changes:", error);
-            toast.error("Error al confirmar cambios");
+            toast.error('Error al confirmar cambios');
         }
     };
 
+    // Cancelar orden
     const handleCancelOrder = async () => {
-        if(!orderId) return;
-        if(window.confirm('¿Estás seguro que deseas cancelar tu pedido? Esta acción no se puede deshacer.')) {
+        if (!orderId) return;
+        if (window.confirm('¿Estás seguro que deseas cancelar tu pedido?')) {
             try {
                 await supabase.from('orders').update({
                     status: 'cancelled',
@@ -415,58 +399,15 @@ export default function TrackOrder() {
                 }).eq('id', orderId);
                 toast.success('Pedido cancelado');
             } catch (error) {
-                console.error(error);
-                toast.error('Ocurrió un error al cancelar');
+                toast.error('Error al cancelar');
             }
         }
     };
 
-    const handleUpdateAddress = async () => {
-        if (!orderId || !order) return;
-        setIsUpdatingAddress(true);
-        try {
-            const updatedAddress = {
-                ...(order.address || {}),
-                name: editDelivery.addressName,
-                reference: editDelivery.addressReference
-            };
-            const addrStr = `${editDelivery.addressName} (${editDelivery.addressReference})`.trim();
-
-            await supabase.from('orders').update({
-                address: updatedAddress,
-                deliveryAddress: addrStr,
-                delivery_address: addrStr,
-                updated_at: new Date().toISOString()
-            }).eq('id', orderId);
-
-            // Enviar mensaje automático al chat
-            await supabase.from('messages').insert({
-                order_id: orderId,
-                orderId: orderId,
-                text: `📍 *El cliente ha actualizado su dirección de entrega:* \n\n*Dirección:* ${editDelivery.addressName}\n*Referencia:* ${editDelivery.addressReference}`,
-                sender_id: user?.uid || 'guest',
-                senderId: user?.uid || 'guest',
-                sender_name: order.userName || 'Cliente',
-                senderName: order.userName || 'Cliente',
-                sender_role: 'client',
-                senderRole: 'client',
-                created_at: new Date().toISOString(),
-                createdAt: new Date().toISOString()
-            });
-
-            toast.success("Dirección actualizada correctamente");
-            setIsEditingAddress(false);
-        } catch (error) {
-            console.error("Error updating address:", error);
-            toast.error("Error al actualizar la dirección");
-        } finally {
-            setIsUpdatingAddress(false);
-        }
-    };
-
+    // Cambiar a Retiro en Local
     const handleSwitchToPickup = async () => {
-        if(!orderId || !order) return;
-        if(window.confirm('¿Deseas cambiar tu entrega a Retiro en Local? El costo de delivery será $0.')) {
+        if (!orderId || !order) return;
+        if (window.confirm('¿Deseas cambiar tu entrega a Retiro en Local? El costo de delivery será $0.')) {
             try {
                 await supabase.from('orders').update({
                     deliveryMethod: 'pickup',
@@ -474,1245 +415,1106 @@ export default function TrackOrder() {
                     deliveryFee: 0,
                     delivery_fee: 0,
                     total: order.subtotal,
-                    pickupNotified: false,
-                    pickup_notified: false,
+                    status: 'preparing',
                     updated_at: new Date().toISOString()
                 }).eq('id', orderId);
 
-                // Enviar mensaje automático al chat
                 await supabase.from('messages').insert({
                     order_id: orderId,
-                    orderId: orderId,
-                    text: "🏪 He cambiado mi pedido a RETIRO EN LOCAL (PickUp). Favor no enviar motorizado.",
+                    text: '🏪 He cambiado mi pedido a RETIRO EN LOCAL (PickUp). Preparar para retirar.',
                     sender_id: user?.uid || 'guest',
-                    senderId: user?.uid || 'guest',
                     sender_name: order.userName || 'Cliente',
-                    senderName: order.userName || 'Cliente',
                     sender_role: 'client',
-                    senderRole: 'client',
-                    created_at: new Date().toISOString(),
-                    createdAt: new Date().toISOString()
+                    created_at: new Date().toISOString()
                 });
 
-                // Enviar mensaje automático al chat
-                await supabase.from('messages').insert({
-                    order_id: orderId,
-                    orderId: orderId,
-                    text: "🔔 *El cliente ha decidido retirar el pedido en el local (PickUp).* ",
-                    sender_id: user?.uid || 'guest',
-                    senderId: user?.uid || 'guest',
-                    sender_name: order.userName || 'Cliente',
-                    senderName: order.userName || 'Cliente',
-                    sender_role: 'client',
-                    senderRole: 'client',
-                    created_at: new Date().toISOString(),
-                    createdAt: new Date().toISOString()
-                });
-
-                toast.success("Cambiado a Pick Up");
+                toast.success('Cambiado a Retiro en Local');
             } catch (error) {
-                console.error(error);
-                toast.error("Error al actualizar método de entrega");
+                toast.error('Error al actualizar método');
             }
         }
     };
 
-    const getDeliveryStatusLabel = (status: string) => {
-        switch (status) {
-            case 'searching': return 'Buscando Delivery...';
-            case 'accepted': return 'En camino para recoger';
-            case 'arriving': return 'Llegó al punto (Negocio)';
-            case 'in_progress': return 'Inicié el viaje a tu dirección';
-            case 'completed': return 'Llegué (finalicé mi viaje)';
-            default: return 'Buscando Repartidor';
-        }
-    };
+    // Paso 3: Confirmar y Solicitar Repartidor (Delivery nativo estilo Encomiendas)
+    const handleRequestDelivery = async () => {
+        if (!order || !orderId || isSubmittingDelivery) return;
+        setIsSubmittingDelivery(true);
 
-    const handleReportDeliveryPayment = async () => {
-        if(!orderId || !order) return;
-        
-        if (!deliveryPaymentReference) {
-            toast.error('Por favor ingresa el número de referencia del pago.');
-            return;
-        }
-
-        setIsUploadingDeliveryReport(true);
         try {
-            const updates: any = {
-                deliveryPaymentClientConfirmed: true,
-                delivery_payment_client_confirmed: true,
-                status: 'verificando_pago_delivery',
-                deliveryPaymentReference: deliveryPaymentReference,
-                delivery_payment_reference: deliveryPaymentReference,
-                deliveryPaymentStatus: 'pending_verification',
-                delivery_payment_status: 'pending_verification',
-                updated_at: new Date().toISOString()
+            const distance = calculatedDistance;
+            const rates = deliverySettings?.transportRates?.[selectedVehicle] || [];
+            const rate = rates.find((r: any) => distance >= r.from && (distance <= r.to || !r.to));
+            const calculatedFee = rate ? (rate.clientPrice || rate.price) : (selectedVehicle === 'moto' ? 2.5 : selectedVehicle === 'carro' ? 5.0 : 7.0);
+            const deliveryFee = order.free_delivery ? 0 : calculatedFee;
+
+            const itemsSummary = (order.items || []).map((i: any) => `${i.quantity}x ${i.name}`).join(', ');
+
+            const originData = {
+                address: restaurant?.address || restaurant?.location?.address || order.restaurantName || 'Comercio',
+                coords: restaurant?.location?.coords || (restaurant?.lat ? { lat: Number(restaurant.lat), lng: Number(restaurant.lng) } : null),
+                name: restaurant?.name || order.restaurantName || 'Negocio',
+                details: 'Retiro de pedido de comida'
             };
 
-            await supabase.from('orders').update(updates).eq('id', orderId);
+            const destinationData = {
+                address: order.deliveryAddress || order.address?.name || 'Dirección del cliente',
+                coords: order.deliveryCoords || order.address?.coords || userLocation || null,
+                name: order.userName || 'Cliente',
+                details: order.address?.reference || order.orderNote || ''
+            };
 
-            // Create transport request so it appears in CPanel "Viajes (Taxis)"
+            const transportId = crypto.randomUUID();
+
             const transportData: any = {
-                id: crypto.randomUUID(),
-                type: 'food_delivery',
-                serviceType: 'Delivery de Comida',
-                service_type: 'Delivery de Comida',
-                orderId: orderId,
+                id: transportId,
                 order_id: orderId,
-                restaurantId: order.restaurantId || order.restaurant_id,
-                restaurant_id: order.restaurantId || order.restaurant_id,
-                userId: order.userId || user?.uid,
-                user_id: order.userId || user?.uid,
-                userName: order.userName || user?.displayName || 'Cliente',
-                user_name: order.userName || user?.displayName || 'Cliente',
-                userPhone: order.userPhone || user?.phoneNumber || '',
+                restaurant_id: order.restaurantId || order.restaurant_id || null,
+                restaurant_name: restaurant?.name || order.restaurantName || null,
+                items_summary: itemsSummary,
+                type: 'food_delivery',
+                service_category: 'food_delivery',
+                status: 'searching',
+                user_id: order.userId || user?.uid || null,
+                user_name: order.userName || 'Cliente',
                 user_phone: order.userPhone || user?.phoneNumber || '',
-                userCedula: order.userCedula || '',
                 user_cedula: order.userCedula || '',
-                origin: {
-                    address: restaurant?.location?.address 
-                        ? `${order.restaurantName || restaurant?.name} - ${restaurant.location.address}, ${restaurant.location.city || ''}`
-                        : order.restaurantName || restaurant?.name || 'Restaurante',
-                    details: 'Recoger pedido de comida',
-                    coords: restaurant?.location?.coords || null
-                },
-                destination: {
-                    address: order.deliveryAddress || `${order.address?.name || ''} ${order.address?.reference || ''}`.trim() || 'Dirección del cliente',
-                    details: order.address?.reference || order.orderNote || '',
-                    coords: order.deliveryCoords || order.address?.coords || userLocation || null
-                },
-                vehicleType: order.vehicleType || 'moto',
-                vehicle_type: order.vehicleType || 'moto',
-                clientTotal: order.deliveryFee || 0,
-                client_total: order.deliveryFee || 0,
-                driverPayout: (order.deliveryFee || 0) * 0.8,
-                driver_payout: (order.deliveryFee || 0) * 0.8,
-                serviceFee: (order.deliveryFee || 0) * 0.2,
-                service_fee: (order.deliveryFee || 0) * 0.2,
-                status: 'verifying_payment',
-                paymentMethod: 'Transferencia/Pago Móvil',
+                origin: originData,
+                destination: destinationData,
+                vehicle_type: selectedVehicle,
+                price: deliveryFee,
+                total: deliveryFee,
+                client_total: deliveryFee,
+                driver_payout: deliveryFee * 0.8,
+                commission_amount: deliveryFee * 0.2,
                 payment_method: 'Transferencia/Pago Móvil',
-                paymentRef: deliveryPaymentReference,
-                payment_ref: deliveryPaymentReference,
+                package_description: `Entrega de pedido: ${itemsSummary}`,
                 created_at: new Date().toISOString(),
-                createdAt: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
 
-            await supabase.from('transport_requests').insert(transportData);
+            // 1. Insertar solicitud de transporte
+            const { error: trError } = await supabase.from('transport_requests').insert(transportData);
+            if (trError) {
+                console.error("Error creating transport request:", trError);
+            }
 
-            // Enviar mensaje automático al chat
+            // 2. Actualizar la orden
+            await supabase.from('orders').update({
+                transport_request_id: transportId,
+                vehicleType: selectedVehicle,
+                vehicle_type: selectedVehicle,
+                deliveryFee: deliveryFee,
+                delivery_fee: deliveryFee,
+                status: 'buscando_piloto',
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            // 3. Notificar en chat
             await supabase.from('messages').insert({
                 order_id: orderId,
-                orderId: orderId,
-                text: `🚀 He reportado el pago del delivery (Ref: ${deliveryPaymentReference}). Por favor verificar.`,
+                text: `🛵 *Delivery Solicitado:* Vehículo: ${selectedVehicle.toUpperCase()} · Tarifa: $${deliveryFee.toFixed(2)}. Buscando repartidor disponible.`,
                 sender_id: user?.uid || 'guest',
-                senderId: user?.uid || 'guest',
                 sender_name: order.userName || 'Cliente',
-                senderName: order.userName || 'Cliente',
                 sender_role: 'client',
-                senderRole: 'client',
-                created_at: new Date().toISOString(),
-                createdAt: new Date().toISOString()
+                created_at: new Date().toISOString()
             });
 
-            toast.success('Información de pago enviada exitosamente');
+            toast.success('¡Buscando repartidor para tu entrega!', { icon: '🛵' });
         } catch (error) {
             console.error(error);
-            toast.error('Ocurrió un error al enviar la información de pago');
+            toast.error('Error al solicitar repartidor');
         } finally {
-            setIsUploadingDeliveryReport(false);
+            setIsSubmittingDelivery(false);
         }
     };
 
-    const handleSelectVehicle = async (type: 'moto' | 'carro') => {
-        if (!order || !orderId || !deliverySettings) return;
+    // ── Derived Data & Computations ──────────────────────────────────────────
+    const currentStep = getFlowStep(order, transportRequest);
+    const isPickup = order?.deliveryMethod === 'pickup' || order?.delivery_method === 'pickup';
 
-        setSelectedVehicle(type);
-        
-        // Calculate new fee based on distance and vehicle type
-        const distance = order.distance || 0;
-        const rates = deliverySettings.transportRates?.[type] || [];
-        const rate = rates.find((r: any) => distance >= r.from && (distance <= r.to || !r.to));
-        
-        const newFee = rate ? (rate.clientPrice || rate.price) : (type === 'moto' ? 2.5 : 5.0);
-        const newTotal = (order.subtotal || 0) + newFee;
+    const itemsTotal = Array.isArray(order?.items)
+        ? order.items.reduce((s: number, i: any) => s + (Number(i.price) * Number(i.quantity)), 0)
+        : Number(order?.subtotal || order?.total || 0);
 
-        try {
-            await supabase.from('orders').update({
-                vehicleType: type,
-                vehicle_type: type,
-                deliveryFee: newFee,
-                delivery_fee: newFee,
-                total: newTotal,
-                updated_at: new Date().toISOString()
-            }).eq('id', orderId);
-            toast.success(`Vehículo actualizado: ${type === 'moto' ? 'Moto' : 'Carro'}`);
-        } catch (error) {
-            console.error("Error updating vehicle:", error);
-            toast.error("Error al actualizar vehículo");
-        }
-    };
+    const paymentMethods: any[] = Array.isArray(restaurant?.paymentMethods)
+        ? restaurant.paymentMethods
+        : Array.isArray(restaurant?.payment_methods)
+            ? restaurant.payment_methods
+            : [];
 
-    const handleProceedToDeliveryPayment = async () => {
-        if (!orderId) return;
-        try {
-            await supabase.from('orders').update({
-                vehicleType: editDelivery.vehicleType,
-                vehicle_type: editDelivery.vehicleType,
-                address: {
-                    ...(order.address || {}),
-                    name: editDelivery.addressName,
-                    reference: editDelivery.addressReference
-                },
-                updated_at: new Date().toISOString()
-            }).eq('id', orderId);
-            setShowDeliveryPaymentModal(true);
-        } catch (error) {
-            console.error(error);
-            toast.error("Error guardando opciones");
-        }
-    };
+    const pagoMovilMethod = paymentMethods.find((m: any) => m.type === 'Pago Móvil') || null;
 
-    // Determine current step index for the progress bar
-    const getStepIndex = () => {
-        // Priority 1: Delivery Driver Status
-        if (transportRequest) {
-            if (transportRequest.status === 'completed') return 4;
-            if (transportRequest.status === 'in_progress') return 3;
-            if (transportRequest.status === 'arriving') return 2; // Llegó al negocio, es parte de la preparación todavía
-            if (transportRequest.status === 'accepted') return 2; // Va en camino a buscar el pedido
-        }
+    // Calcular distancia tienda -> cliente
+    const originCoords = restaurant?.location?.coords || (restaurant?.lat ? { lat: Number(restaurant.lat), lng: Number(restaurant.lng) } : null);
+    const destCoords = order?.deliveryCoords || order?.address?.coords || userLocation;
+    const calculatedDistance = (originCoords && destCoords)
+        ? calculateDistanceKm(originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng)
+        : Number(order?.distance || 2.5);
 
-        // Priority 2: General Order Status
-        switch (order.status) {
-            case 'pending': return 1;
-            case 'action_required': return 1;
-            case 'pendiente_pago': return 1;
-            case 'pending_verification': return 1;
-            case 'awaiting_payment': return 1;
-            case 'awaiting_delivery_payment': return 1;
-            case 'verificando_pago_delivery': return 1;
-            case 'preparing': return 2;
-            case 'buscando_piloto': return 2;
-            case 'finding_driver': return 2;
-            case 'driver_assigned': return 2;
-            case 'in_transit': return 3;
-            case 'completed': return 4;
-            default: return 0;
-        }
-    };
+    const mapCenter = driverLocation
+        || destCoords
+        || originCoords
+        || { lat: 8.9326, lng: -67.4264 };
 
-    const currentStep = getStepIndex();
+    // ── Loading & Not Found Screens ──────────────────────────────────────────
+    if (loading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 gap-4">
+                <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+                <p className="text-xs font-black uppercase tracking-widest text-slate-400">Cargando pedido...</p>
+            </div>
+        );
+    }
 
-    // Simulate Distance Percentage using fixed thresholds (ideal interaction without real MapBox/Gmaps for now)
-    // In a real app, we would use Haversine formula between order.driverLocation (from driver) and order.address.
-    const getDistanceProgress = () => {
-        if (currentStep < 3) return 0;
-        if (currentStep === 4) return 100;
+    if (!order) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-slate-50">
+                <Motorbike className="w-16 h-16 text-slate-300 mb-4" />
+                <h2 className="text-xl font-black text-slate-900 mb-2">Pedido no encontrado</h2>
+                <button onClick={() => navigate('/')} className="text-slate-900 font-bold hover:underline">Volver al inicio</button>
+            </div>
+        );
+    }
 
-        // Simulating progress based on time elapsed since 'in_transit' could be done, 
-        // For UI purposes, we'll keep it static interactive or random.
-        // If we had coordinates attached to driver real-time, we could calculate accurate %.
-        return 65;
-    };
-
-    return (
-        <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 overscroll-y-contain pb-32">
-            {/* Header */}
-            <div className="bg-white px-4 py-4 flex items-center gap-4 sticky top-0 z-30 shadow-sm">
-                <button onClick={() => window.history.length > 1 ? window.history.back() : navigate('/profile')} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform text-slate-600">
-                    <ArrowLeft className="w-5 h-5" />
+    if (order.status === 'cancelled') {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-slate-50">
+                <div className="w-20 h-20 bg-red-100 text-red-500 flex items-center justify-center rounded-3xl mb-4 shadow-xl shadow-red-500/20">
+                    <X className="w-10 h-10" />
+                </div>
+                <h2 className="text-2xl font-black text-slate-900 mb-2">Pedido Cancelado</h2>
+                <p className="text-slate-500 font-medium mb-6 text-sm">Este pedido fue cancelado satisfactoriamente.</p>
+                <button onClick={() => navigate('/')} className="bg-slate-900 text-white rounded-2xl px-8 py-4 font-black shadow-xl hover:bg-slate-800 transition-colors">
+                    Volver al inicio
                 </button>
-                <h1 className="text-lg font-black text-slate-900">Seguimiento de Pedido</h1>
             </div>
+        );
+    }
 
-            {/* Interactive Map Area */}
-            <div className="h-80 relative overflow-hidden bg-slate-100">
-                {isLoaded ? (
-                    <GoogleMap
-                        mapContainerStyle={{ width: '100%', height: '100%' }}
-                        center={driverLocation || (order?.address?.lat ? { lat: order.address.lat, lng: order.address.lng } : { lat: 8.9326, lng: -67.4264 })}
-                        zoom={driverLocation ? 16 : 14}
-                        options={mapOptions}
-                    >
-                        {/* Destination (Client) Marker */}
-                        {order?.address?.lat && order?.address?.lng && (
-                            <Marker 
-                                position={{ lat: order.address.lat, lng: order.address.lng }} 
-                                icon={{
-                                    url: 'https://cdn-icons-png.flaticon.com/512/1004/1004285.png',
-                                    scaledSize: window.google ? new window.google.maps.Size(32, 32) : undefined
-                                }}
-                            />
-                        )}
-                        {/* Driver Marker */}
-                        {driverLocation && (
-                            <Marker 
-                                position={driverLocation} 
-                                icon={{
-                                    url: 'https://cdn-icons-png.flaticon.com/512/3209/3209935.png',
-                                    scaledSize: window.google ? new window.google.maps.Size(48, 48) : undefined
-                                }}
-                            />
-                        )}
-                        {/* Live User Location Blue Dot */}
-                        {userLocation && (
-                            <Marker 
-                                position={userLocation} 
-                                icon={{
-                                    path: window.google?.maps?.SymbolPath?.CIRCLE || 0,
-                                    scale: 7,
-                                    fillColor: '#2563EB',
-                                    fillOpacity: 1,
-                                    strokeColor: '#FFFFFF',
-                                    strokeWeight: 2.5
-                                }}
-                            />
-                        )}
-                    </GoogleMap>
-                ) : (
-                    <div className="absolute inset-0 flex items-center justify-center">
-                        <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
-                    </div>
-                )}
-                
-                <div className="absolute top-4 left-4 z-10">
-                    <div className="w-16 h-16 bg-white rounded-[1.5rem] shadow-xl flex items-center justify-center relative border-4 border-slate-900 overflow-hidden group">
-                        {restaurant?.logoUrl ? (
-                            <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover p-1" />
-                        ) : (
-                            <Store className="w-8 h-8 text-slate-900" />
-                        )}
-                    </div>
-                </div>
-
-                <div className="absolute top-4 right-4 z-10 flex flex-col items-end">
-                    <div className="inline-block bg-primary px-4 py-1.5 rounded-full mb-3 shadow-lg shadow-primary/20 border border-primary/50 backdrop-blur-md bg-opacity-90">
-                        <p className="font-black text-[9px] uppercase tracking-[0.4em] text-slate-900">Rastreo Activo</p>
-                    </div>
-                    <div className="bg-slate-900/90 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
-                        <h2 className="text-sm font-black text-white uppercase tracking-tight">#{orderId?.slice(-5).toUpperCase()}</h2>
-                    </div>
-                </div>
-
-                <div className="absolute bottom-6 left-6 right-6 bg-slate-900/90 backdrop-blur-xl px-5 py-3 rounded-full border border-white/10 flex items-center justify-between shadow-xl z-10">
-                    <div className="flex items-center gap-3">
-                        <div className="relative w-2.5 h-2.5">
-                            <div className="absolute inset-0 bg-emerald-500 rounded-full animate-ping opacity-75"></div>
-                            <div className="relative w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-lg shadow-emerald-500/50"></div>
-                        </div>
-                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Track en Vivo</span>
-                    </div>
-                    <span className="text-[10px] font-black text-white/60 uppercase tracking-widest">{restaurant?.name || "Deliexpress"}</span>
-                </div>
+    // ── Step Progress Indicator ──────────────────────────────────────────────
+    const StepProgressHeader = () => (
+        <div className="bg-white px-4 pt-3 pb-3 border-b border-slate-100 shrink-0">
+            <div className="flex items-center justify-between">
+                {STEP_LABELS.map((label, i) => {
+                    const stepNum = i + 1;
+                    const isDone = stepNum < currentStep;
+                    const isActive = stepNum === currentStep;
+                    return (
+                        <React.Fragment key={stepNum}>
+                            <div className="flex flex-col items-center gap-1">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all duration-300 ${
+                                    isDone ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                                    : isActive ? 'bg-primary text-slate-900 shadow-md shadow-primary/30 ring-4 ring-primary/20'
+                                    : 'bg-slate-100 text-slate-400'
+                                }`}>
+                                    {isDone ? <CheckCircle className="w-4 h-4" /> : stepNum}
+                                </div>
+                                <span className={`text-[9px] font-black uppercase tracking-wider ${
+                                    isActive ? 'text-slate-900' : isDone ? 'text-emerald-600' : 'text-slate-400'
+                                }`}>{label}</span>
+                            </div>
+                            {i < STEP_LABELS.length - 1 && (
+                                <div className={`flex-1 h-0.5 mx-2 -mt-4 rounded-full transition-all duration-500 ${
+                                    stepNum < currentStep ? 'bg-emerald-500' : 'bg-slate-200'
+                                }`} />
+                            )}
+                        </React.Fragment>
+                    );
+                })}
             </div>
+        </div>
+    );
 
-            <div className="px-4 -mt-6 relative z-10 space-y-4">
-                {/* Status Card */}
-                <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50">
-                    <div className="flex justify-between items-start mb-6">
-                        <div>
-                            <h2 className="text-2xl font-black text-slate-900 leading-tight">
-                                {currentStep === 1 && (
-                                    order.status === 'verificando_pago_delivery' 
-                                        ? "Verificando pago del delivery"
-                                        : (order.status === 'pendiente_pago' ? "Esperando confirmación de pago" : "Recibido, esperando negocio")
-                                )}
-                                {currentStep === 2 && (!transportRequest || transportRequest.status === 'searching') && order.deliveryMethod === 'app_delivery' ? "Buscando al mejor piloto" : null}
-                                {currentStep === 2 && (!transportRequest || transportRequest.status === 'searching') && order.deliveryMethod !== 'app_delivery' ? "Pago aceptado. Preparando tu orden" : null}
-                                {currentStep === 2 && transportRequest?.status === 'accepted' && "El piloto va por tu pedido"}
-                                {currentStep === 2 && transportRequest?.status === 'arriving' && "El piloto espera por tu pedido"}
-                                {currentStep === 3 && "¡Tu pedido va en camino!"}
-                                {currentStep === 4 && "Pedido Entregado"}
-                            </h2>
-                            <p className="text-slate-500 font-medium text-sm mt-1">Llegada estimada: 25 - 40 min</p>
-                        </div>
-                    </div>
+    // ── Floating Chat Button ─────────────────────────────────────────────────
+    const ChatFAB = () => (
+        order.status !== 'cancelled' && order.status !== 'delivered' && order.status !== 'completed' ? (
+            <motion.button
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => setShowChat(true)}
+                className="fixed bottom-6 right-5 z-40 bg-slate-900 text-white p-4 rounded-full shadow-2xl shadow-slate-900/40 flex items-center gap-2 border-2 border-white"
+                title="Abrir Chat"
+            >
+                <MessageSquare className="w-6 h-6 text-primary" />
+                <span className="text-xs font-black pr-1 hidden sm:inline">Chat</span>
+            </motion.button>
+        ) : null
+    );
 
-                    {/* Timeline */}
-                    <div className="relative pt-2">
-                        <div className="absolute top-1/2 -translate-y-1/2 left-0 right-0 h-1 bg-slate-100 rounded-full"></div>
-                        <div
-                            className="absolute top-1/2 -translate-y-1/2 left-0 h-1 bg-emerald-500 rounded-full transition-all duration-1000"
-                            style={{ width: `${(currentStep - 1) * 33.33}%` }}
-                        ></div>
-                        <div className="relative flex justify-between">
-                            {[1, 2, 3, 4].map((step) => (
-                                <div 
-                                    key={step} 
-                                    onClick={() => setInfoStep(infoStep === step ? null : step)}
-                                    className={`w-8 h-8 rounded-full flex items-center justify-center ring-4 ring-white cursor-pointer transition-colors duration-500 hover:scale-110 ${step <= currentStep ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-slate-200 text-slate-400'}`}
-                                >
-                                    {step === 1 && <Wallet className="w-4 h-4" />}
-                                    {step === 2 && <Store className="w-4 h-4" />}
-                                    {step === 3 && <Motorbike className="w-4 h-4" />}
-                                    {step === 4 && <CheckCircle2 className="w-4 h-4" />}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    {infoStep && (
-                        <div className="mt-4 p-4 bg-slate-900 text-white text-xs font-bold rounded-xl text-center shadow-lg animate-in fade-in slide-in-from-top-2">
-                            {infoStep === 1 && "Verificación de Pagos: Paga a la tienda y al repartidor para iniciar tu orden."}
-                            {infoStep === 2 && "Preparación: El local ha recibido el dinero y está cocinando tus productos."}
-                            {infoStep === 3 && "En Tránsito: Tu pedido fue asignado y va en camino a tu destino."}
-                            {infoStep === 4 && "¡Disfruta! Tu pedido ha sido entregado satisfactoriamente."}
-                        </div>
-                    )}
-
-
-                    {/* Chat Window always visible until delivered/cancelled */}
-                    {order.status !== 'cancelled' && order.status !== 'delivered' && (
-                        <div className="w-full mt-4 animate-in fade-in zoom-in-95 duration-200">
-                            <OrderChatWindow 
-                                orderId={orderId!} 
-                                currentUserRole="client" 
-                                currentUserId={user?.uid || 'guest'}
-                                currentUserName={order.userName || 'Cliente'} 
-                                restaurantId={order.restaurantId}
-                                orderInfo={order}
-                            />
-                        </div>
-                    )}
-
-                    {/* Delivery Payment Flow */ }
-                    {(currentStep === 1 || currentStep === 2) && order.deliveryMethod === 'app_delivery' && (!order.deliveryPaymentStatus || order.deliveryPaymentStatus === 'rejected') && (
-                        <div className="mt-6 pt-6 border-t border-slate-100 flex flex-col items-center gap-3 animate-in fade-in slide-in-from-bottom-2">
-                            {order.deliveryPaymentStatus === 'rejected' && (
-                                <div className="p-3 bg-red-50 text-red-600 text-xs font-bold rounded-xl mb-2 text-center w-full border border-red-200">
-                                    Tu captura de pago del delivery fue rechazada. Por favor, verifica tu referencia e intenta de nuevo.
-                                </div>
-                            )}
-                            
-                            {order.restaurantPaymentClientConfirmed && (
-                                <div className="w-full animate-in fade-in zoom-in-95 duration-200 bg-slate-50 p-4 rounded-3xl border-2 border-slate-100 relative shadow-inner">
-                                    <h4 className="font-black text-slate-800 mb-4 flex items-center gap-2">
-                                        <Motorbike className="w-5 h-5 text-slate-900"/>
-                                        Opciones de Envío
-                                    </h4>
-                                    
-                                    <div className="mb-4">
-                                        <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Método de entrega</label>
-                                        <div className="flex bg-slate-200 p-1 rounded-xl mt-1">
-                                            <button 
-                                                onClick={() => setEditDelivery({...editDelivery, deliveryMethod: 'app_delivery'})}
-                                                className={`flex-1 py-2 rounded-lg font-bold text-xs transition-colors ${editDelivery.deliveryMethod === 'app_delivery' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
-                                            >
-                                                Delivery
-                                            </button>
-                                            <button 
-                                                onClick={() => setEditDelivery({...editDelivery, deliveryMethod: 'pickup'})}
-                                                className={`flex-1 py-2 rounded-lg font-bold text-xs transition-colors ${editDelivery.deliveryMethod === 'pickup' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}
-                                            >
-                                                Pick Up (Retiro)
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {editDelivery.deliveryMethod === 'app_delivery' ? (
-                                        <>
-                                            <div className="mb-4 space-y-3">
-                                                <div>
-                                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Tipo de Vehículo</label>
-                                                    <select 
-                                                        value={editDelivery.vehicleType}
-                                                        onChange={(e) => setEditDelivery({...editDelivery, vehicleType: e.target.value})}
-                                                        className="w-full bg-white border-2 border-slate-100 px-4 py-2.5 rounded-xl text-sm font-black text-slate-700 mt-1"
-                                                    >
-                                                        <option value="moto">Mototaxi (Estándar)</option>
-                                                        <option value="taxi">Taxi (Paquetes grandes o delicados)</option>
-                                                    </select>
-                                                </div>
-                                                <div>
-                                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Dirección de Entrega (Opcional)</label>
-                                                    <input 
-                                                        value={editDelivery.addressName}
-                                                        onChange={(e) => setEditDelivery({...editDelivery, addressName: e.target.value})}
-                                                        placeholder="Escribe tu dirección"
-                                                        className="w-full bg-white border-2 border-slate-100 px-4 py-2.5 rounded-xl text-sm font-bold mt-1 text-slate-700"
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Puntos de Referencia</label>
-                                                    <input 
-                                                        value={editDelivery.addressReference}
-                                                        onChange={(e) => setEditDelivery({...editDelivery, addressReference: e.target.value})}
-                                                        placeholder="Ej. Casa verde al lado del kiosco..."
-                                                        className="w-full bg-white border-2 border-slate-100 px-4 py-2.5 rounded-xl text-sm font-bold mt-1 text-slate-700"
-                                                    />
-                                                </div>
-                                            </div>
-                                            
-                                            <div className="bg-amber-50 border border-amber-200 p-3 rounded-xl mb-4 text-center">
-                                                <p className="text-[10px] font-black uppercase text-amber-600/80 leading-snug">
-                                                    ⚠️ IMPORTANTE: Una vez realizado y validado el pago por el delivery NO podrás volver a modificar tu dirección ni el tipo de vehículo. La información se enviará al proveedor del negocio para su gestión.
-                                                </p>
-                                            </div>
-
-                                            <div className="flex flex-col gap-3 mt-4">
-                                                <button 
-                                                    onClick={handleProceedToDeliveryPayment}
-                                                    className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2"
-                                                >
-                                                    <Wallet className="w-6 h-6" />
-                                                    Pagar Delivery
-                                                </button>
-                                                <button 
-                                                    onClick={handleSwitchToPickup}
-                                                    className="w-full bg-slate-100 text-slate-600 py-3 rounded-2xl font-bold hover:bg-slate-200 transition-colors text-sm flex items-center justify-center gap-2"
-                                                >
-                                                    Lo buscaré yo (Retiro en local)
-                                                </button>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <button 
-                                            onClick={handleSwitchToPickup}
-                                            className="w-full bg-emerald-500 text-white py-4 rounded-2xl font-black shadow-xl shadow-emerald-500/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 mt-4"
-                                        >
-                                            <Store className="w-6 h-6" />
-                                            Confirmar Retiro
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
-
-                 {/* Restaurant Payment Section (Stock Confirmation) */}
-                {((order.status === 'pending' || order.status === 'action_required' || order.status === 'awaiting_payment' || order.status === 'pending_verification') && !order.restaurantPaymentClientConfirmed) || order.status === 'pending_verification' ? (
-                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/20 animate-in slide-in-from-bottom-4 duration-500 overflow-hidden">
-                        {order.status === 'pending' ? (
-                            <div className="flex flex-col items-center text-center py-4">
-                                <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mb-4 relative">
-                                    <Clock className="w-8 h-8 animate-pulse" />
-                                    {pendingCountdown > 0 && (
-                                        <div className="absolute -top-1 -right-1 bg-primary text-slate-900 text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">
-                                            {pendingCountdown}
-                                        </div>
-                                    )}
-                                </div>
-                                 <h3 className="text-lg font-black text-slate-900 mb-2">Verificando Pedido</h3>
-                                <p className="text-slate-500 text-sm font-medium">Estamos verificando tu orden, espera un momento...</p>
-                                
-
+    // ── Fullscreen Chat Overlay ──────────────────────────────────────────────
+    const ChatOverlay = () => (
+        <AnimatePresence>
+            {showChat && (
+                <motion.div
+                    initial={{ opacity: 0, y: '100%' }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: '100%' }}
+                    transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+                    className="fixed inset-0 z-50 bg-slate-50 flex flex-col"
+                >
+                    <div className="bg-white px-4 py-4 flex items-center gap-3 shadow-sm border-b border-slate-100 shrink-0">
+                        <button
+                            onClick={() => setShowChat(false)}
+                            className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                        >
+                            <ArrowLeft className="w-5 h-5 text-slate-700" />
+                        </button>
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-10 h-10 bg-slate-100 rounded-2xl flex items-center justify-center overflow-hidden border border-slate-200 shrink-0">
+                                {restaurant?.logoUrl
+                                    ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                                    : <Store className="w-6 h-6 text-slate-600" />}
                             </div>
-                        ) : order.status === 'action_required' ? (
-                            <div className="space-y-6">
-                                <div className="flex flex-col items-center text-center">
-                                    <div className="w-16 h-16 bg-amber-50 text-amber-500 rounded-full flex items-center justify-center mb-4">
-                                        <AlertCircle className="w-8 h-8" />
-                                    </div>
-                                    <h3 className="text-lg font-black text-slate-900 mb-1">Acción Requerida</h3>
-                                    <p className="text-slate-500 text-sm font-medium">Lamentablemente algunos productos no están disponibles. Por favor, elimínalos para continuar.</p>
-                                </div>
-                                
-                                <div className="max-h-60 overflow-y-auto space-y-3 p-1">
-                                    {order.items.map((item: any) => {
-                                        const isMissing = (order.missingItems || []).includes(item.id);
-                                        if (!isMissing) return null;
-                                        return (
-                                            <div key={item.id} className="flex items-center gap-3 bg-red-50 p-3 rounded-2xl border border-red-100">
-                                                <div className="flex-1">
-                                                    <p className="font-black text-red-700 text-sm">{item.name}</p>
-                                                    <p className="text-[10px] text-red-400 font-bold uppercase tracking-wider">Agotado</p>
-                                                </div>
-                                                <button 
-                                                    onClick={() => handleRemoveMissingItem(item.id)}
-                                                    className="w-10 h-10 bg-white text-red-500 rounded-xl flex items-center justify-center shadow-sm border border-red-100 active:scale-90 transition-transform"
-                                                >
-                                                    <X className="w-5 h-5" />
-                                                </button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-
-                                <button 
-                                    onClick={handleConfirmStockChanges}
-                                    disabled={(order.missingItems || []).length > 0}
-                                    className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-xl hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:bg-slate-300"
-                                >
-                                    {(order.missingItems || []).length > 0 ? "Primero elimina los productos agotados" : "Confirmar Cambios"}
-                                </button>
-                            </div>
-                        ) : order.status === 'pending_verification' && order.restaurantPaymentClientConfirmed ? (
-                            // Verification in progress banner
-                            <div className="flex flex-col items-center text-center py-6 space-y-4">
-                                <div className="relative w-20 h-20 flex items-center justify-center">
-                                    <div className="absolute inset-0 rounded-full bg-blue-100 animate-ping opacity-30"></div>
-                                    <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center shadow-lg">
-                                        <Loader2 className="w-8 h-8 animate-spin" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <h3 className="text-lg font-black text-slate-900 mb-1">Verificando tu Pago...</h3>
-                                    <p className="text-slate-500 text-sm font-medium">El negocio está revisando tu comprobante. Mientras tanto, puedes ir pagando el delivery.</p>
-                                </div>
-                                <div className="w-full bg-blue-50 border border-blue-100 rounded-2xl p-4">
-                                    <p className="text-[11px] font-black text-blue-600 uppercase tracking-wider">✅ Comprobante enviado correctamente</p>
-                                    {order.paymentReference && <p className="text-xs text-blue-500 mt-1">Referencia: {order.paymentReference}</p>}
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-6">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-12 h-12 bg-green-50 text-green-500 rounded-2xl flex items-center justify-center animate-bounce">
-                                        <CheckCircle2 className="w-6 h-6" />
-                                    </div>
-                                    <div className="animate-in fade-in slide-in-from-left duration-700">
-                                        <h3 className="text-lg font-black text-slate-900">¡Pedido Verificado!</h3>
-                                        <p className="text-slate-500 text-[10px] font-black uppercase tracking-wider text-green-600 leading-none italic">Hemos verificado tu pedido puedes proceder a realizar el pago</p>
-                                    </div>
-                                </div>
-
-                                 {/* Information about Payment Methods */}
-                                {restaurant?.paymentMethods && (
-                                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Datos de Pago</p>
-                                        <div className="space-y-4">
-                                            {Array.isArray(restaurant.paymentMethods) ? (
-                                                restaurant.paymentMethods.map((method: any, idx: number) => (
-                                                    <div key={idx} className={`flex flex-col gap-1 ${idx > 0 ? 'border-t border-slate-200 pt-3' : ''}`}>
-                                                        <span className="text-xs font-black text-slate-800 flex items-center gap-2">
-                                                            <span className={`w-2 h-2 rounded-full ${
-                                                                method.type === 'Pago Móvil' ? 'bg-primary' : 
-                                                                method.type === 'Zelle' ? 'bg-indigo-500' : 
-                                                                method.type === 'Transferencia' ? 'bg-blue-500' : 'bg-slate-400'
-                                                            }`}></span> 
-                                                            {method.type}
-                                                        </span>
-                                                        <div className="mt-1 space-y-3">
-                                                            {method.type === 'Pago Móvil' && (
-                                                                <div className="grid grid-cols-2 gap-3">
-                                                                    <div 
-                                                                        onClick={() => {
-                                                                            navigator.clipboard.writeText(method.bank);
-                                                                            toast.success('Banco copiado');
-                                                                        }}
-                                                                        className="group cursor-pointer active:scale-95 transition-all"
-                                                                    >
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                                                                            Banco <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                        </p>
-                                                                        <p className="text-xs font-black text-slate-700">{method.bank}</p>
-                                                                    </div>
-                                                                    <div 
-                                                                        onClick={() => {
-                                                                            navigator.clipboard.writeText(method.phone);
-                                                                            toast.success('Teléfono copiado');
-                                                                        }}
-                                                                        className="group cursor-pointer active:scale-95 transition-all"
-                                                                    >
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                                                                            Teléfono <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                        </p>
-                                                                        <p className="text-xs font-black text-slate-700">{method.phone}</p>
-                                                                    </div>
-                                                                    <div 
-                                                                        onClick={() => {
-                                                                            navigator.clipboard.writeText(method.rif);
-                                                                            toast.success('Cédula/RIF copiado');
-                                                                        }}
-                                                                        className="col-span-2 group cursor-pointer active:scale-95 transition-all"
-                                                                    >
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                                                                            Cédula/RIF <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                        </p>
-                                                                        <p className="text-xs font-black text-slate-700">{method.rif}</p>
-                                                                    </div>
-                                                                    <div 
-                                                                        onClick={() => {
-                                                                            navigator.clipboard.writeText(method.owner);
-                                                                            toast.success('Titular copiado');
-                                                                        }}
-                                                                        className="col-span-2 group cursor-pointer active:scale-95 transition-all"
-                                                                    >
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                                                                            Titular <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                        </p>
-                                                                        <p className="text-xs font-black text-slate-700">{method.owner}</p>
-                                                                    </div>
-                                                                    <div className="col-span-2 mt-2">
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                const textToCopy = `Banco: ${method.bank}\nTeléfono: ${method.phone}\nCédula/RIF: ${method.rif}\nTitular: ${method.owner}\nMonto: ${(order.subtotal * bcvRate).toFixed(2)} Bs`;
-                                                                                navigator.clipboard.writeText(textToCopy);
-                                                                                toast.success('Datos copiados');
-                                                                            }}
-                                                                            className="w-full bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all border border-blue-100 hover:bg-blue-100"
-                                                                        >
-                                                                            <Copy className="w-4 h-4" /> Copiar monto y datos (Pago Móvil)
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {method.type === 'Zelle' && (
-                                                                <div className="grid grid-cols-1 gap-3">
-                                                                    <div 
-                                                                        onClick={() => {
-                                                                            navigator.clipboard.writeText(method.email);
-                                                                            toast.success('Correo copiado');
-                                                                        }}
-                                                                        className="group cursor-pointer active:scale-95 transition-all"
-                                                                    >
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                                                                            Correo <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                        </p>
-                                                                        <p className="text-xs font-black text-slate-700">{method.email}</p>
-                                                                    </div>
-                                                                    <div 
-                                                                        onClick={() => {
-                                                                            navigator.clipboard.writeText(method.owner);
-                                                                            toast.success('Titular copiado');
-                                                                        }}
-                                                                        className="group cursor-pointer active:scale-95 transition-all"
-                                                                    >
-                                                                        <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                                                                            Titular <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                        </p>
-                                                                        <p className="text-xs font-black text-slate-700">{method.owner}</p>
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                            {method.type !== 'Pago Móvil' && method.type !== 'Zelle' && method.type !== 'Efectivo' && (
-                                                                <div 
-                                                                    onClick={() => {
-                                                                        navigator.clipboard.writeText(method.note);
-                                                                        toast.success('Instrucciones copiadas');
-                                                                    }}
-                                                                    className="group cursor-pointer active:scale-95 transition-all"
-                                                                >
-                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1">
-                                                                        Instrucciones <Copy className="w-2 h-2 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                    </p>
-                                                                    <p className="text-xs font-black text-slate-700 whitespace-pre-line">{method.note}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <p className="text-[10px] text-slate-400 italic">No hay métodos de pago configurados.</p>
-                                            )}
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Payment Proof Upload */}
-                                {order.status !== 'pending_verification' && (
-                                    <div className="space-y-3">
-                                        <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Reportar Pago</label>
-                                        <div className="space-y-3">
-                                            <input 
-                                                type="text" 
-                                                placeholder="Referencia (últimos 6 dígitos) - Opcional"
-                                                value={paymentReference}
-                                                onChange={(e) => setPaymentReference(e.target.value)}
-                                                className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
-                                            />
-                                        </div>
-                                        
-                                        <button 
-                                            onClick={handleRestaurantPaid}
-                                            disabled={isUploading}
-                                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
-                                        >
-                                            {isUploading ? <Loader2 className="w-6 h-6 animate-spin text-slate-900" /> : <><Upload className="w-6 h-6" /> Informar Pago</>}
-                                        </button>
-                                    </div>
-                                )}
-                                
-                                {order.status === 'pending_verification' && (
-                                    <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl text-center border border-blue-100">
-                                        <p className="text-sm font-black">Pago en Verificación</p>
-                                        <p className="text-[10px] font-bold uppercase tracking-wider mt-1">El negocio está validando tu reporte...</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                ) : null}
-
-                {/* Delivery Payment Section (Platform Data) */}
-                {(order.status === 'awaiting_delivery_payment' || order.status === 'verificando_pago_delivery') && (
-                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 border-2 border-primary/20 animate-in slide-in-from-bottom-4 duration-500 overflow-hidden">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center">
-                                <Bike className="w-6 h-6" />
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-black text-slate-900">Pago del Delivery</h3>
-                                <p className="text-slate-500 text-[10px] font-black uppercase tracking-wider text-emerald-600 leading-none italic">
-                                    {order.status === 'verificando_pago_delivery' ? "Verificando tu reporte..." : "Paga el envío para activar el radar de pilotos"}
+                            <div className="min-w-0">
+                                <p className="font-black text-slate-900 truncate leading-tight">{restaurant?.name || 'Tienda'}</p>
+                                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest flex items-center gap-1">
+                                    <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping" /> Chat en vivo
                                 </p>
                             </div>
                         </div>
-
-                        {order.status === 'verificando_pago_delivery' ? (
-                            <div className="flex flex-col items-center text-center py-6 space-y-4">
-                                <div className="relative w-20 h-20 flex items-center justify-center">
-                                    <div className="absolute inset-0 rounded-full bg-emerald-100 animate-ping opacity-30"></div>
-                                    <div className="w-16 h-16 bg-emerald-50 text-emerald-500 rounded-full flex items-center justify-center shadow-lg">
-                                        <Loader2 className="w-8 h-8 animate-spin" />
-                                    </div>
-                                </div>
-                                <h3 className="text-lg font-black text-slate-900 mb-1">Casi terminamos...</h3>
-                                <p className="text-slate-500 text-sm font-medium px-4">Estamos validando el pago del servicio de delivery. En segundos activaremos la búsqueda de piloto.</p>
-                            </div>
-                        ) : (
-                            <div className="space-y-6">
-                                {/* Vehicle Selection */}
-                                <div className="space-y-4">
-                                    <p className="text-[10px] uppercase font-black text-slate-400 ml-1">Selecciona tipo de transporte</p>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <button 
-                                            onClick={() => handleSelectVehicle('moto')}
-                                            className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
-                                                (order.vehicleType || 'moto') === 'moto' 
-                                                ? 'border-primary bg-primary/5 text-slate-900 shadow-lg shadow-primary/10' 
-                                                : 'border-slate-100 bg-slate-50 text-slate-400 grayscale'
-                                            }`}
-                                        >
-                                            <Bike className="w-8 h-8" />
-                                            <span className="text-xs font-black">MOTO</span>
-                                            <span className="text-[10px] font-bold opacity-70">Más rápido</span>
-                                        </button>
-                                        <button 
-                                            onClick={() => handleSelectVehicle('carro')}
-                                            className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
-                                                order.vehicleType === 'carro' 
-                                                ? 'border-primary bg-primary/5 text-slate-900 shadow-lg shadow-primary/10' 
-                                                : 'border-slate-100 bg-slate-50 text-slate-400 grayscale'
-                                            }`}
-                                        >
-                                            <Navigation className="w-8 h-8" />
-                                            <span className="text-xs font-black">CARRO</span>
-                                            <span className="text-[10px] font-bold opacity-70">Más seguro</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Amount to Pay */}
-                                <div className="bg-emerald-500 rounded-2xl p-5 text-center shadow-xl shadow-emerald-500/20 animate-pulse border-2 border-emerald-400">
-                                    <p className="text-[10px] font-black text-white/80 uppercase tracking-widest mb-1">Monto del Delivery</p>
-                                    <div className="text-3xl font-black text-white">
-                                        <DualPrice usdAmount={order.deliveryFee || 0} showDivider={false} usdClassName="text-white" />
-                                    </div>
-                                    <p className="text-[10px] font-bold text-emerald-100 italic mt-2">Tarifa basada en {order.distance?.toFixed(1) || 0}km</p>
-                                </div>
-
-                                {/* Platform Payment Info */}
-                                {platformConfig?.paymentMethods && (
-                                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Pagar al Sistema Arepa Express</p>
-                                        <div className="space-y-4">
-                                            {/* Pago Móvil Platform */}
-                                            {platformConfig.paymentMethods.pagoMovil?.active && (
-                                                <div className="flex flex-col gap-1">
-                                                    <span className="text-xs font-black text-slate-800 flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-primary"></span> 
-                                                        Pago Móvil
-                                                    </span>
-                                                    <div className="mt-1 grid grid-cols-2 gap-3">
-                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.pagoMovil.bank); toast.success('Banco copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Banco</p>
-                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.pagoMovil.bank}</p>
-                                                        </div>
-                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.pagoMovil.phone); toast.success('Teléfono copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Teléfono</p>
-                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.pagoMovil.phone}</p>
-                                                        </div>
-                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.pagoMovil.idf); toast.success('RIF copiado'); }} className="col-span-2 group cursor-pointer active:scale-95 transition-all">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">RIF</p>
-                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.pagoMovil.idf}</p>
-                                                        </div>
-                                                        <div className="col-span-2 mt-2">
-                                                            <button
-                                                                onClick={() => {
-                                                                    const textToCopy = `Banco: ${platformConfig.paymentMethods.pagoMovil.bank}\nTeléfono: ${platformConfig.paymentMethods.pagoMovil.phone}\nRIF: ${platformConfig.paymentMethods.pagoMovil.idf}\nMonto: ${(order.deliveryFee * bcvRate).toFixed(2)} Bs`;
-                                                                    navigator.clipboard.writeText(textToCopy);
-                                                                    toast.success('Datos copiados');
-                                                                }}
-                                                                className="w-full bg-blue-50 text-blue-600 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 active:scale-95 transition-all border border-blue-100 hover:bg-blue-100"
-                                                            >
-                                                                <Copy className="w-4 h-4" /> Copiar monto y datos (Pago Móvil)
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Zelle Platform */}
-                                            {platformConfig.paymentMethods.zelle?.active && (
-                                                <div className="flex flex-col gap-1 border-t border-slate-200 pt-3">
-                                                    <span className="text-xs font-black text-slate-800 flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-indigo-500"></span> 
-                                                        Zelle
-                                                    </span>
-                                                    <div className="mt-1 grid grid-cols-1 gap-3">
-                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.zelle.email); toast.success('Correo copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Correo</p>
-                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.zelle.email}</p>
-                                                        </div>
-                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.zelle.name); toast.success('Titular copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Titular</p>
-                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.zelle.name}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Transfer Platform */}
-                                            {platformConfig.paymentMethods.transfer?.active && (
-                                                <div className="flex flex-col gap-1 border-t border-slate-200 pt-3">
-                                                    <span className="text-xs font-black text-slate-800 flex items-center gap-2">
-                                                        <span className="w-2 h-2 rounded-full bg-blue-500"></span> 
-                                                        Transferencia
-                                                    </span>
-                                                    <div className="mt-1 grid grid-cols-2 gap-3">
-                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.transfer.bank); toast.success('Banco copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Banco</p>
-                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.transfer.bank}</p>
-                                                        </div>
-                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.transfer.accountNumber); toast.success('Número de cuenta copiado'); }} className="group cursor-pointer active:scale-95 transition-all">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Cuenta</p>
-                                                            <p className="text-[10px] font-black text-slate-700">{platformConfig.paymentMethods.transfer.accountNumber}</p>
-                                                        </div>
-                                                        <div onClick={() => { navigator.clipboard.writeText(platformConfig.paymentMethods.transfer.name); toast.success('Titular copiado'); }} className="col-span-2 group cursor-pointer active:scale-95 transition-all">
-                                                            <p className="text-[9px] font-bold text-slate-400 uppercase">Titular</p>
-                                                            <p className="text-xs font-black text-slate-700">{platformConfig.paymentMethods.transfer.name}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-
-
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Report Form */}
-                                <div className="space-y-3">
-                                    <label className="text-[10px] uppercase font-black text-slate-400 ml-1">Reportar Pago Delivery</label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Número de Referencia"
-                                        value={deliveryPaymentReference}
-                                        onChange={(e) => setDeliveryPaymentReference(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 px-4 py-3 rounded-2xl text-sm font-bold outline-none focus:border-primary transition-all text-slate-700"
-                                    />
-                                    
-                                    <button 
-                                        onClick={handleReportDeliveryPayment}
-                                        disabled={isUploadingDeliveryReport || !deliveryPaymentReference}
-                                        className="w-full bg-slate-950 text-white py-4 rounded-2xl font-black shadow-xl hover:bg-slate-800 active:scale-95 transition-all text-lg flex items-center justify-center gap-2 disabled:opacity-50"
-                                    >
-                                        {isUploadingDeliveryReport ? <Loader2 className="w-6 h-6 animate-spin" /> : 'Informar Pago Delivery'}
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                )}
-
-                {/* Delivery Radar (Searching) */}
-                {transportRequest?.status === 'searching' && (
-                    <div className="bg-slate-900 rounded-[3rem] p-8 text-center shadow-2xl shadow-slate-900/40 relative overflow-hidden border border-slate-800">
-                        {/* Radar Background Animation */}
-                        <div className="absolute inset-0 flex items-center justify-center opacity-20">
-                            <motion.div 
-                                animate={{ scale: [1, 2, 1], opacity: [0.5, 0.1, 0.5] }}
-                                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                                className="w-64 h-64 border border-primary rounded-full absolute"
-                            />
-                            <motion.div 
-                                animate={{ scale: [1, 1.5, 1], opacity: [0.3, 0.05, 0.3] }}
-                                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-                                className="w-96 h-96 border border-primary rounded-full absolute"
-                            />
-                        </div>
-
-                        <div className="relative z-10">
-                            <div className="w-24 h-24 bg-primary/20 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 border-2 border-primary/30 shadow-lg shadow-primary/10">
-                                <motion.div
-                                    animate={{ rotate: 360 }}
-                                    transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-                                >
-                                    <Navigation className="w-12 h-12 text-slate-900" />
-                                </motion.div>
-                            </div>
-                            <h3 className="text-xl font-black text-white mb-2 uppercase tracking-tight">Rastreo Activo</h3>
-                            <p className="text-slate-900/70 font-black text-sm uppercase tracking-[0.2em] mb-4">Buscando Delivery...</p>
-                            
-                            <div className="flex items-center justify-center gap-2 mb-2">
-                                <span className="w-2 h-2 bg-primary rounded-full animate-ping"></span>
-                                <span className="text-[10px] text-white/50 font-bold uppercase tracking-widest">Escaneando zona...</span>
-                            </div>
+                        <div className="bg-primary/10 px-3 py-1.5 rounded-full">
+                            <span className="text-[10px] font-black text-slate-900 uppercase">#{orderId?.slice(-5).toUpperCase()}</span>
                         </div>
                     </div>
-                )}
+                    <div className="flex-1 overflow-hidden">
+                        <OrderChatWindow
+                            orderId={orderId!}
+                            currentUserRole="client"
+                            currentUserId={user?.uid || 'guest'}
+                            currentUserName={order.userName || 'Cliente'}
+                            restaurantId={order.restaurantId || order.restaurant_id}
+                            orderInfo={order}
+                        />
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
 
-                {/* Driver Info (If Assigned) */}
-                {driver && transportRequest && transportRequest.status !== 'searching' && (
-                    <div className="bg-white rounded-3xl p-1 overflow-hidden shadow-xl shadow-slate-200/40 border border-slate-100">
-                        {/* Status Header */}
-                        <div className="bg-slate-900 p-6 rounded-[2rem]">
-                            <div className="flex items-center justify-between mb-2">
-                                <span className="text-[9px] font-black text-white/40 uppercase tracking-[0.2em]">Estado del Delivery</span>
-                                {transportRequest.status === 'in_progress' && (
-                                    <span className="flex items-center gap-1.5 bg-emerald-500/10 text-emerald-400 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider border border-emerald-500/20">
-                                        <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                                        En Vivo
-                                    </span>
-                                )}
-                            </div>
-                            <h4 className="text-xl font-black text-white leading-tight uppercase tracking-tight">
-                                {getDeliveryStatusLabel(transportRequest.status)}
-                            </h4>
-                        </div>
+    // ── Modal de Datos de Pago Móvil con Copiado Rápido ──────────────────────
+    const PagoMovilDataModal = () => {
+        const bsAmount = (itemsTotal * bcvRate).toFixed(2);
+        const copyAll = () => {
+            if (!pagoMovilMethod) return;
+            const fullText = `Banco: ${pagoMovilMethod.bank}\nTeléfono: ${pagoMovilMethod.phone}\nCédula/RIF: ${pagoMovilMethod.rif}\nTitular: ${pagoMovilMethod.owner}\nMonto: ${bsAmount} Bs`;
+            navigator.clipboard.writeText(fullText);
+            toast.success('¡Todos los datos copiados! Pégalos en tu banco.', { duration: 4000 });
+        };
 
-                        {/* Driver Profile */}
-                        <div className="p-6">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="relative">
-                                        <img src={driver.documents?.selfieUrl || 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&q=80&w=200'} alt="Driver" className="w-16 h-16 rounded-2xl object-cover bg-slate-100 shadow-lg" />
-                                        <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-white flex items-center justify-center shadow-lg">
-                                            <CheckCircle2 className="w-3 h-3 text-white" />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <p className="font-black text-slate-900 text-lg leading-none mb-1">{driver.fullName}</p>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-black text-slate-900 bg-slate-900 px-2 py-0.5 rounded-md uppercase tracking-wider">{driver.vehicleType || 'Repartidor'}</span>
-                                            <span className="text-[10px] font-black text-slate-400 uppercase">{driver.vehiclePlate || 'ABC-123'}{driver.vehicleColor ? ` • ${driver.vehicleColor}` : ''}</span>
-                                        </div>
-                                    </div>
+        return (
+            <AnimatePresence>
+                {showPagoMovilModal && (
+                    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
+                        <motion.div
+                            initial={{ y: '100%', opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: '100%', opacity: 0 }}
+                            className="bg-white rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl"
+                        >
+                            {/* Modal Header */}
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                <div>
+                                    <h3 className="font-black text-slate-900 text-lg flex items-center gap-2">
+                                        <Wallet className="w-5 h-5 text-primary" /> Datos de Pago Móvil
+                                    </h3>
+                                    <p className="text-xs text-slate-400 font-bold">{restaurant?.name || 'Comercio'}</p>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button 
-                                        onClick={() => setShowCall(true)}
-                                        className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center active:scale-95 transition-all"
-                                    >
-                                        <Phone className="w-5 h-5 fill-current" />
-                                    </button>
-                                    <button 
-                                        onClick={() => setActiveTab('delivery')}
-                                        className={`w-12 h-12 rounded-2xl flex items-center justify-center active:scale-95 transition-all ${activeTab === 'delivery' ? 'bg-primary text-slate-900' : 'bg-slate-100 text-slate-500'}`}
-                                    >
-                                        <MessageCircle className="w-5 h-5" />
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Chat with Pilot (If activeTab is delivery) */}
-                        {activeTab === 'delivery' && (
-                            <div className="px-4 pb-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                                <div className="h-[400px]">
-                                    <OrderChatWindow 
-                                        orderId={orderId!}
-                                        currentUserRole="client"
-                                        currentUserId={user?.uid || ''}
-                                        currentUserName={user?.displayName || 'Cliente'}
-                                        restaurantId={order.restaurantId}
-                                        orderInfo={order}
-                                        customCollectionPath={`transport_requests/${transportRequest.id}/messages`}
-                                    />
-                                </div>
-                                <button 
-                                    onClick={() => setActiveTab('order')}
-                                    className="w-full mt-4 py-3 text-xs font-black text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+                                <button
+                                    onClick={() => setShowPagoMovilModal(false)}
+                                    className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
                                 >
-                                    Cerrar Chat y ver orden
+                                    <X className="w-5 h-5" />
                                 </button>
                             </div>
-                        )}
+
+                            {/* Monto Destacado */}
+                            <div className="bg-gradient-to-br from-primary/20 via-primary/10 to-amber-50 rounded-2xl p-4 border-2 border-primary/30 text-center">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Monto Exacto en Bolívares</p>
+                                <p className="text-3xl font-black text-slate-900">{bsAmount} Bs</p>
+                                <p className="text-xs font-bold text-slate-500 mt-1">Equivalente a ${itemsTotal.toFixed(2)} USD (Tasa BCV)</p>
+                            </div>
+
+                            {/* Campos Copiables */}
+                            {pagoMovilMethod ? (
+                                <div className="space-y-2.5">
+                                    {[
+                                        { label: 'Banco', val: pagoMovilMethod.bank },
+                                        { label: 'Teléfono', val: pagoMovilMethod.phone },
+                                        { label: 'Cédula / RIF', val: pagoMovilMethod.rif },
+                                        { label: 'Titular', val: pagoMovilMethod.owner },
+                                    ].map((f, idx) => (
+                                        <div
+                                            key={idx}
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(f.val);
+                                                toast.success(`${f.label} copiado`);
+                                            }}
+                                            className="group bg-slate-50 hover:bg-primary/5 active:scale-98 transition-all p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between cursor-pointer"
+                                        >
+                                            <div>
+                                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">{f.label}</span>
+                                                <span className="text-sm font-black text-slate-800">{f.val}</span>
+                                            </div>
+                                            <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-200 group-hover:border-primary text-slate-500 group-hover:text-slate-900 transition-colors">
+                                                <Copy className="w-4 h-4" />
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    {/* Botón Maestro Copiar Todos los Datos */}
+                                    <button
+                                        onClick={copyAll}
+                                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-2 mt-4 text-sm"
+                                    >
+                                        <Copy className="w-4 h-4 text-primary" /> Copiar Todos los Datos para el Banco
+                                    </button>
+                                </div>
+                            ) : (
+                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                                    <p className="text-sm font-bold text-amber-700">El negocio no tiene configurado Pago Móvil automático. Usa el chat para solicitar los datos directamente.</p>
+                                </div>
+                            )}
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+        );
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 1 — Confirmación de Stock y Orden
+    // ═══════════════════════════════════════════════════════════════════════════
+    const renderStep1 = () => (
+        <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
+            {/* AppBar */}
+            <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                <button
+                    onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                    className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                >
+                    <ArrowLeft className="w-5 h-5 text-slate-700" />
+                </button>
+                <div className="flex-1 min-w-0">
+                    <h1 className="text-base font-black text-slate-900 leading-tight">Seguimiento de Pedido</h1>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Orden #{orderId?.slice(-6).toUpperCase()}</p>
+                </div>
+                <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-200/80 px-3 py-1.5 rounded-full">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                    <span className="text-[10px] font-black uppercase text-blue-700">Paso 1: Stock</span>
+                </div>
+            </div>
+
+            <StepProgressHeader />
+
+            <div className="px-4 pt-5 space-y-4 max-w-lg mx-auto">
+                {/* Botón Prominente: [Ir al Chat con la Tienda] */}
+                <motion.button
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setShowChat(true)}
+                    className="w-full bg-slate-900 text-white p-4 rounded-3xl shadow-xl shadow-slate-900/20 flex items-center justify-between group transition-all"
+                >
+                    <div className="flex items-center gap-3.5">
+                        <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+                            <MessageSquare className="w-6 h-6" />
+                        </div>
+                        <div className="text-left">
+                            <p className="font-black text-base text-white leading-tight">Ir al Chat con la Tienda</p>
+                            <p className="text-[11px] font-bold text-white/60">Consulta cualquier duda en tiempo real</p>
+                        </div>
+                    </div>
+                    <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white/80 group-hover:translate-x-1 transition-transform">
+                        <ChevronRight className="w-5 h-5" />
+                    </div>
+                </motion.button>
+
+                {/* Estatus Visual de Confirmación de Stock */}
+                {order.status === 'pending' && (
+                    <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 text-center space-y-3">
+                        <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto">
+                            <Clock className="w-8 h-8 animate-spin" />
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900">Verificando Stock de tu Pedido</h3>
+                        <p className="text-sm font-medium text-slate-500 max-w-xs mx-auto">
+                            La tienda está verificando que todos los productos seleccionados estén disponibles. Te notificaremos al instante.
+                        </p>
                     </div>
                 )}
 
-                {/* In-App Call Modal */}
-                {showCall && driver && transportRequest && (
-                    <InAppCall 
-                        requestId={orderId!}
-                        myId={user?.uid || ''}
-                        remoteId={transportRequest.driverId}
-                        remoteDisplayName={driver.fullName.split(' ')[0]}
-                        remotePhotoUrl={driver.documents?.selfieUrl}
-                        role="caller"
-                        onClose={() => setShowCall(false)}
-                    />
+                {order.status === 'action_required' && (
+                    <div className="bg-amber-50 border-2 border-amber-200 rounded-3xl p-5 space-y-3">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+                                <AlertCircle className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h4 className="font-black text-slate-900 text-base">Acción Requerida</h4>
+                                <p className="text-xs font-bold text-amber-700">Algunos productos están agotados</p>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2 pt-2">
+                            {order.items.map((item: any) => {
+                                const isMissing = (order.missingItems || []).includes(item.id);
+                                if (!isMissing) return null;
+                                return (
+                                    <div key={item.id} className="flex items-center justify-between p-3 bg-white rounded-2xl border border-red-100">
+                                        <div>
+                                            <p className="font-black text-sm text-slate-800">{item.name}</p>
+                                            <span className="text-[10px] font-bold text-red-500 uppercase">Agotado en tienda</span>
+                                        </div>
+                                        <button
+                                            onClick={() => handleRemoveMissingItem(item.id)}
+                                            className="px-3 py-1.5 bg-red-50 text-red-600 rounded-xl font-bold text-xs hover:bg-red-100 transition-colors"
+                                        >
+                                            Eliminar
+                                        </button>
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        <button
+                            onClick={handleConfirmStockChanges}
+                            disabled={(order.missingItems || []).length > 0}
+                            className="w-full bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm disabled:opacity-40"
+                        >
+                            {(order.missingItems || []).length > 0 ? 'Elimina los productos agotados primero' : 'Confirmar Cambios'}
+                        </button>
+                    </div>
                 )}
 
-                {/* Order Summary */}
-                <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-100">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Resumen de Orden</h3>
-                    <div className="space-y-4">
-                        {order.items?.map((item: any, index: number) => (
-                            <div key={index} className="flex justify-between items-center bg-slate-50/50 p-3 rounded-2xl">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 bg-white rounded-xl flex items-center justify-center text-xs font-black text-slate-900 shadow-sm">
+                {/* Tienda */}
+                <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-200/80 flex items-center gap-3.5">
+                    <div className="w-14 h-14 bg-slate-100 rounded-2xl overflow-hidden flex items-center justify-center shrink-0 border border-slate-200">
+                        {restaurant?.logoUrl
+                            ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                            : <Store className="w-6 h-6 text-slate-500" />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <p className="font-black text-base text-slate-900 truncate">{restaurant?.name || order.restaurantName || 'Comercio'}</p>
+                        <p className="text-xs font-bold text-slate-400 truncate">{restaurant?.address || restaurant?.location?.address || 'Comercio afiliado'}</p>
+                    </div>
+                </div>
+
+                {/* Detalle del Pedido */}
+                <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Detalle de la Orden</p>
+                    <div className="divide-y divide-slate-100 max-h-60 overflow-y-auto">
+                        {(order.items || []).map((item: any, idx: number) => (
+                            <div key={idx} className="py-2.5 flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+                                    <span className="w-6 h-6 bg-slate-100 rounded-lg flex items-center justify-center text-xs font-black text-slate-700 shrink-0">
                                         {item.quantity}x
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-bold text-slate-900 leading-none">{item.name || item.productName}</p>
-                                        {item.selectedVariants && Object.keys(item.selectedVariants).length > 0 && (
-                                            <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">
-                                                {Object.values(item.selectedVariants).join(', ')}
-                                            </p>
-                                        )}
-                                    </div>
+                                    </span>
+                                    <span className="font-bold text-slate-800 truncate">{item.name}</span>
                                 </div>
-                                <DualPrice usdAmount={(item.price || 0) * (item.quantity || 1)} usdClassName="text-sm font-black text-slate-900" showDivider={false} />
+                                <span className="font-black text-slate-900 shrink-0">
+                                    ${(Number(item.price) * Number(item.quantity)).toFixed(2)}
+                                </span>
                             </div>
                         ))}
                     </div>
-
-                    <div className="mt-6 pt-4 border-t border-slate-100 space-y-2">
-                        <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-tight">
-                            <span>Compra a {restaurant?.name || 'negocio'}</span>
-                            <DualPrice usdAmount={order.subtotal || 0} showDivider={false} className="flex items-center gap-1.5" />
-                        </div>
-                        {order.deliveryFee > 0 && (
-                            <div className="flex justify-between items-center text-xs font-bold text-slate-500 uppercase tracking-tight">
-                                <span>Delivery</span>
-                                <DualPrice usdAmount={order.deliveryFee} showDivider={false} className="flex items-center gap-1.5" />
-                            </div>
-                        )}
+                    <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+                        <span className="font-black text-base text-slate-900">Total Productos</span>
+                        <DualPrice usdAmount={itemsTotal} usdClassName="font-black text-lg text-slate-900" />
                     </div>
                 </div>
 
-                <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/40 border border-slate-100">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Detalles de Entrega</h3>
-                        {!order.deliveryPaymentClientConfirmed && (
-                            <button 
-                                onClick={() => setShowAddressPicker(true)} 
-                                className="text-[10px] font-black text-slate-900 uppercase tracking-widest bg-slate-900 px-3 py-1.5 rounded-lg active:scale-95 transition-transform"
-                            >
-                                Cambiar Dirección
-                            </button>
-                        )}
+                {/* Cancelar Orden (si sigue pendiente) */}
+                <div className="pt-2">
+                    <button
+                        onClick={handleCancelOrder}
+                        className="w-full text-red-500 hover:text-red-700 py-3 rounded-2xl font-bold text-xs transition-colors flex items-center justify-center gap-1.5"
+                    >
+                        <X className="w-4 h-4" /> Cancelar orden
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 2 — Pago al Negocio
+    // ═══════════════════════════════════════════════════════════════════════════
+    const renderStep2 = () => {
+        const isVerifying = order.status === 'pending_verification';
+
+        return (
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
+                {/* AppBar */}
+                <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                    <button
+                        onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                    >
+                        <ArrowLeft className="w-5 h-5 text-slate-700" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-base font-black text-slate-900 leading-tight">Pagar al Negocio</h1>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Stock Confirmado · Paso 2</p>
                     </div>
-                    
-                    {showAddressPicker && (
-                        <AddressPicker 
-                            onClose={() => setShowAddressPicker(false)}
-                            onSave={async (data) => {
-                                setShowAddressPicker(false);
-                                setIsUpdatingAddress(true);
-                                try {
-                                    const updatedAddress = {
-                                        ...(order.address || {}),
-                                        name: data.name,
-                                        reference: data.reference,
-                                        lat: data.lat,
-                                        lng: data.lng
-                                    };
-                                    const addrStr = `${data.name} (${data.reference})`.trim();
-                                    await supabase.from('orders').update({
-                                        address: updatedAddress,
-                                        deliveryAddress: addrStr,
-                                        delivery_address: addrStr,
-                                        updated_at: new Date().toISOString()
-                                    }).eq('id', order.id);
-                                    toast.success('Dirección actualizada');
-                                } catch (error) {
-                                    console.error(error);
-                                    toast.error('Error al actualizar dirección');
-                                } finally {
-                                    setIsUpdatingAddress(false);
-                                }
-                            }}
-                            initialData={{
-                                name: editDelivery.addressName || 'Casa',
-                                lat: editDelivery.lat || 8.9326,
-                                lng: editDelivery.lng || -67.4264,
-                                reference: editDelivery.addressReference || ''
-                            }}
-                        />
-                    )}
+                    <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-full">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        <span className="text-[10px] font-black uppercase text-emerald-700">Stock OK</span>
+                    </div>
+                </div>
 
-                    <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-primary/10 text-slate-900 rounded-2xl flex items-center justify-center shrink-0">
-                                <MapPin className="w-6 h-6" />
+                <StepProgressHeader />
+
+                <div className="px-4 pt-5 space-y-4 max-w-lg mx-auto">
+                    {/* Tarjeta de Monto */}
+                    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-6 shadow-xl relative overflow-hidden">
+                        <div className="relative z-10">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Monto Total a Pagar</p>
+                            <div className="text-4xl font-black">
+                                <DualPrice usdAmount={itemsTotal} usdClassName="text-white" bsClassName="text-primary text-2xl" />
                             </div>
-                            <div className="flex-1">
-                                <p className="font-black text-slate-900 leading-tight">{order.address?.name || 'Dirección de Entrega'}</p>
-                                <p className="text-xs text-slate-500 font-medium leading-relaxed mt-1">{order.address?.reference || 'Sin referencias'}</p>
-                            </div>
+                            <p className="text-xs text-white/50 font-bold mt-2">Destinatario: {restaurant?.name || 'Comercio'}</p>
                         </div>
+                    </div>
 
-                    {order.deliveryPaymentClientConfirmed && (
-                        <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2">
-                            <AlertCircle className="w-4 h-4 text-slate-400" />
-                            <p className="text-[9px] font-bold text-slate-500 uppercase leading-tight">
-                                La dirección está bloqueada porque el pago del delivery está en proceso o validado.
+                    {isVerifying ? (
+                        /* Estado: Comprobante Enviado / En Verificación */
+                        <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 text-center space-y-4">
+                            <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto">
+                                <Clock className="w-8 h-8 animate-spin" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900">Verificando tu Pago</h3>
+                                <p className="text-sm font-medium text-slate-500 mt-1 max-w-xs mx-auto">
+                                    El negocio está revisando tu reporte de pago. Una vez aprobado, pasaremos a la preparación y envío.
+                                </p>
+                            </div>
+
+                            {order.payment_proof_url && (
+                                <div className="mt-3 p-3 bg-slate-50 rounded-2xl border border-slate-100 inline-block">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-2">Comprobante enviado</p>
+                                    <img src={order.payment_proof_url} alt="Comprobante" className="max-h-40 rounded-xl mx-auto shadow-xs" />
+                                </div>
+                            )}
+
+                            {order.paymentReference && (
+                                <p className="text-xs font-bold text-slate-600">Referencia: <span className="font-black">{order.paymentReference}</span></p>
+                            )}
+
+                            <button
+                                onClick={() => setShowChat(true)}
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-sm shadow-md"
+                            >
+                                <MessageSquare className="w-4 h-4 text-primary" /> Abrir Chat con el Negocio
+                            </button>
+                        </div>
+                    ) : (
+                        /* Formulario de Pago y Comprobante */
+                        <>
+                            {/* Botón Destacado: Ver Datos de Pago Móvil */}
+                            <motion.button
+                                whileHover={{ scale: 1.01 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => setShowPagoMovilModal(true)}
+                                className="w-full bg-primary text-slate-900 p-5 rounded-3xl shadow-xl shadow-primary/25 flex items-center justify-between border-2 border-primary group"
+                            >
+                                <div className="flex items-center gap-3.5">
+                                    <div className="w-12 h-12 rounded-2xl bg-slate-900 text-primary flex items-center justify-center shrink-0">
+                                        <Wallet className="w-6 h-6" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="font-black text-base leading-tight">Ver Datos de Pago Móvil</p>
+                                        <p className="text-xs font-bold text-slate-700">Copiar monto en Bs y datos en 1 clic</p>
+                                    </div>
+                                </div>
+                                <div className="w-9 h-9 rounded-full bg-slate-900/10 flex items-center justify-center group-hover:translate-x-1 transition-transform">
+                                    <ChevronRight className="w-5 h-5 text-slate-900" />
+                                </div>
+                            </motion.button>
+
+                            {/* Opciones de Reporte */}
+                            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-4">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Adjuntar Comprobante de Pago</p>
+
+                                {/* Selector de Capture / Imagen */}
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    accept="image/*"
+                                    onChange={handleFileSelect}
+                                    className="hidden"
+                                />
+
+                                {paymentProofPreview ? (
+                                    <div className="relative rounded-2xl overflow-hidden border-2 border-primary/30 p-2 bg-slate-50 flex items-center gap-3">
+                                        <img src={paymentProofPreview} alt="Preview" className="w-16 h-16 object-cover rounded-xl shrink-0" />
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-black text-slate-900 truncate">{paymentProofFile?.name}</p>
+                                            <p className="text-[10px] font-bold text-emerald-600">Capture listo para enviar</p>
+                                        </div>
+                                        <button
+                                            onClick={() => { setPaymentProofFile(null); setPaymentProofPreview(null); }}
+                                            className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center hover:bg-red-50 hover:text-red-500"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="w-full py-6 border-2 border-dashed border-slate-200 hover:border-primary rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50/50 hover:bg-slate-50 transition-all text-slate-500"
+                                    >
+                                        <ImageIcon className="w-8 h-8 text-slate-400" />
+                                        <span className="text-xs font-black text-slate-700">Subir Capture de Pantalla / Foto</span>
+                                        <span className="text-[10px] font-bold text-slate-400">JPG, PNG desde tu galería o cámara</span>
+                                    </button>
+                                )}
+
+                                {/* Campo de Referencia (100% Opcional) */}
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 ml-1 block mb-1">
+                                        Número de Referencia (Opcional)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={paymentReference}
+                                        onChange={(e) => setPaymentReference(e.target.value)}
+                                        placeholder="Ej: 123456 (Opcional)"
+                                        className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:border-primary"
+                                    />
+                                </div>
+
+                                {/* Botón Enviar Reporte */}
+                                <button
+                                    onClick={handleRestaurantPaid}
+                                    disabled={isUploading}
+                                    className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-98 transition-all flex items-center justify-center gap-2 text-base shadow-xl shadow-slate-900/20 disabled:opacity-50"
+                                >
+                                    {isUploading ? (
+                                        <><Loader2 className="w-5 h-5 animate-spin text-primary" /> Enviando comprobante...</>
+                                    ) : (
+                                        <><Upload className="w-5 h-5 text-primary" /> Ya Pagué · Notificar al Negocio</>
+                                    )}
+                                </button>
+                            </div>
+
+                            {/* Opción de Pago en Sitio para Pickup */}
+                            <div className="pt-1">
+                                <button
+                                    onClick={handlePayOnSite}
+                                    className="w-full bg-white hover:bg-slate-100 text-slate-700 font-bold py-3.5 rounded-2xl border border-slate-200 transition-all text-xs flex items-center justify-center gap-2"
+                                >
+                                    <Store className="w-4 h-4 text-slate-500" /> Prefiero pagar en el local al retirar (PickUp)
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 3 — Selección de Repartidor (Delivery / Encomiendas)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const renderStep3 = () => {
+        const isBuscando = order.status === 'buscando_piloto' || transportRequest?.status === 'searching';
+        const isFreeDelivery = order.free_delivery === true;
+
+        if (isPickup) {
+            return (
+                <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
+                    <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                        <button
+                            onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                            className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                        >
+                            <ArrowLeft className="w-5 h-5 text-slate-700" />
+                        </button>
+                        <div className="flex-1">
+                            <h1 className="text-base font-black text-slate-900 leading-tight">Retiro en Local</h1>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PickUp · Paso 3</p>
+                        </div>
+                    </div>
+                    <StepProgressHeader />
+                    <div className="px-4 pt-8 max-w-lg mx-auto text-center space-y-6">
+                        <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-md">
+                            <Store className="w-10 h-10" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-900">Preparando tu Orden</h2>
+                            <p className="text-sm font-medium text-slate-500 mt-1 max-w-xs mx-auto">
+                                El negocio está preparando tus productos. Cuando esté listo, podrás pasar a retirarlo directamente.
                             </p>
                         </div>
+
+                        <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-xs text-left space-y-2">
+                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Dirección de Retiro</p>
+                            <p className="font-black text-base text-slate-900">{restaurant?.name}</p>
+                            <p className="text-xs text-slate-500 font-bold">{restaurant?.address || restaurant?.location?.address || 'Dirección del comercio'}</p>
+                        </div>
+
+                        <button
+                            onClick={() => setShowReviewModal(true)}
+                            className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl hover:bg-emerald-700 active:scale-95 transition-all shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2"
+                        >
+                            <CheckCircle2 className="w-5 h-5" /> Ya retiré mi compra · Calificar
+                        </button>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
+                {/* AppBar */}
+                <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                    <button
+                        onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                    >
+                        <ArrowLeft className="w-5 h-5 text-slate-700" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-base font-black text-slate-900 leading-tight">Escoger Repartidor</h1>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Envío de Paquete · Paso 3</p>
+                    </div>
+                    {isFreeDelivery && (
+                        <span className="bg-emerald-100 text-emerald-700 font-black text-[10px] px-2.5 py-1 rounded-full uppercase">
+                            Envío Gratis
+                        </span>
                     )}
                 </div>
 
-                {/* Pickup Completion & Rating Trigger */}
-                {(order.deliveryMethod === 'pickup' || order.delivery_method === 'pickup') && !order.hasReviewed && !order.has_reviewed && (
-                    <div className="px-2 pt-4">
-                        <button 
-                            onClick={() => setShowReviewModal(true)}
-                            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-2xl shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-                        >
-                            <CheckCircle2 className="w-5 h-5" />
-                            Ya retiré mi compra • Calificar y Cerrar
-                        </button>
-                    </div>
-                )}
+                <StepProgressHeader />
 
-                {/* Cancel Order Button at the end */}
-                {(order.status === 'pending' || order.status === 'pendiente_pago') && !order.restaurantPaymentClientConfirmed && (
-                    <div className="px-2 pt-4 border-t border-slate-100 mt-4">
-                        <button 
-                            onClick={handleCancelOrder}
-                            className="w-full flex items-center justify-center gap-2 text-red-500 font-bold py-4 hover:bg-red-50 rounded-2xl transition-all"
-                        >
-                            <X className="w-4 h-4" /> Cancelar mi pedido
-                        </button>
-                    </div>
-                )}
-            </div>
+                <div className="px-4 pt-5 space-y-4 max-w-lg mx-auto">
+                    {isBuscando ? (
+                        /* Radar de Búsqueda Activo */
+                        <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 text-center space-y-5">
+                            <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
+                                <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-60" />
+                                <div className="w-20 h-20 bg-primary/10 text-slate-900 rounded-full flex items-center justify-center border-4 border-primary">
+                                    <Motorbike className="w-10 h-10 animate-bounce" />
+                                </div>
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900">Buscando Repartidor Cercano...</h3>
+                                <p className="text-sm text-slate-500 font-medium mt-1 max-w-xs mx-auto">
+                                    Hemos enviado la solicitud a los repartidores disponibles en la zona. Te notificaremos al asignar uno.
+                                </p>
+                            </div>
+                            <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs font-bold text-slate-600">
+                                Vehículo: <span className="font-black uppercase">{order.vehicleType || selectedVehicle}</span> · Distancia: {calculatedDistance} km
+                            </div>
+                        </div>
+                    ) : (
+                        /* Módulo de Configuración de Envío de Paquetes */
+                        <>
+                            {/* Tarjeta de Origen y Destino Precargados Automáticamente */}
+                            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-4">
+                                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ruta Precargada Automáticamente</p>
+                                    <span className="text-xs font-black text-primary bg-primary/10 px-2.5 py-1 rounded-full">
+                                        {calculatedDistance} km de distancia
+                                    </span>
+                                </div>
 
-            {/* Final Success Screen if Reviewed and Delivered */}
-            {order.hasReviewed && (order.status === 'delivered' || order.status === 'completed') && (
-                <div className="px-4 translate-y-[-2rem] pb-20">
-                    <motion.div 
-                        initial={{ scale: 0.8, opacity: 0 }} 
-                        animate={{ scale: 1, opacity: 1 }}
-                        className="bg-emerald-50 border-2 border-emerald-200 p-8 rounded-[3rem] text-center shadow-2xl shadow-emerald-200/40 relative overflow-hidden"
-                    >
-                        <div className="absolute top-0 right-0 p-4 opacity-[0.03]">
-                            <CheckCircle2 className="w-32 h-32 text-emerald-600" />
-                        </div>
-                        <div className="w-20 h-20 bg-emerald-100 rounded-[2.5rem] flex items-center justify-center mx-auto mb-6 border-4 border-white shadow-inner">
-                            <CheckCircle2 className="w-10 h-10 text-emerald-600" />
-                        </div>
-                        <h3 className="text-2xl font-black text-emerald-900 mb-2 uppercase tracking-tight">¡Proceso Terminado!</h3>
-                        <p className="text-emerald-700 font-bold leading-relaxed text-sm">Gracias por confiar en el ecosistema <b>Un 2x3</b>. Tu pedido ha sido completado y cada parte del proceso ha sido calificada.</p>
-                        
-                        <div className="mt-8 flex flex-col gap-3">
-                            <button 
-                                onClick={() => navigate('/profile')}
-                                className="w-full bg-emerald-600 text-white font-black py-5 rounded-2xl hover:bg-emerald-700 active:scale-95 transition-all shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2"
+                                {/* Origen: Tienda */}
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+                                        <Store className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Punto de Retiro (Tienda)</span>
+                                        <p className="text-sm font-black text-slate-900 truncate">{restaurant?.name || order.restaurantName || 'Comercio'}</p>
+                                        <p className="text-xs text-slate-500 font-medium truncate">{restaurant?.address || restaurant?.location?.address || 'Dirección del comercio'}</p>
+                                    </div>
+                                </div>
+
+                                {/* Línea conectora */}
+                                <div className="w-0.5 h-4 bg-slate-200 ml-4 -my-2" />
+
+                                {/* Destino: Cliente */}
+                                <div className="flex items-start gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+                                        <MapPin className="w-4 h-4" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Punto de Entrega (Tú)</span>
+                                        <p className="text-sm font-black text-slate-900 truncate">{order.deliveryAddress || order.address?.name || 'Tu dirección guardada'}</p>
+                                        {order.address?.reference && (
+                                            <p className="text-xs text-slate-500 font-medium truncate">{order.address.reference}</p>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Selector de Vehículo: Moto / Carro Económico / Carro Confort */}
+                            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Selecciona el Tipo de Transporte</p>
+                                <div className="grid grid-cols-3 gap-2.5">
+                                    {[
+                                        { key: 'moto', label: 'Moto', icon: Bike, desc: 'Rápido', price: 2.5 },
+                                        { key: 'carro', label: 'Carro Eco', icon: Car, desc: 'Económico', price: 5.0 },
+                                        { key: 'ejecutivo', label: 'Carro Confort', icon: Sparkles, desc: 'Con A/A', price: 7.0 }
+                                    ].map((v) => {
+                                        const isSel = selectedVehicle === v.key;
+                                        const IconComp = v.icon;
+                                        const distance = calculatedDistance;
+                                        const rates = deliverySettings?.transportRates?.[v.key] || [];
+                                        const rate = rates.find((r: any) => distance >= r.from && (distance <= r.to || !r.to));
+                                        const priceUsd = isFreeDelivery ? 0 : (rate ? (rate.clientPrice || rate.price) : v.price);
+
+                                        return (
+                                            <button
+                                                key={v.key}
+                                                type="button"
+                                                onClick={() => setSelectedVehicle(v.key as any)}
+                                                className={`p-3.5 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-center ${
+                                                    isSel
+                                                        ? 'border-primary bg-primary/10 text-slate-900 shadow-md shadow-primary/10 scale-102'
+                                                        : 'border-slate-100 bg-slate-50 text-slate-500 hover:border-slate-200'
+                                                }`}
+                                            >
+                                                <IconComp className={`w-6 h-6 ${isSel ? 'text-slate-900' : 'text-slate-400'}`} />
+                                                <span className="text-xs font-black leading-tight">{v.label}</span>
+                                                <span className="text-[10px] font-bold text-slate-400 leading-none">{v.desc}</span>
+                                                <span className="text-xs font-black text-slate-900 mt-1">
+                                                    {isFreeDelivery ? 'GRATIS' : `$${priceUsd.toFixed(2)}`}
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Resumen de Productos */}
+                            <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-200/80 flex items-center justify-between text-xs">
+                                <span className="font-bold text-slate-500">Paquete a transportar:</span>
+                                <span className="font-black text-slate-800 truncate max-w-[200px]">
+                                    {(order.items || []).map((i: any) => `${i.quantity}x ${i.name}`).join(', ')}
+                                </span>
+                            </div>
+
+                            {/* Botón Principal: Confirmar y Solicitar Repartidor */}
+                            <button
+                                onClick={handleRequestDelivery}
+                                disabled={isSubmittingDelivery}
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-98 transition-all flex items-center justify-center gap-2 text-base shadow-xl shadow-slate-900/20 disabled:opacity-50"
                             >
-                                <CheckCircle2 className="w-5 h-5" /> VOLVER AL PERFIL
+                                {isSubmittingDelivery ? (
+                                    <><Loader2 className="w-5 h-5 animate-spin text-primary" /> Solicitando repartidor...</>
+                                ) : (
+                                    <><Motorbike className="w-5 h-5 text-primary" /> Solicitar Repartidor Ahora</>
+                                )}
                             </button>
-                            <p className="text-[10px] text-emerald-800/40 font-black uppercase tracking-[0.2em] mt-2">Pronto recibirás noticias de nuestras promociones</p>
-                        </div>
-                    </motion.div>
+
+                            {/* Cambiar a Pickup */}
+                            <button
+                                onClick={handleSwitchToPickup}
+                                className="w-full text-slate-500 hover:text-slate-800 text-xs font-bold py-2 transition-colors"
+                            >
+                                Cambiar a Retiro en Local ($0 costo)
+                            </button>
+                        </>
+                    )}
                 </div>
-            )}
+            </div>
+        );
+    };
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PASO 4 — En Camino / Entrega (Tracking en Vivo y Calificación)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const renderStep4 = () => {
+        const isDelivered = ['delivered', 'completed'].includes(order.status) || transportRequest?.status === 'completed';
+        const driverName = driver?.name || driver?.displayName || transportRequest?.driver_name || 'Repartidor';
+        const driverPhone = driver?.phone || driver?.phoneNumber || transportRequest?.driver_phone;
 
+        return (
+            <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
+                {/* AppBar */}
+                <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                    <button
+                        onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                    >
+                        <ArrowLeft className="w-5 h-5 text-slate-700" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                        <h1 className="text-base font-black text-slate-900 leading-tight">
+                            {isDelivered ? '¡Pedido Entregado!' : 'En Camino a tu Ubicación'}
+                        </h1>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Rastreo en Vivo · Paso 4</p>
+                    </div>
+                    {!isDelivered && (
+                        <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/80 px-3 py-1.5 rounded-full">
+                            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-ping" />
+                            <span className="text-[10px] font-black uppercase text-emerald-700">En Vivo</span>
+                        </div>
+                    )}
+                </div>
+
+                <StepProgressHeader />
+
+                {/* Mapa Interactivo con Tracking en Tiempo Real */}
+                <div className="h-72 w-full relative overflow-hidden bg-slate-200">
+                    {isLoaded ? (
+                        <GoogleMap
+                            mapContainerStyle={{ width: '100%', height: '100%' }}
+                            center={mapCenter}
+                            zoom={driverLocation ? 16 : 14}
+                            options={mapOptions}
+                        >
+                            {/* Marcador del Destino (Cliente) */}
+                            {destCoords && (
+                                <Marker
+                                    position={destCoords}
+                                    icon={{
+                                        url: 'https://cdn-icons-png.flaticon.com/512/1004/1004285.png',
+                                        scaledSize: window.google ? new window.google.maps.Size(34, 34) : undefined
+                                    }}
+                                />
+                            )}
+
+                            {/* Marcador de la Tienda (Origen) */}
+                            {originCoords && (
+                                <Marker
+                                    position={originCoords}
+                                    icon={{
+                                        url: 'https://cdn-icons-png.flaticon.com/512/3081/3081559.png',
+                                        scaledSize: window.google ? new window.google.maps.Size(32, 32) : undefined
+                                    }}
+                                />
+                            )}
+
+                            {/* Marcador del Conductor en Tiempo Real */}
+                            {driverLocation && (
+                                <Marker
+                                    position={driverLocation}
+                                    icon={{
+                                        url: 'https://cdn-icons-png.flaticon.com/512/3209/3209935.png',
+                                        scaledSize: window.google ? new window.google.maps.Size(46, 46) : undefined
+                                    }}
+                                />
+                            )}
+                        </GoogleMap>
+                    ) : (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <Loader2 className="w-8 h-8 animate-spin text-slate-400" />
+                        </div>
+                    )}
+
+                    {/* Logo de la tienda en esquina superior izquierda */}
+                    <div className="absolute top-3 left-3 z-10">
+                        <div className="w-12 h-12 bg-white rounded-2xl shadow-lg flex items-center justify-center border border-slate-200 overflow-hidden">
+                            {restaurant?.logoUrl
+                                ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                                : <Store className="w-6 h-6 text-slate-700" />}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="px-4 -mt-4 relative z-10 space-y-4 max-w-lg mx-auto">
+                    {/* Tarjeta de Éxito y Calificación al Finalizar */}
+                    {isDelivered ? (
+                        <div className="bg-white rounded-3xl p-6 shadow-xl border-2 border-emerald-500/30 text-center space-y-4">
+                            <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-md">
+                                <CheckCircle2 className="w-9 h-9" />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-black text-slate-900">¡Pedido Entregado con Éxito!</h3>
+                                <p className="text-sm font-medium text-slate-500 mt-1">Esperamos que disfrutes tu compra. ¿Cómo fue tu experiencia?</p>
+                            </div>
+
+                            <button
+                                onClick={() => setShowReviewModal(true)}
+                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl hover:scale-[1.01] active:scale-98 transition-all flex items-center justify-center gap-2 text-base shadow-xl shadow-primary/20"
+                            >
+                                <Star className="w-5 h-5" /> Calificar Tienda y Repartidor
+                            </button>
+
+                            <button
+                                onClick={() => navigate('/')}
+                                className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl text-xs transition-colors"
+                            >
+                                Volver al Inicio
+                            </button>
+                        </div>
+                    ) : (
+                        /* Datos del Repartidor Asignado */
+                        <>
+                            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Datos del Repartidor</p>
+                                <div className="flex items-center gap-3.5">
+                                    <div className="w-14 h-14 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-700 border border-slate-200 shrink-0">
+                                        <Motorbike className="w-7 h-7" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-black text-base text-slate-900 truncate">{driverName}</p>
+                                        <p className="text-xs font-bold text-emerald-600 uppercase">
+                                            {transportRequest?.status === 'in_progress' ? '🚴 En camino a tu dirección'
+                                                : transportRequest?.status === 'arriving' ? '🏪 Llegando a la tienda'
+                                                : '🚀 Asignado al viaje'}
+                                        </p>
+                                    </div>
+                                    {driverPhone && (
+                                        <a
+                                            href={`tel:${driverPhone}`}
+                                            className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center border border-emerald-100 active:scale-95 transition-transform shrink-0"
+                                            title="Llamar al repartidor"
+                                        >
+                                            <Phone className="w-5 h-5" />
+                                        </a>
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Resumen del Destino */}
+                            <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-200/80 flex items-start gap-3 text-xs">
+                                <MapPin className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                                <div>
+                                    <span className="font-bold text-slate-400 uppercase tracking-wider block">Entregando en</span>
+                                    <p className="font-black text-slate-800 text-sm">{order.deliveryAddress || order.address?.name}</p>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </div>
+        );
+    };
+
+    // ── Render Principal ─────────────────────────────────────────────────────
+    return (
+        <div className="w-full h-full overflow-hidden relative bg-slate-50">
+            <AnimatePresence mode="wait">
+                <motion.div
+                    key={`step-${currentStep}`}
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ type: 'spring', damping: 28, stiffness: 280 }}
+                    className="w-full h-full"
+                >
+                    {currentStep === 1 && renderStep1()}
+                    {currentStep === 2 && renderStep2()}
+                    {currentStep === 3 && renderStep3()}
+                    {currentStep === 4 && renderStep4()}
+                </motion.div>
+            </AnimatePresence>
+
+            {/* Botón Flotante para abrir Chat */}
+            <ChatFAB />
+
+            {/* Chat en Pantalla Completa */}
+            <ChatOverlay />
+
+            {/* Modal de Pago Móvil con Copiado Rápido */}
+            <PagoMovilDataModal />
+
+            {/* Modal de Calificación */}
             <ReviewModal
                 isOpen={showReviewModal}
                 onClose={() => setShowReviewModal(false)}
@@ -1721,20 +1523,6 @@ export default function TrackOrder() {
                 orderInfo={order}
                 onReviewSubmitted={() => setShowReviewModal(false)}
             />
-
-            {/* Delivery Payment Modal */}
-            <DeliveryPaymentModal
-                isOpen={showDeliveryPaymentModal}
-                onClose={() => setShowDeliveryPaymentModal(false)}
-                orderId={orderId!}
-                deliveryFee={order.deliveryFee || 0}
-                bcvRate={bcvRate}
-                businessName={restaurant?.name || "Negocio"}
-                onSuccess={() => {
-                    setShowDeliveryPaymentModal(false);
-                }}
-            />
         </div>
     );
 }
-
