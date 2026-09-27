@@ -24,6 +24,7 @@ const mapOptions: google.maps.MapOptions = {
     mapTypeControl: false,
     fullscreenControl: false,
     clickableIcons: false,
+    gestureHandling: 'cooperative',
     styles: googleMapsDarkStyles
 };
 
@@ -780,7 +781,7 @@ export default function TrackOrder() {
     };
 
     return (
-        <div className="pb-24 bg-slate-50 min-h-screen">
+        <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 overscroll-y-contain pb-32">
             {/* Header */}
             <div className="bg-white px-4 py-4 flex items-center gap-4 sticky top-0 z-30 shadow-sm">
                 <button onClick={() => window.history.length > 1 ? window.history.back() : navigate('/profile')} className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform text-slate-600">

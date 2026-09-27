@@ -50,6 +50,7 @@ export default function OrderChatWindow({
   const [showSubstituteModal, setShowSubstituteModal] = useState(false);
   const [waTimeoutPassed, setWaTimeoutPassed] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Live synced order & store info
@@ -206,7 +207,11 @@ export default function OrderChatWindow({
             createdAt: d.created_at,
             action: d.action
           })));
-          setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+          setTimeout(() => {
+            if (messagesContainerRef.current) {
+              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+          }, 100);
         }
       } catch (err) {
         console.error("Error loading chat messages:", err);
@@ -824,7 +829,13 @@ export default function OrderChatWindow({
 
   // Financial and Qualification Calculations
   const isPickupOrder = liveOrder?.delivery_method === 'pickup' || liveOrder?.deliveryMethod === 'pickup';
-  const orderSubtotal = Number(liveOrder?.subtotal || liveOrder?.total || 0);
+  const calculatedItemsTotal = (orderItems && orderItems.length > 0)
+    ? orderItems.reduce((acc, it) => acc + (Number(it.price || 0) * Number(it.quantity || 1)), 0)
+    : 0;
+  const orderDisplayTotal = calculatedItemsTotal > 0
+    ? calculatedItemsTotal
+    : (Number(liveOrder?.subtotal) > 0 ? Number(liveOrder?.subtotal) : Number(liveOrder?.total || 0));
+  const orderSubtotal = orderDisplayTotal;
   const isFreeDeliveryConfigured = Boolean(storeData?.free_delivery_enabled);
   const freeDeliveryMinAmount = Number(storeData?.free_delivery_min_amount || 0);
   const qualifiesForFreeDelivery = isFreeDeliveryConfigured && orderSubtotal >= freeDeliveryMinAmount && freeDeliveryMinAmount > 0;
@@ -906,7 +917,7 @@ export default function OrderChatWindow({
   };
 
   return (
-    <div className="flex flex-col h-[620px] bg-slate-50 rounded-3xl overflow-hidden border-2 border-slate-200 shadow-2xl relative">
+    <div className="flex flex-col h-[520px] sm:h-[600px] bg-slate-50 rounded-3xl overflow-hidden border-2 border-slate-200 shadow-2xl relative">
       {/* Hidden file input for receipt/capture/video upload */}
       <input
         type="file"
@@ -1058,10 +1069,10 @@ export default function OrderChatWindow({
             <div className="flex items-center gap-2">
               <span className="text-slate-500 text-[11px]">Total Orden:</span>
               <span className="text-slate-900 font-black text-sm">
-                ${Number(liveOrder?.total || orderSubtotal).toFixed(2)} USD
+                ${orderDisplayTotal.toFixed(2)} USD
               </span>
               <span className="text-slate-500 text-[10px]">
-                ({bcvRate > 0 ? ((Number(liveOrder?.total || orderSubtotal)) * bcvRate).toFixed(0) : '0'} Bs)
+                ({bcvRate > 0 ? (orderDisplayTotal * bcvRate).toFixed(0) : '0'} Bs)
               </span>
             </div>
 
@@ -1079,7 +1090,7 @@ export default function OrderChatWindow({
       )}
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 && (
           <div className="text-center text-slate-400 font-medium text-xs mt-8 space-y-2">
             <Store className="w-10 h-10 mx-auto text-slate-300" />

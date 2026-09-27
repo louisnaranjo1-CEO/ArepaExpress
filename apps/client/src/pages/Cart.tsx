@@ -313,7 +313,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const deliveryFee = (isWaiter || deliveryMethod === 'pickup' || isFreeDeliveryQualified) ? 0 : feeInfo.clientFee;
   const driverPayout = (isWaiter || deliveryMethod === 'pickup') ? 0 : feeInfo.driverPayout;
   const currentShift = feeInfo.shift;
-  const finalTotal = (deliveryMethod === 'app_delivery') ? deliveryFee : (cartSubtotalUSD + deliveryFee);
+  const finalTotal = cartSubtotalUSD;
 
   const handleCheckout = async () => {
     if (items.length === 0) return;
