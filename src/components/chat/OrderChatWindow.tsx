@@ -116,7 +116,16 @@ export default function OrderChatWindow({
 
   useEffect(() => {
     if (orderInfo) {
-      setLiveOrder(orderInfo);
+      // Only override local liveOrder if the incoming orderInfo has a more advanced status
+      // This prevents the parent component re-rendering from reverting payment state
+      const advancedStatuses = ['awaiting_delivery_driver', 'preparing', 'ready', 'buscando_piloto', 'delivering', 'delivered', 'completed', 'paid', 'payment_confirmed'];
+      setLiveOrder((prev: any) => {
+        const currentIsAdvanced = advancedStatuses.includes(prev?.status);
+        const incomingIsAdvanced = advancedStatuses.includes(orderInfo?.status);
+        // If current local state is already verified/advanced, don't downgrade it
+        if (currentIsAdvanced && !incomingIsAdvanced) return prev;
+        return orderInfo;
+      });
       if (orderInfo.items) setOrderItems(orderInfo.items);
       if (orderInfo.delivery_address_reference || orderInfo.address?.reference) {
         setClientReferenceNote(orderInfo.delivery_address_reference || orderInfo.address?.reference || '');
@@ -878,13 +887,25 @@ export default function OrderChatWindow({
   const freeDeliveryMinAmount = Number(storeData?.free_delivery_min_amount || 0);
   const qualifiesForFreeDelivery = isFreeDeliveryConfigured && orderSubtotal >= freeDeliveryMinAmount && freeDeliveryMinAmount > 0;
   
+  const hasPaymentConfirmedMsg = messages.some(m => 
+    m.action === 'payment_confirmed' || 
+    m.action === 'payment_approved' || 
+    (m.text && (m.text.includes('verificado con éxito') || m.text.includes('Pago de productos verificado') || m.text.includes('¡Pago verificado') || m.text.includes('¡Pago confirmado')))
+  );
+
+  const hasPaymentReportedMsg = messages.some(m =>
+    m.action === 'payment_reported' ||
+    (m.text && (m.text.includes('PAGO REPORTADO') || m.text.includes('He realizado el pago')))
+  );
+
   // Three clean mutually exclusive payment states
   const isPaymentVerifiedByStore = Boolean(
-    ['awaiting_delivery_driver', 'preparing', 'ready', 'buscando_piloto', 'delivering', 'delivered', 'completed'].includes(liveOrder?.status) ||
+    ['awaiting_delivery_driver', 'preparing', 'ready', 'buscando_piloto', 'delivering', 'delivered', 'completed', 'paid', 'payment_confirmed'].includes(liveOrder?.status) ||
     liveOrder?.payment_status === 'paid' ||
     liveOrder?.payment_status === 'approved' ||
     liveOrder?.status === 'paid' ||
-    liveOrder?.status === 'payment_confirmed'
+    liveOrder?.status === 'payment_confirmed' ||
+    hasPaymentConfirmedMsg
   );
 
   const isPaymentReportedWaitingStore = Boolean(
@@ -893,7 +914,8 @@ export default function OrderChatWindow({
       liveOrder?.payment_status === 'verifying' ||
       liveOrder?.restaurant_payment_client_confirmed ||
       liveOrder?.restaurantPaymentClientConfirmed ||
-      Boolean(liveOrder?.payment_proof_url || liveOrder?.paymentProofUrl)
+      Boolean(liveOrder?.payment_proof_url || liveOrder?.paymentProofUrl) ||
+      hasPaymentReportedMsg
     )
   );
 

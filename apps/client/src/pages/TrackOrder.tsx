@@ -73,7 +73,9 @@ function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
             'verificando_pago_delivery'
         ].includes(order?.status) ||
         order?.payment_status === 'paid' ||
-        order?.payment_status === 'approved'
+        order?.payment_status === 'approved' ||
+        order?.restaurant_payment_client_confirmed ||
+        order?.restaurantPaymentClientConfirmed
     ) {
         return 3;
     }
@@ -150,8 +152,14 @@ export default function TrackOrder() {
 
     // ── UI Modals & Sheets ───────────────────────────────────────────────────
     const [showChat, setShowChat] = useState(false);
+    const [hasUnreadChat, setHasUnreadChat] = useState(true);
     const [showReviewModal, setShowReviewModal] = useState(false);
     const [showPagoMovilModal, setShowPagoMovilModal] = useState(false);
+
+    const openChat = () => {
+        setShowChat(true);
+        setHasUnreadChat(false);
+    };
 
     // ── Step 2 Payment State ─────────────────────────────────────────────────
     const [paymentReference, setPaymentReference] = useState('');
@@ -322,9 +330,20 @@ export default function TrackOrder() {
                     }
                 }).subscribe();
 
+        // 5. Realtime Messages for Unread Badge
+        const messagesChannel = supabase.channel(`tr_messages_badge_${orderId}`)
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `order_id=eq.${orderId}` },
+                (payload) => {
+                    const newMsg = payload.new as any;
+                    if (newMsg && newMsg.sender_role !== 'client') {
+                        setHasUnreadChat(true);
+                    }
+                }).subscribe();
+
         return () => {
             supabase.removeChannel(orderChannel);
             supabase.removeChannel(transportChannel);
+            supabase.removeChannel(messagesChannel);
         };
     }, [orderId, order?.transport_request_id]);
 
@@ -886,12 +905,17 @@ export default function TrackOrder() {
                 <motion.button
                     whileHover={{ scale: 1.01 }}
                     whileTap={{ scale: 0.98 }}
-                    onClick={() => setShowChat(true)}
-                    className="w-full bg-slate-900 text-white p-4 rounded-3xl shadow-xl shadow-slate-900/20 flex items-center justify-between group transition-all"
+                    onClick={openChat}
+                    className="w-full bg-slate-900 text-white p-4 rounded-3xl shadow-xl shadow-slate-900/20 flex items-center justify-between group transition-all relative"
                 >
                     <div className="flex items-center gap-3.5">
-                        <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-primary group-hover:scale-105 transition-transform">
+                        <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center text-primary group-hover:scale-105 transition-transform relative">
                             <MessageSquare className="w-6 h-6" />
+                            {hasUnreadChat && (
+                                <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce">
+                                    1
+                                </span>
+                            )}
                         </div>
                         <div className="text-left">
                             <p className="font-black text-base text-white leading-tight">Ir al Chat con la Tienda</p>
@@ -1074,14 +1098,19 @@ export default function TrackOrder() {
                             )}
 
                             <button
-                                onClick={() => setShowChat(true)}
-                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-sm shadow-md"
+                                onClick={openChat}
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-sm shadow-md relative"
                             >
                                 <MessageSquare className="w-4 h-4 text-primary" /> Abrir Chat con el Negocio
+                                {hasUnreadChat && (
+                                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce">
+                                        1
+                                    </span>
+                                )}
                             </button>
                         </div>
                     ) : (
-                        /* Formulario de Pago y Comprobante */
+                        /* Formulario de Pago — Solo Chat */
                         <>
                             {/* Botón Destacado: Ver Datos de Pago Móvil */}
                             <motion.button
@@ -1104,69 +1133,31 @@ export default function TrackOrder() {
                                 </div>
                             </motion.button>
 
-                            {/* Opciones de Reporte */}
+                            {/* Instrucción: Enviar comprobante por Chat */}
                             <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-4">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Adjuntar Comprobante de Pago</p>
-
-                                {/* Selector de Capture / Imagen */}
-                                <input
-                                    type="file"
-                                    ref={fileInputRef}
-                                    accept="image/*"
-                                    onChange={handleFileSelect}
-                                    className="hidden"
-                                />
-
-                                {paymentProofPreview ? (
-                                    <div className="relative rounded-2xl overflow-hidden border-2 border-primary/30 p-2 bg-slate-50 flex items-center gap-3">
-                                        <img src={paymentProofPreview} alt="Preview" className="w-16 h-16 object-cover rounded-xl shrink-0" />
-                                        <div className="flex-1 min-w-0">
-                                            <p className="text-xs font-black text-slate-900 truncate">{paymentProofFile?.name}</p>
-                                            <p className="text-[10px] font-bold text-emerald-600">Capture listo para enviar</p>
-                                        </div>
-                                        <button
-                                            onClick={() => { setPaymentProofFile(null); setPaymentProofPreview(null); }}
-                                            className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center hover:bg-red-50 hover:text-red-500"
-                                        >
-                                            <X className="w-4 h-4" />
-                                        </button>
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-slate-900 text-primary flex items-center justify-center shrink-0 mt-0.5">
+                                        <MessageSquare className="w-5 h-5" />
                                     </div>
-                                ) : (
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="w-full py-6 border-2 border-dashed border-slate-200 hover:border-primary rounded-2xl flex flex-col items-center justify-center gap-2 bg-slate-50/50 hover:bg-slate-50 transition-all text-slate-500"
-                                    >
-                                        <ImageIcon className="w-8 h-8 text-slate-400" />
-                                        <span className="text-xs font-black text-slate-700">Subir Capture de Pantalla / Foto</span>
-                                        <span className="text-[10px] font-bold text-slate-400">JPG, PNG desde tu galería o cámara</span>
-                                    </button>
-                                )}
-
-                                {/* Campo de Referencia (100% Opcional) */}
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400 ml-1 block mb-1">
-                                        Número de Referencia (Opcional)
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={paymentReference}
-                                        onChange={(e) => setPaymentReference(e.target.value)}
-                                        placeholder="Ej: 123456 (Opcional)"
-                                        className="w-full bg-slate-50 border border-slate-200 p-3.5 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:border-primary"
-                                    />
+                                    <div>
+                                        <p className="font-black text-sm text-slate-900 leading-tight">Envía tu comprobante por el Chat</p>
+                                        <p className="text-xs font-bold text-slate-500 mt-1 leading-relaxed">
+                                            Una vez realizado el pago, abre el chat con el negocio y adjunta la foto/captura de tu comprobante directamente desde allí. El negocio lo revisará y confirmará tu pago.
+                                        </p>
+                                    </div>
                                 </div>
 
-                                {/* Botón Enviar Reporte */}
                                 <button
-                                    onClick={handleRestaurantPaid}
-                                    disabled={isUploading}
-                                    className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-98 transition-all flex items-center justify-center gap-2 text-base shadow-xl shadow-slate-900/20 disabled:opacity-50"
+                                    onClick={openChat}
+                                    className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-slate-900/20 relative"
                                 >
-                                    {isUploading ? (
-                                        <><Loader2 className="w-5 h-5 animate-spin text-primary" /> Enviando comprobante...</>
-                                    ) : (
-                                        <><Upload className="w-5 h-5 text-primary" /> Ya Pagué · Notificar al Negocio</>
+                                    <MessageSquare className="w-5 h-5 text-primary" />
+                                    Abrir Chat · Adjuntar Comprobante
+                                    {/* Unread badge */}
+                                    {hasUnreadChat && (
+                                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce">
+                                            1
+                                        </span>
                                     )}
                                 </button>
                             </div>
@@ -1351,10 +1342,15 @@ export default function TrackOrder() {
                             </div>
 
                             <button
-                                onClick={() => setShowChat(true)}
-                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-slate-900/20"
+                                onClick={openChat}
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-98 transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-slate-900/20 relative"
                             >
                                 <MessageSquare className="w-4 h-4 text-primary" /> Abrir Chat con la Tienda
+                                {hasUnreadChat && (
+                                    <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce">
+                                        1
+                                    </span>
+                                )}
                             </button>
                         </div>
                     ) : isBuscando ? (
@@ -1638,11 +1634,16 @@ export default function TrackOrder() {
                 <div className="absolute right-4 bottom-64 z-20 flex flex-col gap-3">
                     {/* Open Order Chat */}
                     <button
-                        onClick={() => setShowChat(true)}
-                        className="w-12 h-12 bg-slate-900/90 backdrop-blur-md text-white rounded-2xl border border-white/15 flex items-center justify-center shadow-2xl active:scale-95 transition-all group"
+                        onClick={openChat}
+                        className="w-12 h-12 bg-slate-900/90 backdrop-blur-md text-white rounded-2xl border border-white/15 flex items-center justify-center shadow-2xl active:scale-95 transition-all group relative"
                         title="Abrir Chat con Negocio y Driver"
                     >
                         <MessageSquare className="w-5 h-5 text-primary group-hover:scale-110 transition-transform" />
+                        {hasUnreadChat && (
+                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce">
+                                1
+                            </span>
+                        )}
                     </button>
 
                     {/* Direct Call to Driver */}
@@ -1749,12 +1750,17 @@ export default function TrackOrder() {
                     animate={{ scale: 1 }}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setShowChat(true)}
-                    className="fixed bottom-6 right-5 z-40 bg-slate-900 text-white p-4 rounded-full shadow-2xl shadow-slate-900/40 flex items-center gap-2 border-2 border-white"
+                    onClick={openChat}
+                    className="fixed bottom-6 right-5 z-40 bg-slate-900 text-white p-4 rounded-full shadow-2xl shadow-slate-900/40 flex items-center gap-2 border-2 border-white relative"
                     title="Abrir Chat"
                 >
                     <MessageSquare className="w-6 h-6 text-primary" />
                     <span className="text-xs font-black pr-1 hidden sm:inline">Chat</span>
+                    {hasUnreadChat && (
+                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-lg border-2 border-white animate-bounce">
+                            1
+                        </span>
+                    )}
                 </motion.button>
             )}
 

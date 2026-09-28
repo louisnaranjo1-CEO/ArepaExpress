@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
@@ -74,6 +74,7 @@ export default function Orders() {
     const [prepMinutes, setPrepMinutes] = useState<number>(20);
     const [driverSearch, setDriverSearch] = useState<string>('');
     const [driverCategoryFilter, setDriverCategoryFilter] = useState<'all' | 'moto' | 'carro' | 'confort'>('all');
+    const [selectedVehicleCategory, setSelectedVehicleCategory] = useState<'moto' | 'carro' | 'confort' | null>(null);
     const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
     
     // Radar UI State
@@ -358,6 +359,7 @@ export default function Orders() {
                     is_online,
                     availability,
                     current_location,
+                    registered_home_address,
                     is_comfort_eligible
                 `);
 
@@ -367,15 +369,20 @@ export default function Orders() {
                 const driverIds = driversData.map(d => d.id);
                 const { data: profilesData } = await supabase
                     .from('profiles')
-                    .select('id, photo_url')
+                    .select('id, photo_url, last_city, last_state')
                     .in('id', driverIds);
 
-                const photoMap = new Map((profilesData || []).map(p => [p.id, p.photo_url]));
+                const profileMap = new Map((profilesData || []).map(p => [p.id, p]));
 
-                const enriched = driversData.map(d => ({
-                    ...d,
-                    photo_url: photoMap.get(d.id) || d.vehicle_image_url || null
-                }));
+                const enriched = driversData.map(d => {
+                    const prof = profileMap.get(d.id);
+                    const city = prof?.last_city || (d.registered_home_address as any)?.city || (d.registered_home_address as any)?.name || '';
+                    return {
+                        ...d,
+                        photo_url: prof?.photo_url || d.vehicle_image_url || null,
+                        city
+                    };
+                });
                 setDrivers(enriched);
             }
         } catch (e) {
@@ -645,6 +652,8 @@ export default function Orders() {
             setSelectedOrderForDispatch(null);
             setSelectedDriver('');
             setDriverSearch('');
+            setSelectedVehicleCategory(null);
+            setDriverCategoryFilter('all');
             fetchOrders();
         } catch (error) {
             console.error("Error setting delivering status:", error);
@@ -1647,6 +1656,43 @@ export default function Orders() {
                 </div>
             </div>
 
+            {/* 💸 Driver Payment Pending Notice */}
+            {(() => {
+                const pendingDriverPayments = orders.filter((o: any) => 
+                    o.status === 'delivering' || o.status === 'delivered' || o.status === 'completed'
+                ).filter((o: any) => (o as any).driver_payout && !(o as any).driver_paid);
+                if (pendingDriverPayments.length === 0) return null;
+                return (
+                    <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-orange-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+                            <DollarSign className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1">
+                            <p className="font-black text-sm text-orange-900">
+                                💸 Debes pagar a {pendingDriverPayments.length} repartidor{pendingDriverPayments.length > 1 ? 'es' : ''}
+                            </p>
+                            <p className="text-[11px] font-bold text-orange-700 mt-0.5">
+                                Tienes entregas con driver asignado donde aún no has pagado el flete. Recuerda cancelarle directamente al driver.
+                            </p>
+                            <div className="mt-2 space-y-1">
+                                {pendingDriverPayments.slice(0, 3).map((o: any) => (
+                                    <div key={o.id} className="flex items-center justify-between bg-white rounded-xl px-3 py-2 border border-orange-100">
+                                        <div>
+                                            <p className="text-[10px] font-black text-slate-700">Pedido #{o.id.slice(0, 8)} — {(o as any).driver_name || 'Driver'}</p>
+                                            <p className="text-[10px] font-bold text-slate-500">{o.deliveryAddress || 'Sin dirección'}</p>
+                                        </div>
+                                        <span className="text-xs font-black text-emerald-700">${Number((o as any).driver_payout || 0).toFixed(2)} USD</span>
+                                    </div>
+                                ))}
+                                {pendingDriverPayments.length > 3 && (
+                                    <p className="text-[10px] font-bold text-orange-600 px-1">+ {pendingDriverPayments.length - 3} más…</p>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* Status Tabs */}
             <div className="flex items-center gap-1.5 p-1.5 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
                 {[
@@ -2020,14 +2066,27 @@ export default function Orders() {
                                 </h3>
                                 <p className="text-xs text-slate-500 font-bold">Orden #{selectedOrderForDispatch.id.slice(0, 8)} • Destino: {selectedOrderForDispatch.deliveryAddress || 'Dirección registrada'}</p>
                             </div>
-                            <button onClick={() => setDispatchModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-2">
+                            <button onClick={() => { setDispatchModalOpen(false); setSelectedVehicleCategory(null); }} className="text-slate-400 hover:text-slate-600 p-2">
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
 
+                        {/* ⚠️ AVISO: Gifting Delivery — El Negocio Paga al Driver */}
+                        <div className="mb-4 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 shrink-0">
+                            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+                                <DollarSign className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <p className="text-xs font-black text-amber-900">Opción: Obsequiar el Delivery al Cliente</p>
+                                <p className="text-[11px] font-bold text-amber-700 mt-0.5 leading-relaxed">
+                                    Al asignar un repartidor de la plataforma, <strong>el negocio asume el pago del transporte</strong>. El monto calculado será tu deuda con el driver y debe ser cancelado directamente a él. El cliente no paga el flete.
+                                </p>
+                            </div>
+                        </div>
+
                         {/* Free delivery badge if shop covers delivery */}
                         {((selectedOrderForDispatch as any).freeDelivery || restaurantConfig?.free_delivery) && (
-                            <div className="mb-4 p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/20 border border-amber-300 rounded-2xl flex items-center gap-3">
+                            <div className="mb-4 p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/20 border border-amber-300 rounded-2xl flex items-center gap-3 shrink-0">
                                 <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
                                 <div className="text-xs text-amber-900">
                                     <span className="font-black">¡Envío Gratis Activado!</span> La tienda asume el flete del conductor. El cliente no verá tarifas de envío.
@@ -2044,7 +2103,7 @@ export default function Orders() {
                                 <span className="text-xs text-center font-black">Propio / Retiro en Tienda</span>
                             </button>
                             <button
-                                onClick={() => setDispatchType('platform')}
+                                onClick={() => { setDispatchType('platform'); setSelectedVehicleCategory(null); setSelectedDriver(''); }}
                                 className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'platform' ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
                             >
                                 <Users className="w-5 h-5" />
@@ -2054,168 +2113,216 @@ export default function Orders() {
 
                         {dispatchType === 'platform' ? (
                             <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[220px]">
-                                {/* Vehicle Category Filter Tabs */}
-                                <div className="flex gap-1.5 p-1 bg-slate-100 rounded-2xl shrink-0 overflow-x-auto">
-                                    {[
-                                        { id: 'all', label: 'Todos' },
-                                        { id: 'moto', label: '🛵 Moto Taxi' },
-                                        { id: 'carro', label: '🚗 Taxi Eco' },
-                                        { id: 'confort', label: '✨ Confort' }
-                                    ].map(cat => (
-                                        <button
-                                            key={cat.id}
-                                            type="button"
-                                            onClick={() => setDriverCategoryFilter(cat.id as any)}
-                                            className={`flex-1 py-1.5 px-2.5 rounded-xl font-black text-[11px] whitespace-nowrap transition-all ${
-                                                driverCategoryFilter === cat.id 
-                                                    ? 'bg-white text-slate-900 shadow-sm' 
-                                                    : 'text-slate-500 hover:text-slate-900'
+                                {/* STEP 1: Select Vehicle Type First */}
+                                {!selectedVehicleCategory ? (
+                                    <div className="space-y-3">
+                                        <div className="text-center">
+                                            <p className="text-xs font-black text-slate-700 uppercase tracking-widest">Paso 1: Selecciona el tipo de vehículo</p>
+                                            <p className="text-[10px] text-slate-400 font-bold mt-1">Solo se mostrarán los drivers de tu ciudad disponibles con ese tipo de vehículo.</p>
+                                        </div>
+                                        {[
+                                            { id: 'moto' as const, label: '🛵 Moto Taxi', desc: 'Rápido y económico para distancias cortas', color: 'border-amber-400 bg-amber-50 text-amber-900' },
+                                            { id: 'carro' as const, label: '🚗 Carro Económico', desc: 'Ideal para mayor capacidad de carga', color: 'border-blue-400 bg-blue-50 text-blue-900' },
+                                            { id: 'confort' as const, label: '✨ Carro Confort', desc: 'Servicio premium y mayor espacio', color: 'border-purple-400 bg-purple-50 text-purple-900' },
+                                        ].map(vt => (
+                                            <button
+                                                key={vt.id}
+                                                onClick={() => {
+                                                    setSelectedVehicleCategory(vt.id);
+                                                    setDriverCategoryFilter(vt.id);
+                                                    setSelectedDriver('');
+                                                }}
+                                                className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99] ${vt.color}`}
+                                            >
+                                                <div className="text-2xl">{vt.label.split(' ')[0]}</div>
+                                                <div className="flex-1">
+                                                    <p className="font-black text-sm">{vt.label.split(' ').slice(1).join(' ')}</p>
+                                                    <p className="text-[11px] font-bold opacity-70 mt-0.5">{vt.desc}</p>
+                                                </div>
+                                                <ChevronRight className="w-5 h-5 opacity-50 shrink-0" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    /* STEP 2: Show filtered drivers */
+                                    <div className="space-y-3">
+                                        {/* Back + vehicle header */}
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            <button
+                                                onClick={() => { setSelectedVehicleCategory(null); setSelectedDriver(''); }}
+                                                className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-all"
+                                            >
+                                                <ArrowLeft className="w-4 h-4" />
+                                            </button>
+                                            <div className="flex-1">
+                                                <p className="text-xs font-black text-slate-900">
+                                                    {selectedVehicleCategory === 'moto' ? '🛵 Moto Taxi' : selectedVehicleCategory === 'carro' ? '🚗 Carro Económico' : '✨ Carro Confort'} — Drivers disponibles en tu ciudad
+                                                </p>
+                                                <p className="text-[10px] text-slate-400 font-bold">
+                                                    {restaurantConfig?.city || restaurantConfig?.address ? `📍 ${restaurantConfig.city || restaurantConfig.address?.split(',')[0]}` : '📍 Tu zona de operación'}
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        {/* Driver Search Bar */}
+                                        <div className="relative shrink-0">
+                                            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                            <input 
+                                                type="text"
+                                                placeholder="Buscar conductor por nombre..."
+                                                value={driverSearch}
+                                                onChange={(e) => setDriverSearch(e.target.value)}
+                                                className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                                            />
+                                            {driverSearch && (
+                                                <button onClick={() => setDriverSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Radar General Option */}
+                                        <div 
+                                            onClick={() => setSelectedDriver('')}
+                                            className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                                                selectedDriver === '' 
+                                                    ? 'border-blue-500 bg-blue-50/80 shadow-sm' 
+                                                    : 'border-slate-100 bg-slate-50/60 hover:bg-slate-100'
                                             }`}
                                         >
-                                            {cat.label}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {/* Driver Search Bar */}
-                                <div className="relative shrink-0">
-                                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                                    <input 
-                                        type="text"
-                                        placeholder="Buscar conductor de confianza por nombre..."
-                                        value={driverSearch}
-                                        onChange={(e) => setDriverSearch(e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:bg-white transition-all"
-                                    />
-                                    {driverSearch && (
-                                        <button onClick={() => setDriverSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                                            <X className="w-3.5 h-3.5" />
-                                        </button>
-                                    )}
-                                </div>
-
-                                {/* Radar General Option */}
-                                <div 
-                                    onClick={() => setSelectedDriver('')}
-                                    className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
-                                        selectedDriver === '' 
-                                            ? 'border-blue-500 bg-blue-50/80 shadow-sm' 
-                                            : 'border-slate-100 bg-slate-50/60 hover:bg-slate-100'
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 rounded-2xl bg-blue-500 text-white flex items-center justify-center relative shadow-md shadow-blue-500/20">
-                                            <div className="absolute inset-0 rounded-2xl bg-blue-400 animate-ping opacity-25"></div>
-                                            <Truck className="w-5 h-5 relative z-10" />
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-2xl bg-blue-500 text-white flex items-center justify-center relative shadow-md shadow-blue-500/20">
+                                                    <div className="absolute inset-0 rounded-2xl bg-blue-400 animate-ping opacity-25"></div>
+                                                    <Truck className="w-5 h-5 relative z-10" />
+                                                </div>
+                                                <div>
+                                                    <h4 className="font-black text-xs text-slate-900 flex items-center gap-1.5">
+                                                        Radar Abierto General
+                                                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[9px] font-black uppercase">Automático</span>
+                                                    </h4>
+                                                    <p className="text-[10px] text-slate-500 font-medium">Notifica a todos los {selectedVehicleCategory === 'moto' ? 'motorizados' : 'conductores'} disponibles en tu zona</p>
+                                                </div>
+                                            </div>
+                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedDriver === '' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300'}`}>
+                                                {selectedDriver === '' && <div className="w-2 h-2 rounded-full bg-white"></div>}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <h4 className="font-black text-xs text-slate-900 flex items-center gap-1.5">
-                                                Radar Abierto General
-                                                <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[9px] font-black uppercase">Automático</span>
-                                            </h4>
-                                            <p className="text-[10px] text-slate-500 font-medium">Notifica a todos los motorizados disponibles en 15km</p>
-                                        </div>
-                                    </div>
-                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedDriver === '' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300'}`}>
-                                        {selectedDriver === '' && <div className="w-2 h-2 rounded-full bg-white"></div>}
-                                    </div>
-                                </div>
 
-                                {/* Filtered Drivers List */}
-                                <div className="space-y-2">
-                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                                        Conductores Disponibles ({drivers.filter(d => {
-                                            const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
-                                            const matchesCat = driverCategoryFilter === 'all' || 
-                                                (driverCategoryFilter === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
-                                                (driverCategoryFilter === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
-                                                (driverCategoryFilter === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
-                                            return matchesSearch && matchesCat;
-                                        }).length})
-                                    </div>
+                                        {/* Filtered Drivers List by vehicle type & city */}
+                                        {(() => {
+                                            const restaurantCity = (restaurantConfig?.location?.city || restaurantConfig?.city || '').trim().toLowerCase();
+                                            const filteredDriversList = drivers.filter(d => {
+                                                const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
+                                                const matchesCat = 
+                                                    (selectedVehicleCategory === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
+                                                    (selectedVehicleCategory === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
+                                                    (selectedVehicleCategory === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
+                                                const drvCity = (d.city || '').trim().toLowerCase();
+                                                const matchesCity = !restaurantCity || !drvCity || drvCity.includes(restaurantCity) || restaurantCity.includes(drvCity);
+                                                return matchesSearch && matchesCat && matchesCity;
+                                            });
 
-                                    {drivers
-                                        .filter(d => {
-                                            const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
-                                            const matchesCat = driverCategoryFilter === 'all' || 
-                                                (driverCategoryFilter === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
-                                                (driverCategoryFilter === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
-                                                (driverCategoryFilter === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
-                                            return matchesSearch && matchesCat;
-                                        })
-                                        .map(drv => {
-                                            const payout = getDriverPayout(selectedOrderForDispatch, drv.vehicle_type);
-                                            const isSelected = selectedDriver === drv.id;
-                                            const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
-                                            
                                             return (
-                                                <div 
-                                                    key={drv.id}
-                                                    onClick={() => setSelectedDriver(drv.id)}
-                                                    className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
-                                                        isSelected 
-                                                            ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary' 
-                                                            : 'border-slate-100 bg-white hover:border-slate-200'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        {/* Driver Photo */}
-                                                        <div className="relative">
-                                                            {drv.photo_url ? (
-                                                                <img 
-                                                                    src={drv.photo_url} 
-                                                                    alt={drv.full_name} 
-                                                                    className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-sm"
-                                                                />
-                                                            ) : (
-                                                                <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-sm">
-                                                                    {drv.full_name ? drv.full_name.charAt(0).toUpperCase() : 'D'}
+                                                <div className="space-y-2">
+                                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                                        Conductores Disponibles ({filteredDriversList.length}) {restaurantCity ? `· ${restaurantConfig?.location?.city || restaurantConfig?.city}` : ''}
+                                                    </div>
+
+                                                    {filteredDriversList.map(drv => {
+                                                        const payout = getDriverPayout(selectedOrderForDispatch, drv.vehicle_type);
+                                                        const isSelected = selectedDriver === drv.id;
+                                                        const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
+                                                        
+                                                        return (
+                                                            <div 
+                                                                key={drv.id}
+                                                                onClick={() => setSelectedDriver(drv.id)}
+                                                                className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                                                                    isSelected 
+                                                                        ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary' 
+                                                                        : 'border-slate-100 bg-white hover:border-slate-200'
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center gap-3">
+                                                                    {/* Driver Photo */}
+                                                                    <div className="relative">
+                                                                        {drv.photo_url ? (
+                                                                            <img 
+                                                                                src={drv.photo_url} 
+                                                                                alt={drv.full_name} 
+                                                                                className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-sm"
+                                                                            />
+                                                                        ) : (
+                                                                            <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-sm">
+                                                                                {drv.full_name ? drv.full_name.charAt(0).toUpperCase() : 'D'}
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="absolute -bottom-1 -right-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></div>
+                                                                    </div>
+
+                                                                    <div>
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <h5 className="font-black text-xs text-slate-900">{drv.full_name || 'Conductor'}</h5>
+                                                                            <span className="flex items-center text-[10px] font-black text-amber-500">
+                                                                                ⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <p className="text-[10px] text-slate-500 font-bold">
+                                                                            {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''} {drv.vehicle_plate ? `[${drv.vehicle_plate}]` : ''} {drv.city ? `• ${drv.city}` : ''}
+                                                                        </p>
+                                                                        <p className="text-[10px] font-black text-emerald-600 mt-0.5">
+                                                                            💰 Debes pagarle: ${payout.toFixed(2)} USD
+                                                                        </p>
+                                                                    </div>
                                                                 </div>
-                                                            )}
-                                                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></div>
-                                                        </div>
 
-                                                        <div>
-                                                            <div className="flex items-center gap-1.5">
-                                                                <h5 className="font-black text-xs text-slate-900">{drv.full_name || 'Conductor'}</h5>
-                                                                <span className="flex items-center text-[10px] font-black text-amber-500">
-                                                                    ⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}
-                                                                </span>
+                                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300'}`}>
+                                                                    {isSelected && <div className="w-2 h-2 rounded-full bg-slate-900"></div>}
+                                                                </div>
                                                             </div>
-                                                            <p className="text-[10px] text-slate-500 font-bold">
-                                                                {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''} {drv.vehicle_plate ? `[${drv.vehicle_plate}]` : ''}
-                                                            </p>
-                                                            <p className="text-[10px] font-black text-emerald-600 mt-0.5">
-                                                                Tarifa calculada: ${payout.toFixed(2)} USD
-                                                            </p>
-                                                        </div>
-                                                    </div>
+                                                        );
+                                                    })}
 
-                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300'}`}>
-                                                        {isSelected && <div className="w-2 h-2 rounded-full bg-slate-900"></div>}
-                                                    </div>
+                                                    {/* Empty state */}
+                                                    {filteredDriversList.length === 0 && (
+                                                        <div className="text-center py-6 text-slate-400">
+                                                            <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                                            <p className="text-xs font-bold">No hay conductores de este tipo disponibles en tu ciudad.</p>
+                                                            <p className="text-[10px] font-bold mt-1">Puedes usar el Radar General para notificar a toda la red.</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
-                                        })
-                                    }
-                                </div>
+                                        })()}
+                                    </div>
+                                )}
                             </div>
                         ) : null}
 
                         <div className="pt-4 mt-2 border-t border-slate-100 shrink-0">
+                            {dispatchType === 'platform' && selectedVehicleCategory && (
+                                <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-2xl flex items-center gap-2">
+                                    <DollarSign className="w-4 h-4 text-orange-600 shrink-0" />
+                                    <p className="text-[11px] font-black text-orange-800">
+                                        Recuerda: <span className="font-black">tú pagas al driver</span> una vez entregue el pedido. Monto estimado según la tarifa calculada.
+                                    </p>
+                                </div>
+                            )}
                             <button
                                 onClick={handleConfirmDispatch}
-                                disabled={isAccepting}
+                                disabled={isAccepting || (dispatchType === 'platform' && !selectedVehicleCategory)}
                                 className={`w-full py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
-                                    selectedDriver 
-                                        ? 'bg-primary text-slate-900 shadow-primary/20' 
-                                        : 'bg-blue-600 text-white shadow-blue-500/20'
+                                    dispatchType === 'own' 
+                                        ? 'bg-slate-900 text-white shadow-slate-900/20'
+                                        : selectedDriver 
+                                            ? 'bg-primary text-slate-900 shadow-primary/20' 
+                                            : 'bg-blue-600 text-white shadow-blue-500/20'
                                 }`}
                             >
                                 {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
                                     <>
                                         <Truck className="w-5 h-5" /> 
-                                        {selectedDriver ? 'Asignar Conductor de Confianza y Despachar' : 'Abrir Radar y Despachar Pedido'}
+                                        {dispatchType === 'own' ? 'Confirmar Retiro / Entrega Propia' : selectedDriver ? 'Asignar Conductor y Despachar' : selectedVehicleCategory ? 'Abrir Radar y Despachar Pedido' : 'Selecciona el tipo de vehículo'}
                                     </>
                                 )}
                             </button>
