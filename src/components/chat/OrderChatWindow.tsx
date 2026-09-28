@@ -4,7 +4,7 @@ import {
   Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
-  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -53,6 +53,7 @@ export default function OrderChatWindow({
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [showSubstituteModal, setShowSubstituteModal] = useState(false);
   const [waTimeoutPassed, setWaTimeoutPassed] = useState(false);
+  const [viewingAttachment, setViewingAttachment] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -454,6 +455,18 @@ export default function OrderChatWindow({
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        status: 'pending_verification',
+        payment_status: 'verifying',
+        payment_reference: payReferenceCode.trim() || null,
+        paymentReference: payReferenceCode.trim() || null,
+        payment_proof_url: proofUrl || null,
+        paymentProofUrl: proofUrl || null,
+        restaurant_payment_client_confirmed: true,
+        restaurantPaymentClientConfirmed: true
+      }));
+
       const refText = payReferenceCode.trim() ? `• Referencia: #${payReferenceCode.trim()}` : '';
       const notesText = payNotes.trim() ? `\n• Nota: ${payNotes.trim()}` : '';
       const payMsgText = `💳 *¡PAGO REPORTADO POR EL CLIENTE!*\n${refText}${notesText}\n\n*Por favor verificar el comprobante para confirmar e iniciar la preparación.*`;
@@ -788,11 +801,13 @@ export default function OrderChatWindow({
     }
   };
 
-  const handleOpenWhatsAppFallback = () => {
-    if (orderInfo?.restaurantPhone || orderInfo?.restaurantWhatsapp) {
-      const num = (orderInfo.restaurantPhone || orderInfo.restaurantWhatsapp).replace(/\D/g, '');
-      const msg = `Hola, tengo una orden activa en la app (ID: ${orderId.slice(0, 8)}). Quisiera coordinar el pedido.`;
-      window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, '_blank');
+  const handlePhoneCall = () => {
+    const rawPhone = liveOrder?.restaurant_phone || orderInfo?.restaurantPhone || orderInfo?.restaurantWhatsapp || storeData?.phone;
+    if (rawPhone) {
+      const num = rawPhone.replace(/[^\d+]/g, '');
+      window.location.href = `tel:${num}`;
+    } else {
+      toast.error('Número de teléfono no disponible para llamar.');
     }
   };
 
@@ -812,9 +827,19 @@ export default function OrderChatWindow({
         restaurant_payment_client_confirmed: true,
         restaurantPaymentClientConfirmed: true,
         status: nextStatus,
+        payment_status: 'paid',
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
-      toast.success('Pago confirmado por el comercio.');
+
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        restaurant_payment_client_confirmed: true,
+        restaurantPaymentClientConfirmed: true,
+        status: nextStatus,
+        payment_status: 'paid'
+      }));
+
+      toast.success('¡Pago confirmado con éxito! Orden lista para preparación o despacho.');
     } catch (e) {
       console.error(e);
       toast.error('Error al actualizar la orden');
@@ -852,12 +877,28 @@ export default function OrderChatWindow({
   const isFreeDeliveryConfigured = Boolean(storeData?.free_delivery_enabled);
   const freeDeliveryMinAmount = Number(storeData?.free_delivery_min_amount || 0);
   const qualifiesForFreeDelivery = isFreeDeliveryConfigured && orderSubtotal >= freeDeliveryMinAmount && freeDeliveryMinAmount > 0;
-  const isPaidOrConditionallyPaid = Boolean(
-    liveOrder?.restaurant_payment_client_confirmed || 
-    liveOrder?.restaurantPaymentClientConfirmed || 
-    liveOrder?.conditionally_paid || 
-    ['preparing', 'awaiting_delivery_driver', 'buscando_piloto', 'delivering', 'delivered', 'completed'].includes(liveOrder?.status)
+  
+  // Three clean mutually exclusive payment states
+  const isPaymentVerifiedByStore = Boolean(
+    ['awaiting_delivery_driver', 'preparing', 'ready', 'buscando_piloto', 'delivering', 'delivered', 'completed'].includes(liveOrder?.status) ||
+    liveOrder?.payment_status === 'paid' ||
+    liveOrder?.payment_status === 'approved' ||
+    liveOrder?.status === 'paid' ||
+    liveOrder?.status === 'payment_confirmed'
   );
+
+  const isPaymentReportedWaitingStore = Boolean(
+    !isPaymentVerifiedByStore && (
+      liveOrder?.status === 'pending_verification' ||
+      liveOrder?.payment_status === 'verifying' ||
+      liveOrder?.restaurant_payment_client_confirmed ||
+      liveOrder?.restaurantPaymentClientConfirmed ||
+      Boolean(liveOrder?.payment_proof_url || liveOrder?.paymentProofUrl)
+    )
+  );
+
+  const isPaidOrConditionallyPaid = isPaymentVerifiedByStore || isPaymentReportedWaitingStore || Boolean(liveOrder?.conditionally_paid);
+
   const isStockConfirmed = Boolean(
     liveOrder?.stock_confirmed ||
     liveOrder?.stockConfirmed ||
@@ -866,10 +907,56 @@ export default function OrderChatWindow({
 
   const renderMessageContent = (msg: Message) => {
     if (msg.action === 'payment_confirmed') {
+      const proofImg = msg.imageUrl || liveOrder?.payment_proof_url || liveOrder?.paymentProofUrl;
       return (
-        <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-2xl text-center shadow-sm w-full mx-2 my-2 animate-in zoom-in-95">
-          <CheckCircle className="w-7 h-7 text-emerald-600 mx-auto mb-1.5" />
-          <p className="text-emerald-900 font-black text-xs leading-snug whitespace-pre-wrap">{msg.text}</p>
+        <div className="bg-emerald-50/95 border-2 border-emerald-300 p-4 rounded-3xl text-left shadow-sm w-full mx-1 my-2 animate-in zoom-in-95 space-y-3">
+          <div className="flex items-center justify-between border-b border-emerald-200/80 pb-2.5">
+            <div className="flex items-center gap-2 text-emerald-900">
+              <div className="w-7 h-7 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <CheckCircle className="w-4 h-4" />
+              </div>
+              <div>
+                <p className="font-black text-xs uppercase tracking-wide text-emerald-950">Reporte de Pago Registrado</p>
+                <p className="text-[10px] text-emerald-700 font-bold">{msg.senderName}</p>
+              </div>
+            </div>
+            <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full border border-emerald-200">
+              Comprobante
+            </span>
+          </div>
+
+          <p className="text-slate-800 font-bold text-xs leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+
+          {/* Adjunto Visual / Tarjeta de Comprobante (Sin URLs expuestas) */}
+          {proofImg && (
+            <div className="pt-1">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 block mb-1.5 flex items-center gap-1">
+                <Paperclip className="w-3.5 h-3.5 text-emerald-600" /> Archivo Adjunto (Comprobante):
+              </span>
+              <div 
+                onClick={() => setViewingAttachment(proofImg)}
+                className="bg-white border-2 border-emerald-200 hover:border-emerald-500 p-2.5 rounded-2xl flex items-center gap-3 cursor-pointer group transition-all shadow-xs"
+              >
+                <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 shrink-0 border border-slate-200 relative">
+                  <img 
+                    src={proofImg} 
+                    alt="Capture de pago" 
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
+                  />
+                  <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-colors" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-black text-xs text-slate-900 group-hover:text-emerald-700 transition-colors flex items-center gap-1.5">
+                    <Eye className="w-3.5 h-3.5 text-emerald-600" /> Toca para revisar comprobante
+                  </p>
+                  <p className="text-[10px] font-bold text-slate-400">Ver captura completa en ventana sin URLs</p>
+                </div>
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors shrink-0">
+                  <Eye className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -924,9 +1011,15 @@ export default function OrderChatWindow({
             ) : isVideo ? (
               <video controls src={msg.imageUrl} className="max-w-full rounded-xl max-h-56 bg-black border border-slate-200 shadow-sm" />
             ) : (
-              <a href={msg.imageUrl} target="_blank" rel="noreferrer" className="block text-center">
-                <img src={msg.imageUrl} alt="comprobante" className="max-w-full rounded-xl max-h-52 object-contain bg-slate-50 border border-slate-200 shadow-sm" />
-              </a>
+              <div 
+                onClick={() => setViewingAttachment(msg.imageUrl || null)}
+                className="cursor-pointer group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 hover:opacity-95 transition-all text-center block"
+              >
+                <img src={msg.imageUrl} alt="Adjunto" className="max-w-full rounded-2xl max-h-52 object-contain bg-slate-50 border border-slate-200 shadow-sm mx-auto" />
+                <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1.5 backdrop-blur-[1px]">
+                  <Eye className="w-4 h-4" /> Toca para ver comprobante
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -971,14 +1064,39 @@ export default function OrderChatWindow({
           </div>
         </div>
 
-        {/* Toggle Pinned Summary Card */}
-        <button
-          onClick={() => setShowItemsList(!showItemsList)}
-          className="flex items-center gap-1.5 text-xs font-black text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors"
-        >
-          <span>Resumen ({orderItems.length})</span>
-          {showItemsList ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Direct Call Button (Replaces WhatsApp) */}
+          {(liveOrder?.restaurant_phone || orderInfo?.restaurantPhone || orderInfo?.restaurantWhatsapp || storeData?.phone || liveOrder?.user_phone || orderInfo?.userPhone) && (
+            <button
+              onClick={handlePhoneCall}
+              className="flex items-center gap-1 text-xs font-black text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2.5 py-1.5 rounded-xl transition-all active:scale-95"
+              title="Llamar directamente"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Llamar</span>
+            </button>
+          )}
+
+          {/* Toggle Pinned Summary Card */}
+          <button
+            onClick={() => setShowItemsList(!showItemsList)}
+            className="flex items-center gap-1.5 text-xs font-black text-slate-700 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-200 transition-colors"
+          >
+            <span>Resumen ({orderItems.length})</span>
+            {showItemsList ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          </button>
+
+          {/* Optional Direct Close button in Header */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors active:scale-95 ml-0.5"
+              title="Cerrar chat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Countdown Timer Banner */}
@@ -1119,27 +1237,27 @@ export default function OrderChatWindow({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* WhatsApp Fallback Button for Client if store is slow */}
+      {/* Phone Call Fallback Button for Client if store is slow */}
       {currentUserRole === 'client' && waTimeoutPassed && (
-        <div className="bg-emerald-50 border border-emerald-200 p-2.5 px-4 flex items-center justify-between text-xs text-emerald-900 rounded-2xl mx-3 mb-2 shadow-sm shrink-0">
+        <div className="bg-blue-50 border border-blue-200 p-2.5 px-4 flex items-center justify-between text-xs text-blue-900 rounded-2xl mx-3 mb-2 shadow-sm shrink-0">
           <span className="font-bold flex items-center gap-1.5 text-[11px]">
-            <MessageCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+            <Phone className="w-4 h-4 text-blue-600 shrink-0" />
             ¿El comercio tarda en responder?
           </span>
           <button
-            onClick={handleOpenWhatsAppFallback}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white font-black px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-sm transition-all text-xs"
+            onClick={handlePhoneCall}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all text-xs"
           >
-            WhatsApp
+            <Phone className="w-3.5 h-3.5" /> Llamar por teléfono
           </button>
         </div>
       )}
 
-      {/* ACTION BAR: Client (Ya pagué / Procesar Envío) */}
+      {/* ACTION BAR: Client */}
       {currentUserRole === 'client' && (
         <div className="shrink-0 bg-white border-t border-slate-200">
           {/* State 1: Client has not reported payment yet */}
-          {!isPaidOrConditionallyPaid && (
+          {!isPaymentVerifiedByStore && !isPaymentReportedWaitingStore && (
             <div className="bg-amber-50 p-2.5 px-4 flex items-center justify-between gap-2 border-b border-amber-200">
               <div className="flex items-center gap-2">
                 <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
@@ -1149,39 +1267,52 @@ export default function OrderChatWindow({
                 onClick={() => setShowPayModal(true)}
                 className="bg-primary hover:bg-primary/90 text-slate-900 font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
               >
-                <CheckCircle className="w-4 h-4 text-slate-900" /> Ya pagué
+                <CheckCircle className="w-4 h-4 text-slate-900" /> Reportar Pago
               </button>
             </div>
           )}
 
-          {/* State 2: Payment confirmed / verified */}
-          {isPaidOrConditionallyPaid && !isPickupOrder && (
-            <div className="p-2.5 px-4 bg-slate-50 flex items-center justify-between gap-3 border-b border-slate-200">
-              {qualifiesForFreeDelivery ? (
-                <div className="flex items-center gap-2 text-emerald-800">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="text-[11px] font-bold">
-                    🎁 ¡Envío Gratis activo! La tienda cubre el delivery y está coordinando el conductor.
-                  </span>
+          {/* State 2: Client reported payment, waiting for store confirmation */}
+          {isPaymentReportedWaitingStore && !isPaymentVerifiedByStore && (
+            <div className="bg-amber-50/90 p-3 px-4 flex items-center justify-between gap-3 border-b border-amber-200">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-full bg-amber-200/80 text-amber-800 flex items-center justify-center shrink-0">
+                  <Clock className="w-4 h-4 animate-spin" />
                 </div>
-              ) : (
-                <>
-                  <div className="flex items-center gap-2 text-slate-700 min-w-0">
-                    <Bike className="w-4 h-4 text-primary shrink-0" />
-                    <span className="text-[11px] font-bold truncate">
-                      {liveOrder?.status === 'buscando_piloto' 
-                        ? 'Buscando conductor para tu entrega...' 
-                        : 'Pago listo. Ahora solicita tu vehículo de entrega.'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => setShowClientDispatchModal(true)}
-                    className="bg-slate-950 hover:bg-slate-900 text-white font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
-                  >
-                    <Bike className="w-4 h-4 text-primary" /> Procesar Envío
-                  </button>
-                </>
-              )}
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-amber-950 truncate">Esperando confirmación del pago...</p>
+                  <p className="text-[10px] font-bold text-amber-700">El comercio está verificando tu comprobante</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-1 rounded-full shrink-0">
+                En Verificación
+              </span>
+            </div>
+          )}
+
+          {/* State 3: Store has VERIFIED payment */}
+          {isPaymentVerifiedByStore && (
+            <div className="p-3 px-4 bg-emerald-50 border-b border-emerald-200 flex items-center justify-between gap-3 animate-in slide-in-from-bottom-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                  <CheckCircle className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-emerald-950 truncate">¡Pago Confirmado por el Comercio! 🎉</p>
+                  <p className="text-[10px] font-bold text-emerald-700 truncate">
+                    {isPickupOrder ? 'Tu pedido está en preparación para retiro' : 'Avanza para seleccionar tu vehículo y repartidor'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (onClose) onClose();
+                }}
+                className="bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
+              >
+                <span>{isPickupOrder ? 'Ver Retiro' : 'Pedir Repartidor'}</span>
+                <ChevronRight className="w-4 h-4 text-primary" />
+              </button>
             </div>
           )}
         </div>
@@ -1190,7 +1321,7 @@ export default function OrderChatWindow({
       {/* ACTION BAR: Store / Cashier */}
       {isStoreRole && (
         <div className="bg-white p-2.5 border-t border-slate-200 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide shadow-sm z-10 w-full shrink-0">
-          {!isPaidOrConditionallyPaid && (
+          {!isPaymentVerifiedByStore && (
             <>
               <button
                 onClick={handleSendPagoMovilInfo}
@@ -1221,30 +1352,43 @@ export default function OrderChatWindow({
             </>
           )}
 
-          {/* Store preparation tool */}
-          <button
-            onClick={() => setShowPrepTimeModal(true)}
-            className="shrink-0 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
-          >
-            <Clock className="w-3.5 h-3.5" /> ⏱️ Tiempo Prep.
-          </button>
-
-          {/* Modalidad A: Store dispatch button (especially when free shipping applies) */}
-          {!isPickupOrder && (
-            <button
-              onClick={() => {
-                fetchDrivers();
-                setShowStoreDispatchModal(true);
-              }}
-              className={`shrink-0 font-black px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all ml-auto ${
-                qualifiesForFreeDelivery
-                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                  : 'bg-slate-900 hover:bg-slate-800 text-white'
-              }`}
-            >
-              <Bike className="w-3.5 h-3.5 text-primary" />
-              {qualifiesForFreeDelivery ? '🎁 Despachar (Envío Gratis)' : '🛵 Despachar Driver'}
-            </button>
+          {isPaymentVerifiedByStore && (
+            <div className="flex items-center gap-2 w-full">
+              <span className="text-[11px] font-black text-emerald-700 flex items-center gap-1 mr-auto truncate">
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                Pago Aprobado
+              </span>
+              <button
+                onClick={() => setShowPrepTimeModal(true)}
+                className="shrink-0 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+              >
+                <Clock className="w-3.5 h-3.5" /> ⏱️ Tiempo Prep.
+              </button>
+              {!isPickupOrder && (
+                <button
+                  onClick={() => {
+                    fetchDrivers();
+                    setShowStoreDispatchModal(true);
+                  }}
+                  className={`shrink-0 font-black px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition-all ${
+                    qualifiesForFreeDelivery
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                      : 'bg-slate-900 hover:bg-slate-800 text-white'
+                  }`}
+                >
+                  <Bike className="w-3.5 h-3.5 text-primary" />
+                  {qualifiesForFreeDelivery ? '🎁 Despachar (Envío Gratis)' : '🛵 Despachar Driver'}
+                </button>
+              )}
+              {onClose && (
+                <button
+                  onClick={onClose}
+                  className="shrink-0 bg-slate-900 hover:bg-slate-800 text-white font-black px-3 py-1.5 rounded-xl text-xs transition-all shadow-sm"
+                >
+                  Ir a Pedidos
+                </button>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -1865,6 +2009,77 @@ export default function OrderChatWindow({
                 ))
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* VENTANILLA / LIGHTBOX MODAL: Ver Comprobante o Imagen en Grande (Sin URLs expuestas) */}
+      {viewingAttachment && (
+        <div 
+          className="fixed inset-0 z-[300] bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-between p-4 sm:p-6 animate-in fade-in duration-200"
+          onClick={() => setViewingAttachment(null)}
+        >
+          {/* Header del Lightbox */}
+          <div 
+            className="w-full max-w-lg flex items-center justify-between text-white shrink-0 py-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-primary">
+                <Receipt className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-black text-sm text-white">Comprobante de Pago</h4>
+                <p className="text-[10px] text-white/60 font-bold">Vista de archivo adjunto</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setViewingAttachment(null)}
+              className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors active:scale-95"
+              title="Cerrar ventanilla"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Imagen Principal en Grande */}
+          <div 
+            className="flex-1 w-full max-w-lg flex items-center justify-center overflow-hidden my-auto p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={viewingAttachment}
+              alt="Comprobante de pago"
+              className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl border border-white/15 bg-slate-900"
+            />
+          </div>
+
+          {/* Footer con Acciones */}
+          <div 
+            className="w-full max-w-lg flex items-center gap-3 pt-3 shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {isStoreRole && !isPaymentVerifiedByStore && (
+              <button
+                onClick={async () => {
+                  setViewingAttachment(null);
+                  await confirmPayment();
+                }}
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-black py-3.5 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 active:scale-95 transition-all"
+              >
+                <CheckCircle className="w-4 h-4" /> Aprobar y Confirmar Pago
+              </button>
+            )}
+            <button
+              onClick={() => setViewingAttachment(null)}
+              className={`py-3.5 rounded-2xl font-black text-xs transition-all active:scale-95 ${
+                isStoreRole && !isPaymentVerifiedByStore
+                  ? 'px-6 bg-white/15 hover:bg-white/25 text-white'
+                  : 'w-full bg-white hover:bg-slate-100 text-slate-900'
+              }`}
+            >
+              Cerrar Ventana
+            </button>
           </div>
         </div>
       )}

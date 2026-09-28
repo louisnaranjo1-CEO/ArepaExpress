@@ -2993,23 +2993,16 @@ ESTADO: ${order.status.toUpperCase()}
 
             {/* Modal de Chat con Cliente */}
             {chatOrderId && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="w-full max-w-lg relative animate-in zoom-in-95 duration-200">
-                        <button 
-                            onClick={() => setChatOrderId(null)}
-                            className="absolute -top-12 right-0 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-all cursor-pointer"
-                        >
-                            <X className="w-6 h-6" />
-                        </button>
-                        <OrderChatWindow
-                            orderId={chatOrderId}
-                            currentUserRole="restaurant"
-                            currentUserId={cashierData?.id || 'cashier'}
-                            currentUserName={cashierData?.name || 'Caja'}
-                            restaurantId={restaurantId!}
-                            orderInfo={orders.find(o => o.id === chatOrderId)}
-                        />
-                    </div>
+                <div className="fixed inset-0 z-[200] bg-white flex flex-col w-full h-full overflow-hidden animate-in fade-in duration-200">
+                    <OrderChatWindow
+                        orderId={chatOrderId}
+                        currentUserRole="restaurant"
+                        currentUserId={cashierData?.id || 'cashier'}
+                        currentUserName={cashierData?.name || 'Caja'}
+                        restaurantId={restaurantId!}
+                        orderInfo={orders.find(o => o.id === chatOrderId)}
+                        onClose={() => setChatOrderId(null)}
+                    />
                 </div>
             )}
 

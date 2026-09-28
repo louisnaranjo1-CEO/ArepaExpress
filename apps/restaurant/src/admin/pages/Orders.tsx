@@ -1095,7 +1095,8 @@ export default function Orders() {
             o.status === 'awaiting_payment' ||
             o.status === 'action_required' ||
             o.status === 'pending_verification' ||
-            o.status === 'preparing'
+            o.status === 'preparing' ||
+            o.status === 'awaiting_delivery_driver'
         ).length,
         delivering: orders.filter(o => o.status === 'delivering' || o.status === 'buscando_piloto' || o.status === 'conductor_asignado' || o.status === 'en_camino').length,
         delivered: orders.filter(o => o.status === 'delivered').length,
@@ -1113,6 +1114,7 @@ export default function Orders() {
                 o.status === 'action_required' ||
                 o.status === 'pending_verification' ||
                 o.status === 'preparing' ||
+                o.status === 'awaiting_delivery_driver' ||
                 o.status === 'awaiting_delivery_payment' ||
                 o.status === 'verificando_pago_delivery'
             );
@@ -1505,7 +1507,7 @@ export default function Orders() {
                     </>
                 )}
                 
-                {(order.status === 'preparing' || order.status === 'buscando_piloto' || order.status === 'piloto_asignado') && (
+                {(order.status === 'preparing' || order.status === 'awaiting_delivery_driver' || order.status === 'buscando_piloto' || order.status === 'piloto_asignado') && (
                     <div className="flex flex-col w-full gap-2.5">
                         {order.status === 'preparing' && (
                             <div className="bg-amber-50 border border-amber-200 px-3.5 py-2 rounded-2xl flex items-center justify-between text-xs">
@@ -1591,23 +1593,16 @@ export default function Orders() {
                     </button>
                 )}
                 {chatOrderId === order.id && (
-                    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-                        <div className="w-full max-w-lg relative">
-                            <button 
-                                onClick={() => setChatOrderId(null)}
-                                className="absolute -top-12 right-0 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-all"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                            <OrderChatWindow
-                                orderId={order.id}
-                                currentUserRole="restaurant"
-                                currentUserId={user?.uid || 'admin'}
-                                currentUserName={user?.email === 'admin@un2x3.com' ? 'Administración 2x3' : 'Caja Central'}
-                                restaurantId={rid!}
-                                orderInfo={order}
-                            />
-                        </div>
+                    <div className="fixed inset-0 z-[200] bg-white flex flex-col w-full h-full overflow-hidden animate-in fade-in duration-200">
+                        <OrderChatWindow
+                            orderId={order.id}
+                            currentUserRole="restaurant"
+                            currentUserId={user?.uid || 'admin'}
+                            currentUserName={user?.email === 'admin@un2x3.com' ? 'Administración 2x3' : 'Caja Central'}
+                            restaurantId={rid!}
+                            orderInfo={order}
+                            onClose={() => setChatOrderId(null)}
+                        />
                     </div>
                 )}
             </div>

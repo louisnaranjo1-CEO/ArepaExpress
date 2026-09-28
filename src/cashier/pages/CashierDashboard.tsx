@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt, Image as ImageIcon, Lock } from 'lucide-react';
+import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt, Image as ImageIcon, Lock, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
@@ -35,6 +35,8 @@ interface Order {
     paymentProofUrl?: string;
     reference?: string;
     paymentReference?: string;
+    preferred_driver_id?: string | null;
+    preferred_driver_expires_at?: string | null;
 }
 
 export default function CashierDashboard() {
@@ -120,6 +122,9 @@ export default function CashierDashboard() {
     const [dispatchModalOpen, setDispatchModalOpen] = useState(false);
     const [selectedOrderForDispatch, setSelectedOrderForDispatch] = useState<any>(null);
     const [dispatchType, setDispatchType] = useState<'own' | 'platform'>('own');
+    const [selectedDriver, setSelectedDriver] = useState<string>('');
+    const [drivers, setDrivers] = useState<any[]>([]);
+    const [now, setNow] = useState(Date.now());
 
     // Printing
     const [printingOrderId, setPrintingOrderId] = useState<string | null>(null);
@@ -136,6 +141,19 @@ export default function CashierDashboard() {
 
     // Audio object for the notification sound
     const [notificationSound] = useState(() => new Audio('https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/Digital_Cascade_01.mp3'));
+
+    useEffect(() => {
+        const interval = setInterval(() => setNow(Date.now()), 1000);
+        return () => clearInterval(interval);
+    }, []);
+
+    useEffect(() => {
+        const fetchDrivers = async () => {
+            const { data } = await supabase.from('profiles').select('*').eq('role', 'delivery');
+            setDrivers(data || []);
+        };
+        fetchDrivers();
+    }, []);
 
     useEffect(() => {
         const storedCashier = localStorage.getItem('cashierData');
@@ -208,7 +226,9 @@ export default function CashierDashboard() {
                 stockConfirmed: o.stock_confirmed ?? o.stockConfirmed,
                 deliveryMethod: o.delivery_method || o.deliveryMethod || (o.order_type === 'pickup' ? 'pickup' : 'delivery'),
                 deliverySource: o.delivery_source || o.deliverySource,
-                installments: o.installments || []
+                installments: o.installments || [],
+                preferred_driver_id: o.preferred_driver_id,
+                preferred_driver_expires_at: o.preferred_driver_expires_at
             } as any;
         };
 
@@ -1246,6 +1266,9 @@ ESTADO: ${order.status.toUpperCase()}
     const renderOrderCard = (order: Order) => {
         const isWaiter = order.source === 'waiter';
         const isPreparing = order.status === 'preparing';
+        const isPreferredActive = order.status === 'buscando_piloto' && !!order.preferred_driver_id && !!order.preferred_driver_expires_at && new Date(order.preferred_driver_expires_at).getTime() > now;
+        const countdownSecs = isPreferredActive ? Math.max(0, Math.ceil((new Date(order.preferred_driver_expires_at!).getTime() - now) / 1000)) : 0;
+        const preferredDriverObj = isPreferredActive ? drivers.find(d => d.id === order.preferred_driver_id) : null;
         
         return (
             <motion.div
@@ -1278,6 +1301,7 @@ ESTADO: ${order.status.toUpperCase()}
                             order.status === 'pending' ? 'bg-primary text-slate-900' :
                             order.status === 'pending_verification' ? 'bg-amber-400 text-slate-900 animate-pulse' :
                             order.status === 'preparing' ? 'bg-emerald-500 text-slate-900' :
+                            order.status === 'buscando_piloto' ? (isPreferredActive ? 'bg-amber-500 text-white animate-pulse' : 'bg-blue-500 text-white animate-pulse') :
                             order.status === 'delivering' ? 'bg-emerald-600 text-slate-900' :
                             order.status === 'delivered' ? 'bg-slate-900 text-white' :
                             'bg-red-100 text-red-600'
@@ -1285,6 +1309,7 @@ ESTADO: ${order.status.toUpperCase()}
                             {order.status === 'pending' ? 'Pendiente' :
                              order.status === 'pending_verification' ? 'Verificar Pago' :
                              order.status === 'preparing' ? 'Por Despachar' :
+                             order.status === 'buscando_piloto' ? (isPreferredActive ? 'Conductor Asignado' : 'Buscando Delivery') :
                              order.status === 'delivering' ? 'En Camino' :
                              order.status === 'delivered' ? 'Entregado' : 'Rechazado'}
                         </div>
@@ -1306,6 +1331,35 @@ ESTADO: ${order.status.toUpperCase()}
                             </span>
                         </div>
                     </div>
+
+                    {order.status === 'buscando_piloto' && (
+                        <div className={`p-3.5 rounded-2xl border ${isPreferredActive ? 'bg-amber-50 border-amber-200 text-amber-900' : 'bg-blue-50 border-blue-200 text-blue-900'}`}>
+                            {isPreferredActive ? (
+                                <div>
+                                    <div className="flex items-center justify-between text-xs font-bold mb-1">
+                                        <span className="flex items-center gap-1.5 text-amber-800">
+                                            <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                                            Conductor Preferido:
+                                        </span>
+                                        <span className="font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded-lg text-xs">
+                                            {countdownSecs}s
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] font-black text-amber-900 truncate">
+                                        {preferredDriverObj?.full_name || 'Conductor asignado'}
+                                    </p>
+                                    <p className="text-[10px] text-amber-700 mt-1">
+                                        Esperando respuesta del conductor asignado: {countdownSecs}s antes de abrir a radar general.
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2 text-xs font-bold text-blue-800">
+                                    <Truck className="w-4 h-4 text-blue-600 animate-pulse" />
+                                    <span>Radar general activo: buscando repartidores disponibles...</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {!isWaiter && (
                         <div className="space-y-2">
@@ -1402,6 +1456,20 @@ ESTADO: ${order.status.toUpperCase()}
                         >
                             <CheckCircle className="w-4 h-4" />
                             Listo para Mesa
+                        </button>
+                    )}
+
+                    {order.status === 'buscando_piloto' && (
+                        <button
+                            onClick={() => {
+                                if (window.confirm("¿Deseas cancelar la solicitud de delivery y devolver la orden a cocina?")) {
+                                    updateStatus(order.id, 'preparing');
+                                }
+                            }}
+                            className="flex-1 bg-slate-100 text-slate-600 py-4 rounded-2xl font-bold text-xs flex items-center justify-center gap-2 hover:bg-red-50 hover:text-red-500 transition-all border border-slate-200"
+                        >
+                            <X className="w-4 h-4" />
+                            Cancelar Radar
                         </button>
                     )}
 
@@ -1661,8 +1729,8 @@ ESTADO: ${order.status.toUpperCase()}
                                     <div className="space-y-6">
                                         <div className="flex items-center gap-4">
                                             <h2 className="text-sm font-black text-emerald-500 uppercase tracking-[0.3em] flex items-center gap-2 whitespace-nowrap">
-                                                <Truck className="w-4 h-4" />
-                                                🚚 App / Delivery Express ({filteredOrders.filter(o => o.source !== 'waiter').length})
+                                                <Package className="w-4 h-4 text-emerald-600" />
+                                                📦 Pedidos Entrantes ({filteredOrders.filter(o => o.source !== 'waiter').length})
                                             </h2>
                                             <div className="h-px flex-1 bg-emerald-100"></div>
                                         </div>
@@ -2133,6 +2201,41 @@ ESTADO: ${order.status.toUpperCase()}
                                     </button>
                                 </div>
 
+                                {dispatchType === 'platform' && (
+                                    <div className="space-y-3 p-4 bg-slate-50 rounded-3xl border border-slate-200">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                                            Asignación de Motorizado
+                                        </label>
+                                        <select
+                                            value={selectedDriver}
+                                            onChange={(e) => setSelectedDriver(e.target.value)}
+                                            className="w-full bg-white border border-slate-200 p-3 rounded-2xl font-bold text-xs text-slate-800 outline-none focus:border-blue-500 transition-all cursor-pointer"
+                                        >
+                                            <option value="">Radar Abierto (Todos los conductores)</option>
+                                            {drivers.map((drv) => (
+                                                <option key={drv.id} value={drv.id}>
+                                                    ⭐ Conductor Preferido: {drv.full_name || drv.name || drv.email} {drv.phone ? `(${drv.phone})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {selectedDriver ? (
+                                            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-center">
+                                                <p className="text-xs font-black text-amber-900 flex items-center justify-center gap-1.5 mb-0.5">
+                                                    <Clock className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                                                    60 segundos de exclusividad
+                                                </p>
+                                                <p className="text-[10px] font-medium text-amber-700 leading-tight">
+                                                    El conductor preferido tendrá 60 segundos para aceptar antes de abrirse automáticamente a toda la red de motorizados.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <p className="text-[10px] text-slate-400 font-medium px-1">
+                                                Se notificará simultáneamente a todos los conductores activos de la plataforma.
+                                            </p>
+                                        )}
+                                    </div>
+                                )}
+
                                 <button
                                     onClick={async () => {
                                         if (dispatchType === 'own') {
@@ -2141,10 +2244,13 @@ ESTADO: ${order.status.toUpperCase()}
                                                 await supabase.from('orders').update({
                                                     status: 'delivering',
                                                     dispatched_at: new Date().toISOString(),
-                                                    delivery_source: 'own'
+                                                    delivery_source: 'own',
+                                                    preferred_driver_id: null,
+                                                    preferred_driver_expires_at: null
                                                 }).eq('id', selectedOrderForDispatch.id);
                                                 toast.success("Pedido enviado con delivery propio");
                                                 setDispatchModalOpen(false);
+                                                setSelectedDriver('');
                                             } catch (err) {
                                                 toast.error("Error al despachar");
                                             } finally {
@@ -2152,22 +2258,28 @@ ESTADO: ${order.status.toUpperCase()}
                                             }
                                         } else {
                                             setIsAccepting(true);
-                                            // Show radar for 3 seconds then update
-                                            setTimeout(async () => {
-                                                try {
-                                                    await supabase.from('orders').update({
-                                                        status: 'buscando_piloto',
-                                                        delivery_requested_at: new Date().toISOString(),
-                                                        delivery_source: 'platform'
-                                                    }).eq('id', selectedOrderForDispatch.id);
-                                                    toast.success("Señal enviada a los repartidores");
-                                                    setDispatchModalOpen(false);
-                                                } catch (err) {
-                                                    toast.error("Error al solicitar delivery");
-                                                } finally {
-                                                    setIsAccepting(false);
+                                            try {
+                                                const updates: any = {
+                                                    status: 'buscando_piloto',
+                                                    delivery_requested_at: new Date().toISOString(),
+                                                    delivery_source: 'platform'
+                                                };
+                                                if (selectedDriver) {
+                                                    updates.preferred_driver_id = selectedDriver;
+                                                    updates.preferred_driver_expires_at = new Date(Date.now() + 60000).toISOString();
+                                                } else {
+                                                    updates.preferred_driver_id = null;
+                                                    updates.preferred_driver_expires_at = null;
                                                 }
-                                            }, 3500);
+                                                await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
+                                                toast.success(selectedDriver ? "Orden despachada con 60s al conductor preferido" : "Señal enviada a los repartidores");
+                                                setDispatchModalOpen(false);
+                                                setSelectedDriver('');
+                                            } catch (err) {
+                                                toast.error("Error al solicitar delivery");
+                                            } finally {
+                                                setIsAccepting(false);
+                                            }
                                         }
                                     }}
                                     disabled={isAccepting}
@@ -2881,23 +2993,16 @@ ESTADO: ${order.status.toUpperCase()}
 
             {/* Modal de Chat con Cliente */}
             {chatOrderId && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-                    <div className="w-full max-w-lg relative animate-in zoom-in-95 duration-200">
-                        <button 
-                            onClick={() => setChatOrderId(null)}
-                            className="absolute -top-12 right-0 bg-white/20 hover:bg-white/40 text-white p-2 rounded-full transition-all cursor-pointer"
-                        >
-                            <X className="w-6 h-6" />
-                        </button>
-                        <OrderChatWindow
-                            orderId={chatOrderId}
-                            currentUserRole="restaurant"
-                            currentUserId={cashierData?.id || 'cashier'}
-                            currentUserName={cashierData?.name || 'Caja'}
-                            restaurantId={restaurantId!}
-                            orderInfo={orders.find(o => o.id === chatOrderId)}
-                        />
-                    </div>
+                <div className="fixed inset-0 z-[200] bg-white flex flex-col w-full h-full overflow-hidden animate-in fade-in duration-200">
+                    <OrderChatWindow
+                        orderId={chatOrderId}
+                        currentUserRole="restaurant"
+                        currentUserId={cashierData?.id || 'cashier'}
+                        currentUserName={cashierData?.name || 'Caja'}
+                        restaurantId={restaurantId!}
+                        orderInfo={orders.find(o => o.id === chatOrderId)}
+                        onClose={() => setChatOrderId(null)}
+                    />
                 </div>
             )}
 
