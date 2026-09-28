@@ -29,6 +29,7 @@ interface OrderChatWindowProps {
   customCollectionPath?: string;
   className?: string;
   onClose?: () => void;
+  onProceedToDelivery?: () => void;
 }
 
 export default function OrderChatWindow({
@@ -40,7 +41,8 @@ export default function OrderChatWindow({
   orderInfo,
   customCollectionPath,
   className,
-  onClose
+  onClose,
+  onProceedToDelivery
 }: OrderChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -456,11 +458,7 @@ export default function OrderChatWindow({
         status: 'pending_verification',
         payment_status: 'verifying',
         payment_reference: payReferenceCode.trim() || null,
-        paymentReference: payReferenceCode.trim() || null,
         payment_proof_url: proofUrl || null,
-        paymentProofUrl: proofUrl || null,
-        restaurant_payment_client_confirmed: true,
-        restaurantPaymentClientConfirmed: true,
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
@@ -469,11 +467,7 @@ export default function OrderChatWindow({
         status: 'pending_verification',
         payment_status: 'verifying',
         payment_reference: payReferenceCode.trim() || null,
-        paymentReference: payReferenceCode.trim() || null,
-        payment_proof_url: proofUrl || null,
-        paymentProofUrl: proofUrl || null,
-        restaurant_payment_client_confirmed: true,
-        restaurantPaymentClientConfirmed: true
+        payment_proof_url: proofUrl || null
       }));
 
       const refText = payReferenceCode.trim() ? `• Referencia: #${payReferenceCode.trim()}` : '';
@@ -578,9 +572,7 @@ export default function OrderChatWindow({
       await supabase.from('orders').update({
         status: 'delivering',
         driver_id: chosenDriver.id,
-        driverId: chosenDriver.id,
         driver_name: driverName,
-        driverName: driverName,
         dispatched_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
@@ -712,8 +704,6 @@ export default function OrderChatWindow({
     try {
       await supabase.from('orders').update({
         items: updatedItems,
-        missing_items: missing,
-        missingItems: missing,
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
@@ -771,7 +761,6 @@ export default function OrderChatWindow({
     });
 
     const newSubtotal = updatedItems.reduce((sum, it) => sum + ((it.price || 0) * (it.quantity || 1)), 0);
-    const missing = updatedItems.filter(it => it.isSoldOut).map(it => it.id);
 
     setOrderItems(updatedItems);
     setShowSubstituteModal(false);
@@ -781,8 +770,6 @@ export default function OrderChatWindow({
         items: updatedItems,
         subtotal: newSubtotal,
         total: newSubtotal + (orderInfo?.deliveryFee || 0),
-        missing_items: missing,
-        missingItems: missing,
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
@@ -833,8 +820,6 @@ export default function OrderChatWindow({
 
     try {
       await supabase.from('orders').update({
-        restaurant_payment_client_confirmed: true,
-        restaurantPaymentClientConfirmed: true,
         status: nextStatus,
         payment_status: 'paid',
         updated_at: new Date().toISOString()
@@ -842,8 +827,6 @@ export default function OrderChatWindow({
 
       setLiveOrder((prev: any) => ({
         ...prev,
-        restaurant_payment_client_confirmed: true,
-        restaurantPaymentClientConfirmed: true,
         status: nextStatus,
         payment_status: 'paid'
       }));
@@ -859,12 +842,11 @@ export default function OrderChatWindow({
   const handleConfirmStoreStock = async () => {
     try {
       await supabase.from('orders').update({
-        stock_confirmed: true,
-        stockConfirmed: true,
+        status: 'awaiting_payment',
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
-      setLiveOrder((prev: any) => ({ ...prev, stock_confirmed: true, stockConfirmed: true }));
+      setLiveOrder((prev: any) => ({ ...prev, status: 'awaiting_payment' }));
 
       await handleSendMessage("✅ *STOCK CONFIRMADO POR EL COMERCIO:*\nTodos los productos de tu pedido están disponibles y apartados. Puedes proceder con el pago con total tranquilidad.");
       toast.success("Stock confirmado al cliente.");
@@ -1327,8 +1309,21 @@ export default function OrderChatWindow({
                 </div>
               </div>
               <button
-                onClick={() => {
-                  if (onClose) onClose();
+                onClick={async () => {
+                  try {
+                    await supabase.from('orders').update({
+                      status: isPickupOrder ? 'preparing' : 'awaiting_delivery_driver',
+                      payment_status: 'paid',
+                      updated_at: new Date().toISOString()
+                    }).eq('id', orderId);
+                  } catch (e) {
+                    console.error("Error setting awaiting_delivery_driver:", e);
+                  }
+                  if (onProceedToDelivery) {
+                    onProceedToDelivery();
+                  } else if (onClose) {
+                    onClose();
+                  }
                 }}
                 className="bg-slate-900 hover:bg-slate-800 text-white font-black px-4 py-2.5 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
               >

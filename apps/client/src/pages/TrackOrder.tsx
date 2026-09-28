@@ -752,7 +752,8 @@ export default function TrackOrder() {
     };
 
     // ── Derived Data & Computations ──────────────────────────────────────────
-    const currentStep = getFlowStep(order, transportRequest);
+    const [forcedStep, setForcedStep] = useState<number | null>(null);
+    const currentStep = forcedStep ?? getFlowStep(order, transportRequest);
     const isPickup = order?.deliveryMethod === 'pickup' || order?.delivery_method === 'pickup';
 
     const itemsTotal = Array.isArray(order?.items)
@@ -1784,6 +1785,15 @@ export default function TrackOrder() {
                                 restaurantId={order.restaurantId || order.restaurant_id}
                                 orderInfo={order}
                                 onClose={() => setShowChat(false)}
+                                onProceedToDelivery={() => {
+                                    setForcedStep(3);
+                                    setOrder((prev: any) => ({
+                                        ...prev,
+                                        status: 'awaiting_delivery_driver',
+                                        payment_status: 'paid'
+                                    }));
+                                    setShowChat(false);
+                                }}
                             />
                         </div>
                     </motion.div>
