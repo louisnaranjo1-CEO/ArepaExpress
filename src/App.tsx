@@ -146,7 +146,11 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
 function AppContent() {
     const { user, userData, isUnlocked } = useAuth();
     const location = useLocation();
-    const isTrackRoute = location.pathname.startsWith('/taxi/track') || location.pathname.startsWith('/track');
+    const isTrackRoute =
+        location.pathname.startsWith('/taxi/track') ||
+        location.pathname.startsWith('/track') ||
+        location.pathname.startsWith('/transport/tracking') ||
+        location.pathname.startsWith('/mandado/tracking');
 
     const isLocked = Boolean(user && (userData?.biometricLockEnabled || userData?.biometric_lock_enabled) && !isUnlocked);
 
@@ -166,7 +170,10 @@ function AppContent() {
                         <Route path="/rewards" element={<Rewards />} />
                         <Route path="/notifications" element={<Notifications />} />
                         <Route path="/track/:orderId" element={<TrackOrder />} />
+                        <Route path="/delivery/track/:orderId" element={<TrackOrder />} />
                         <Route path="/taxi/track/:requestId" element={<TransportTracker />} />
+                        <Route path="/transport/tracking/:requestId" element={<TransportTracker />} />
+                        <Route path="/mandado/tracking/:requestId" element={<TransportTracker />} />
                         <Route path="/taxi" element={<Taxi />} />
                         <Route path="/services" element={<Services />} />
                         <Route path="/reset-password" element={<ResetPassword />} />

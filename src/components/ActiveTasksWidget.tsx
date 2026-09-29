@@ -239,8 +239,14 @@ export default function ActiveTasksWidget() {
 
             // Map transports
             (transports || []).forEach((t: any) => {
+                const isFoodDelivery = t.service_category === 'food_delivery' || t.type === 'food_delivery' || Boolean(t.order_id);
                 let catName = 'Viaje Taxi';
-                if (t.service_category === 'mototaxi') catName = 'Mototaxi';
+                if (isFoodDelivery) {
+                    const matchedOrder = (orders || []).find((o: any) => o.id === t.order_id);
+                    const storeName = matchedOrder?.restaurant_name || matchedOrder?.restaurantName;
+                    catName = storeName ? `DELIVERY · ${storeName}` : 'DELIVERY';
+                }
+                else if (t.service_category === 'mototaxi') catName = 'Mototaxi';
                 else if (t.service_category === 'taxi_driver') catName = 'Carro Taxi';
                 else if (t.service_category === 'carro_confort') catName = 'Carro Confort';
                 else if (t.service_category === 'delivery_envios') catName = 'Envío de Paquete';
@@ -263,7 +269,29 @@ export default function ActiveTasksWidget() {
                 let badgeStatus = 'Buscando';
                 let badgeColor = 'bg-amber-400 text-slate-950 font-black';
 
-                if (t.service_category === 'muchacho_mandado' || t.type === 'muchacho_mandado') {
+                if (isFoodDelivery) {
+                    if (t.status === 'searching') {
+                        subtitle = t.assigned_driver_id
+                            ? 'Conectando con el repartidor seleccionado...'
+                            : 'Buscando repartidor para tu pedido...';
+                        badgeStatus = t.assigned_driver_id ? 'Conectando' : 'Buscando';
+                        badgeColor = 'bg-amber-400 text-slate-950 font-black';
+                    } else if (t.status === 'accepted') {
+                        subtitle = t.driver_name
+                            ? `🛵 Repartidor asignado: ${t.driver_name} va al local a retirar tu pedido`
+                            : '🛵 Repartidor va en camino al local a retirar tu pedido';
+                        badgeStatus = 'En camino';
+                        badgeColor = 'bg-sky-500 text-white font-black';
+                    } else if (t.status === 'arriving') {
+                        subtitle = '🏪 Repartidor llegó al comercio a retirar tu pedido';
+                        badgeStatus = 'En el local';
+                        badgeColor = 'bg-emerald-500 text-white font-black animate-pulse';
+                    } else if (t.status === 'in_progress') {
+                        subtitle = '🛵 Repartidor en camino a entregarte tu pedido';
+                        badgeStatus = 'En entrega';
+                        badgeColor = 'bg-indigo-500 text-white font-black';
+                    }
+                } else if (t.service_category === 'muchacho_mandado' || t.type === 'muchacho_mandado') {
                     if (t.status === 'searching') {
                         if (bids.length > 0) {
                             subtitle = `🔥 ¡Ofertas recibidas: ${bids.length} ${bids.length === 1 ? 'piloto' : 'pilotos'}! Revisa las tarifas abajo y elige tu mejor opción:`;
@@ -355,14 +383,24 @@ export default function ActiveTasksWidget() {
                     mandadoDescription: t.mandado_details?.description || t.notes || '',
                     mandadoStoreName: t.mandado_details?.storeName || '',
                     createdAt: t.created_at,
-                    url: `/taxi/track/${t.id}`,
+                    url: isFoodDelivery && t.order_id ? `/track/${t.order_id}` : `/taxi/track/${t.id}`,
                     bids,
                     assignedDriverId: t.assigned_driver_id
                 });
             });
 
+            // Set of order ids that already have an active transport request
+            const activeTransportOrderIds = new Set(
+                (transports || [])
+                    .filter((t: any) => t.order_id && ['searching', 'accepted', 'arriving', 'in_progress'].includes(t.status))
+                    .map((t: any) => t.order_id)
+            );
+
             // Map store orders
             (orders || []).forEach((o: any) => {
+                if (activeTransportOrderIds.has(o.id)) {
+                    return;
+                }
                 let subtitle = 'Procesando tu pedido en tienda...';
                 let badgeStatus = 'Procesando';
                 let badgeColor = 'bg-amber-400 text-slate-950 font-black';
@@ -636,6 +674,7 @@ export default function ActiveTasksWidget() {
                     const isInProgress = task.status === 'in_progress' || task.status === 'on_way';
                     const isSearching = task.status === 'searching';
                     const isMandado = task.serviceCategory === 'muchacho_mandado' || task.serviceCategory === 'mandado';
+                    const isFoodDelivery = task.serviceCategory === 'food_delivery' || task.title.startsWith('DELIVERY');
                     const bidsCount = (task.bids || []).length;
                     const hasBids = bidsCount > 0;
 
@@ -653,7 +692,7 @@ export default function ActiveTasksWidget() {
                         <div
                             key={task.id}
                             className={`rounded-3xl border transition-all relative overflow-hidden shadow-lg hover:shadow-xl ${
-                                task.type === 'order'
+                                task.type === 'order' || isFoodDelivery
                                     ? 'bg-gradient-to-r from-orange-600 via-amber-600 to-rose-600 text-white border-orange-400 ring-2 ring-orange-300/40 shadow-orange-500/20'
                                     : isArriving
                                     ? 'bg-gradient-to-r from-emerald-600 via-teal-700 to-emerald-800 text-white border-emerald-400 ring-2 ring-emerald-400/50'
@@ -679,12 +718,14 @@ export default function ActiveTasksWidget() {
                                     <div className="flex items-center gap-2 min-w-0">
                                         <div
                                             className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-sm ${
-                                                task.type === 'order' || isArriving || isInProgress
+                                                task.type === 'order' || isFoodDelivery || isArriving || isInProgress
                                                     ? 'bg-white/20 text-white'
                                                     : 'bg-slate-950/15 text-slate-950'
                                             }`}
                                         >
-                                            {task.serviceCategory === 'mototaxi' ? (
+                                            {isFoodDelivery ? (
+                                                <Bike className="w-5 h-5" />
+                                            ) : task.serviceCategory === 'mototaxi' ? (
                                                 <Bike className="w-5 h-5" />
                                             ) : task.serviceCategory === 'delivery_envios' ? (
                                                 <Package className="w-5 h-5" />
@@ -727,7 +768,7 @@ export default function ActiveTasksWidget() {
                                         {task.price !== undefined && task.price > 0 && (
                                             <div
                                                 className={`text-right px-2 py-0.5 rounded-xl ${
-                                                    task.type === 'order' || isArriving || isInProgress
+                                                    task.type === 'order' || isFoodDelivery || isArriving || isInProgress
                                                         ? 'bg-white/20 text-white'
                                                         : 'bg-black/10 text-slate-950'
                                                 }`}
@@ -761,7 +802,7 @@ export default function ActiveTasksWidget() {
                                 ) : (
                                     <p
                                         className={`text-xs font-bold leading-snug mb-2 ${
-                                            isArriving || isInProgress ? 'text-slate-100' : isExpired ? 'text-rose-900 font-black' : 'text-slate-900'
+                                            isArriving || isInProgress || isFoodDelivery ? 'text-slate-100' : isExpired ? 'text-rose-900 font-black' : 'text-slate-900'
                                         }`}
                                     >
                                         {isExpired ? '⚠️ No encontramos conductores disponibles en este momento.' : task.subtitle}

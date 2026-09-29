@@ -19,8 +19,12 @@ interface LiveTripMapProps {
     showControls?: boolean;
 }
 
+export const isValidCoord = (c: any): c is Coords =>
+    Boolean(c && typeof c.lat === 'number' && typeof c.lng === 'number' && !isNaN(c.lat) && !isNaN(c.lng));
+
 // Compute bearing angle between two coordinates (0 - 360 degrees)
 function calculateBearing(start: Coords, end: Coords): number {
+    if (!isValidCoord(start) || !isValidCoord(end)) return 0;
     const startLat = (start.lat * Math.PI) / 180;
     const startLng = (start.lng * Math.PI) / 180;
     const endLat = (end.lat * Math.PI) / 180;
@@ -206,9 +210,9 @@ export default function LiveTripMap({
             mapRef.current = null;
         }
 
-        const initialCenter: [number, number] = driverLocation
+        const initialCenter: [number, number] = isValidCoord(driverLocation)
             ? [driverLocation.lat, driverLocation.lng]
-            : origin
+            : isValidCoord(origin)
             ? [origin.lat, origin.lng]
             : [8.9326, -67.4264]; // Venezuela fallback center
 
@@ -255,7 +259,7 @@ export default function LiveTripMap({
         if (!map) return;
 
         // 1. Origin Marker
-        if (origin) {
+        if (isValidCoord(origin)) {
             if (!originMarkerRef.current) {
                 originMarkerRef.current = L.marker([origin.lat, origin.lng], {
                     icon: create3DPinIcon('origin'),
@@ -267,7 +271,7 @@ export default function LiveTripMap({
         }
 
         // 2. Destination Marker
-        if (destination) {
+        if (isValidCoord(destination)) {
             if (!destMarkerRef.current) {
                 destMarkerRef.current = L.marker([destination.lat, destination.lng], {
                     icon: create3DPinIcon('destination'),
@@ -279,10 +283,13 @@ export default function LiveTripMap({
         }
 
         // 3. Driver Location & Bearing Calculation
-        const currentDriverLoc = driverLocation || origin;
+        const currentDriverLoc = isValidCoord(driverLocation)
+            ? driverLocation
+            : (isValidCoord(origin) ? origin : null);
+
         if (currentDriverLoc) {
             let currentBearing = bearing;
-            if (prevDriverLocRef.current) {
+            if (prevDriverLocRef.current && isValidCoord(prevDriverLocRef.current)) {
                 const dist = Math.hypot(
                     currentDriverLoc.lat - prevDriverLocRef.current.lat,
                     currentDriverLoc.lng - prevDriverLocRef.current.lng
@@ -291,7 +298,7 @@ export default function LiveTripMap({
                     currentBearing = calculateBearing(prevDriverLocRef.current, currentDriverLoc);
                     setBearing(currentBearing);
                 }
-            } else if (destination) {
+            } else if (isValidCoord(destination)) {
                 currentBearing = calculateBearing(currentDriverLoc, destination);
                 setBearing(currentBearing);
             }
@@ -312,9 +319,9 @@ export default function LiveTripMap({
 
         // 4. Trajectory Polyline
         const waypoints: [number, number][] = [];
-        if (driverLocation) waypoints.push([driverLocation.lat, driverLocation.lng]);
-        else if (origin) waypoints.push([origin.lat, origin.lng]);
-        if (destination) waypoints.push([destination.lat, destination.lng]);
+        if (isValidCoord(driverLocation)) waypoints.push([driverLocation.lat, driverLocation.lng]);
+        else if (isValidCoord(origin)) waypoints.push([origin.lat, origin.lng]);
+        if (isValidCoord(destination)) waypoints.push([destination.lat, destination.lng]);
 
         if (waypoints.length >= 2) {
             if (!routeLineRef.current) {
@@ -342,7 +349,7 @@ export default function LiveTripMap({
 
     const handleCenterDriver = () => {
         const map = mapRef.current;
-        const target = driverLocation || origin;
+        const target = isValidCoord(driverLocation) ? driverLocation : (isValidCoord(origin) ? origin : null);
         if (map && target) {
             map.flyTo([target.lat, target.lng], 16, { duration: 1 });
         }

@@ -27,8 +27,14 @@ export default function OrdersRadar() {
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [availableOrders, setAvailableOrders] = useState<any[]>([]);
     const [availableTransport, setAvailableTransport] = useState<any[]>([]);
-    const [activeOrder, setActiveOrder] = useState<any>(null);
     const [activeTransport, setActiveTransport] = useState<any>(null);
+    const isFoodDeliveryTransport = Boolean(
+        activeTransport && (
+            activeTransport.service_category === 'food_delivery' ||
+            activeTransport.type === 'food_delivery' ||
+            activeTransport.order_id
+        )
+    );
     const [myReservations, setMyReservations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [latestFeedback, setLatestFeedback] = useState<any>(null);
@@ -1445,14 +1451,14 @@ export default function OrdersRadar() {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
                 <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2.5rem] mb-4 flex items-center gap-4">
                     <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-slate-900">
-                        {activeTransport.type === 'package_delivery' ? <Package className="w-6 h-6 animate-pulse" /> : <Navigation className="w-6 h-6 animate-pulse" />}
+                        {isFoodDeliveryTransport ? <Bike className="w-6 h-6 animate-pulse" /> : activeTransport.type === 'package_delivery' ? <Package className="w-6 h-6 animate-pulse" /> : <Navigation className="w-6 h-6 animate-pulse" />}
                     </div>
                     <div>
                         <div className="text-slate-900 font-black text-sm uppercase tracking-wider">
-                            {activeTransport.type === 'package_delivery' ? 'Entrega de Paquete' : 'Viaje en Curso'}
+                            {isFoodDeliveryTransport ? 'DELIVERY EN CURSO' : activeTransport.type === 'package_delivery' ? 'Entrega de Paquete' : 'Viaje en Curso'}
                         </div>
                         <p className="text-slate-500 text-[10px] font-bold">
-                            {activeTransport.type === 'package_delivery' ? 'Lleva el paquete a su destino de forma segura.' : 'Lleva al pasajero de forma segura.'}
+                            {isFoodDeliveryTransport ? 'Retira el pedido en el local y entrégalo al cliente.' : activeTransport.type === 'package_delivery' ? 'Lleva el paquete a su destino de forma segura.' : 'Lleva al pasajero de forma segura.'}
                         </p>
                     </div>
                 </div>
@@ -1464,9 +1470,9 @@ export default function OrdersRadar() {
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Estado Actual</span>
                         <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
                             <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                            {activeTransport.status === 'accepted' && 'En camino a recoger'}
-                            {activeTransport.status === 'arriving' && 'Esperando al pasajero'}
-                            {activeTransport.status === 'in_progress' && 'En viaje al destino'}
+                            {activeTransport.status === 'accepted' && (isFoodDeliveryTransport ? 'En camino al local a retirar' : 'En camino a recoger')}
+                            {activeTransport.status === 'arriving' && (isFoodDeliveryTransport ? 'En el local retirando pedido' : 'Esperando al pasajero')}
+                            {activeTransport.status === 'in_progress' && (isFoodDeliveryTransport ? 'En camino a entregar al cliente' : 'En viaje al destino')}
                             {activeTransport.status === 'completed' && 'En espera de confirmación de pago'}
                         </h2>
                     </div>
@@ -1514,9 +1520,9 @@ export default function OrdersRadar() {
                             <div className="flex-1 flex justify-between items-center gap-2">
                                 <div>
                                     <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">
-                                        {activeTransport.type === 'food_delivery' ? 'Pedido a nombre de:' : (activeTransport.type === 'package_delivery' ? 'Remitente:' : 'Pasajero:')}
+                                        {isFoodDeliveryTransport ? 'Pedido a nombre de:' : (activeTransport.type === 'food_delivery' ? 'Pedido a nombre de:' : (activeTransport.type === 'package_delivery' ? 'Remitente:' : 'Pasajero:'))}
                                     </h3>
-                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.user_name || activeTransport.userName || 'Pasajero'}</p>
+                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.user_name || activeTransport.userName || (isFoodDeliveryTransport ? 'Cliente' : 'Pasajero')}</p>
                                     {(activeTransport.user_cedula || activeTransport.userCedula) && (
                                         <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
                                             <p>C.I: {activeTransport.user_cedula || activeTransport.userCedula}</p>
@@ -1536,7 +1542,7 @@ export default function OrdersRadar() {
                                     <button
                                         onClick={() => setShowOutgoingCall(true)}
                                         className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
-                                        title="Llamar Pasajero por App"
+                                        title={isFoodDeliveryTransport ? 'Llamar Cliente por App' : 'Llamar Pasajero por App'}
                                     >
                                         <Phone className="w-4 h-4 fill-emerald-600/20" />
                                     </button>
@@ -1639,7 +1645,9 @@ export default function OrdersRadar() {
                                 {(activeTransport.vehicle_type || activeTransport.vehicleType) === 'moto' ? <Bike className="w-6" /> : <Car className="w-6" />}
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Recoger en:</h3>
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                                    {isFoodDeliveryTransport ? 'Retirar en el local:' : 'Recoger en:'}
+                                </h3>
                                 <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.origin?.address}</p>
                             </div>
                         </div>
@@ -1651,7 +1659,9 @@ export default function OrdersRadar() {
                                 <MapPin className="w-6" />
                             </div>
                             <div className="flex-1">
-                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">Destino final:</h3>
+                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">
+                                    {isFoodDeliveryTransport ? 'Entregar al cliente en:' : 'Destino final:'}
+                                </h3>
                                 <p className="font-bold text-slate-700 leading-tight mt-0.5">
                                     {quickSelectedDestination 
                                         ? `${quickSelectedDestination.name} ${quickSelectedDestination.reference ? `(${quickSelectedDestination.reference})` : ''}`
@@ -1666,7 +1676,7 @@ export default function OrdersRadar() {
                                 <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
                                     {Boolean(activeTransport.notes?.includes('Transporte Rápido') || activeTransport.is_quick_transport) && (activeTransport.status === 'accepted' || activeTransport.status === 'arriving')
                                         ? 'Tarifa Inicial (A convenir al llegar)'
-                                        : 'Tarifa del Viaje'}
+                                        : isFoodDeliveryTransport ? 'Tarifa de Delivery' : 'Tarifa del Viaje'}
                                 </span>
                                 <span className="text-xl font-black text-slate-900">
                                     ${Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0).toFixed(2)} USD
@@ -1690,7 +1700,7 @@ export default function OrdersRadar() {
                                 disabled={processingAction !== null}
                                 className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
                             >
-                                {processingAction === 'arriving' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Llegué al punto'}
+                                {processingAction === 'arriving' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isFoodDeliveryTransport ? 'Llegué al comercio a retirar' : 'Llegué al punto')}
                             </button>
                         )}
                         {activeTransport.status === 'arriving' && (() => {
@@ -1800,7 +1810,7 @@ export default function OrdersRadar() {
                                     disabled={processingAction !== null}
                                     className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
                                 >
-                                    {processingAction === 'start' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Iniciar Viaje'}
+                                    {processingAction === 'start' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isFoodDeliveryTransport ? 'Pedido retirado • En camino al cliente' : 'Iniciar Viaje')}
                                 </button>
                             );
                         })()}
@@ -1810,7 +1820,7 @@ export default function OrdersRadar() {
                                 disabled={processingAction !== null}
                                 className="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
                             >
-                                {processingAction === 'complete' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : 'Finalizar Viaje'}
+                                {processingAction === 'complete' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isFoodDeliveryTransport ? 'Entregar Pedido al Cliente' : 'Finalizar Viaje')}
                             </button>
                         )}
 
@@ -2377,8 +2387,8 @@ export default function OrdersRadar() {
                             {/* Encabezado con tipo de viaje y temporizador */}
                             <div className="flex items-center justify-between pt-1">
                                 <div className="flex items-center gap-2 px-3 py-1 bg-amber-400/10 border border-amber-400/30 text-amber-400 rounded-full text-[11px] font-black uppercase tracking-wider">
-                                    {incomingDispatch.restaurantName ? (
-                                        <><Bike className="w-3.5 h-3.5" /> Reparto de Comida</>
+                                    {incomingDispatch.restaurantName || incomingDispatch.service_category === 'food_delivery' || incomingDispatch.type === 'food_delivery' || incomingDispatch.order_id ? (
+                                        <><Bike className="w-3.5 h-3.5" /> DELIVERY</>
                                     ) : (incomingDispatch.service_category === 'mandado' || incomingDispatch.type === 'muchacho_mandado') ? (
                                         <><Package className="w-3.5 h-3.5" /> Muchacho e' Mandado</>
                                     ) : incomingDispatch.type === 'package_delivery' ? (
@@ -2462,7 +2472,7 @@ export default function OrdersRadar() {
                                                 </div>
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                                                        {incomingDispatch.restaurantName ? 'Restaurante / Origen' : 'Punto de Recogida'}
+                                                        {incomingDispatch.restaurantName || incomingDispatch.service_category === 'food_delivery' || incomingDispatch.type === 'food_delivery' || incomingDispatch.order_id ? 'Restaurante / Retirar Pedido' : 'Punto de Recogida'}
                                                     </p>
                                                     <p className="text-xs font-bold text-slate-200 truncate">
                                                         {originGps || 'Ubicación de partida'}
@@ -3362,14 +3372,14 @@ export default function OrdersRadar() {
                                         {isDirectlyAssigned && (
                                             <div className="bg-amber-400/20 border border-amber-400 text-amber-950 px-3.5 py-2 rounded-2xl text-xs font-black flex items-center gap-2 mb-4 animate-pulse">
                                                 <Star className="w-4 h-4 text-amber-500 fill-amber-400 shrink-0" />
-                                                <span>⭐ VIAJE ASIGNADO DIRECTAMENTE A TI POR EL CLIENTE</span>
+                                                <span>⭐ {req.service_category === 'food_delivery' || req.type === 'food_delivery' || req.order_id ? 'DELIVERY ASIGNADO DIRECTAMENTE A TI' : 'VIAJE ASIGNADO DIRECTAMENTE A TI POR EL CLIENTE'}</span>
                                             </div>
                                         )}
 
                                         <div className="flex justify-between items-center mb-6 relative">
                                             <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
-                                                {req.vehicleType === 'moto' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
-                                                {req.scheduled ? 'VIAJE PROGRAMADO' : (req.vehicleType === 'moto' ? 'SOLICITUD MOTOTAXI' : 'SOLICITUD TAXI')}
+                                                {req.vehicleType === 'moto' || req.service_category === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
+                                                {req.service_category === 'food_delivery' || req.type === 'food_delivery' || req.order_id ? 'SOLICITUD DELIVERY' : req.scheduled ? 'VIAJE PROGRAMADO' : (req.vehicleType === 'moto' ? 'SOLICITUD MOTOTAXI' : 'SOLICITUD TAXI')}
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>

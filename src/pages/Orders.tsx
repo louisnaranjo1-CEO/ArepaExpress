@@ -16,6 +16,7 @@ export default function Orders() {
     const { user, userData } = useAuth();
     const { bcvRate } = useCurrency();
     const [activeOrders, setActiveOrders] = useState<any[]>([]);
+    const [activeTransports, setActiveTransports] = useState<any[]>([]);
     const [restaurantLogos, setRestaurantLogos] = useState<Record<string, string>>({});
     const [loadingOrders, setLoadingOrders] = useState(true);
     const notifiedOrdersRef = useRef<Set<string>>(new Set());
@@ -53,14 +54,30 @@ export default function Orders() {
                     .limit(10);
 
                 if (authUUID && validLocalOrderUUID && authUUID !== validLocalOrderUUID) {
-                    ordersQuery = ordersQuery.or(`user_id.eq.${authUUID},userId.eq.${authUUID},id.eq.${validLocalOrderUUID}`);
+                    ordersQuery = ordersQuery.or(`user_id.eq.${authUUID},id.eq.${validLocalOrderUUID}`);
                 } else if (authUUID) {
-                    ordersQuery = ordersQuery.or(`user_id.eq.${authUUID},userId.eq.${authUUID}`);
+                    ordersQuery = ordersQuery.eq('user_id', authUUID);
                 } else if (validLocalOrderUUID) {
                     ordersQuery = ordersQuery.eq('id', validLocalOrderUUID);
                 }
 
                 const { data, error } = await ordersQuery;
+
+                // Also fetch active transport & logistics requests (Fase 4)
+                let transportsQuery = supabase
+                    .from('transport_requests')
+                    .select('*')
+                    .in('status', ['searching', 'accepted', 'arriving', 'in_progress', 'verifying_payment'])
+                    .order('created_at', { ascending: false })
+                    .limit(5);
+
+                if (authUUID) {
+                    transportsQuery = transportsQuery.eq('user_id', authUUID);
+                }
+                const { data: trData } = await transportsQuery;
+                if (trData) {
+                    setActiveTransports(trData);
+                }
 
                 if (!error && data) {
                     setActiveOrders(data);
@@ -96,6 +113,9 @@ export default function Orders() {
         const channel = supabase
             .channel(`client_orders_${channelId}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+                fetchOrders();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transport_requests' }, () => {
                 fetchOrders();
             })
             .subscribe();
@@ -214,7 +234,7 @@ export default function Orders() {
                         <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                         <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Buscando tus pedidos...</p>
                     </div>
-                ) : activeOrders.length === 0 ? (
+                ) : (activeOrders.length === 0 && activeTransports.length === 0) ? (
                     <div className="flex flex-col items-center justify-center py-20 px-10 text-center space-y-6">
                         <div className="relative">
                             <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full"></div>
@@ -222,21 +242,149 @@ export default function Orders() {
                         </div>
                         <div className="space-y-2 relative z-10">
                             <h3 className="text-xl font-black text-slate-900">No tienes pedidos activos</h3>
-                            <p className="text-slate-500 text-sm font-medium leading-relaxed">Explora todas las tiendas y pide ahora mismo.</p>
+                            <p className="text-slate-500 text-sm font-medium leading-relaxed">Explora todas las tiendas o solicita un servicio de transporte ahora mismo.</p>
                         </div>
                         <button
                             onClick={() => navigate('/')}
                             className="bg-primary text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/30 active:scale-95 transition-all w-full"
                         >
-                            Ir a Tiendas
+                            Ir al Inicio
                         </button>
                     </div>
                 ) : (
                     <div className="space-y-4 pb-10">
                         <div className="flex items-center justify-between px-2">
                             <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Rastreo en Tiempo Real</h2>
-                            <span className="text-[10px] font-bold text-slate-900 bg-primary/10 px-2 py-0.5 rounded-full">{activeOrders.length} {activeOrders.length === 1 ? 'Activo' : 'Activos'}</span>
+                            <span className="text-[10px] font-bold text-slate-900 bg-primary/10 px-2 py-0.5 rounded-full">
+                                {activeOrders.length + activeTransports.length} Activos
+                            </span>
                         </div>
+
+                        {/* Active Transports & Mandados (Fase 4) */}
+                        {activeTransports.map((tr) => {
+                            const isMandado = tr.service_category === 'muchacho_mandado' || tr.type === 'muchacho_mandado';
+                            const isFoodDelivery = tr.service_category === 'food_delivery' || tr.type === 'food_delivery' || Boolean(tr.order_id);
+                            const trPrice = Number(tr.client_total || tr.price || tr.total || 0);
+                            const trBs = bcvRate > 0 ? (trPrice * bcvRate).toFixed(0) : '0';
+                            
+                            // Navigation route: direct to /track/:orderId for food delivery, /mandado/tracking/:id for mandado, or /taxi/track/:id
+                            let trRoute = `/taxi/track/${tr.id}`;
+                            if (isFoodDelivery && tr.order_id) {
+                                trRoute = `/track/${tr.order_id}`;
+                            } else if (isMandado) {
+                                trRoute = `/mandado/tracking/${tr.id}`;
+                            } else {
+                                trRoute = `/transport/tracking/${tr.id}`;
+                            }
+
+                            const isSearching = tr.status === 'searching';
+
+                            // Service Title
+                            let serviceTitle = 'Servicio de Transporte';
+                            if (isFoodDelivery) serviceTitle = 'DELIVERY';
+                            else if (isMandado) serviceTitle = "Muchacho e' Mandao";
+                            else if (tr.service_category === 'mototaxi') serviceTitle = 'Mototaxi';
+                            else if (tr.service_category === 'taxi_driver' || tr.service_category === 'taxi') serviceTitle = 'Carro Taxi';
+                            else if (tr.service_category === 'carro_confort') serviceTitle = 'Carro Confort';
+                            else if (tr.service_category === 'delivery_envios') serviceTitle = 'Envío de Paquete';
+
+                            // Subtitle text
+                            let statusSubtitle = `Conductor: ${tr.driver_name || 'Asignado'}`;
+                            let badgeLabel = tr.status;
+                            if (isFoodDelivery) {
+                                if (isSearching) {
+                                    statusSubtitle = tr.assigned_driver_id ? 'Conectando con el repartidor...' : 'Buscando repartidor para tu pedido...';
+                                    badgeLabel = tr.assigned_driver_id ? 'Conectando' : 'Buscando';
+                                } else if (tr.status === 'accepted') {
+                                    statusSubtitle = tr.driver_name ? `🛵 Repartidor: ${tr.driver_name} va al local a retirar tu pedido` : '🛵 Repartidor va en camino al local a retirar tu pedido';
+                                    badgeLabel = 'En camino';
+                                } else if (tr.status === 'arriving') {
+                                    statusSubtitle = '🏪 Repartidor llegó al comercio a retirar tu pedido';
+                                    badgeLabel = 'En el local';
+                                } else if (tr.status === 'in_progress') {
+                                    statusSubtitle = '🛵 Repartidor en camino a entregarte tu pedido';
+                                    badgeLabel = 'En entrega';
+                                }
+                            } else if (isMandado) {
+                                if (isSearching) {
+                                    statusSubtitle = 'Buscando pilotos para tu mandado...';
+                                    badgeLabel = 'En Radar';
+                                } else if (tr.status === 'accepted') {
+                                    statusSubtitle = `Piloto: ${tr.driver_name || 'Asignado'} va en camino`;
+                                    badgeLabel = 'Piloto Asignado';
+                                } else if (tr.status === 'arriving') {
+                                    statusSubtitle = 'Piloto en el punto de inicio';
+                                    badgeLabel = 'En el sitio';
+                                } else if (tr.status === 'in_progress') {
+                                    statusSubtitle = 'Mandado en curso hacia tu destino';
+                                    badgeLabel = 'En ruta';
+                                }
+                            } else {
+                                if (isSearching) {
+                                    statusSubtitle = 'Buscando conductor cercano...';
+                                    badgeLabel = 'En Radar';
+                                } else if (tr.status === 'accepted') {
+                                    statusSubtitle = `Conductor: ${tr.driver_name || 'Asignado'} va en camino a buscarte`;
+                                    badgeLabel = 'En camino';
+                                } else if (tr.status === 'arriving') {
+                                    statusSubtitle = 'Conductor llegó al punto de recogida';
+                                    badgeLabel = '¡Llegó!';
+                                } else if (tr.status === 'in_progress') {
+                                    statusSubtitle = 'Viaje en curso';
+                                    badgeLabel = 'En viaje';
+                                }
+                            }
+
+                            return (
+                                <div
+                                    key={tr.id}
+                                    onClick={() => navigate(trRoute)}
+                                    className="bg-slate-900 text-white rounded-3xl p-5 shadow-2xl shadow-slate-950/20 border border-slate-800 cursor-pointer active:scale-[0.98] transition-all relative overflow-hidden group"
+                                >
+                                    <div className="flex items-center justify-between gap-2 mb-3">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shrink-0 shadow-md">
+                                                {isMandado ? <ShoppingBag className="w-5 h-5" /> : <Bike className="w-5 h-5" />}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className="font-black text-sm uppercase tracking-wide text-white truncate">
+                                                    {serviceTitle}
+                                                </p>
+                                                <p className="text-[10px] text-amber-300 font-bold uppercase tracking-tight">
+                                                    {statusSubtitle}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="text-right bg-white/10 px-2.5 py-1 rounded-xl border border-white/10 shrink-0">
+                                            <div className="text-xs font-black text-white">
+                                                ${trPrice.toFixed(2)}
+                                            </div>
+                                            <div className="text-[9px] font-bold text-slate-300">
+                                                {trBs} Bs
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1.5 text-xs text-slate-300 truncate mb-3">
+                                        <Navigation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                        <span className="truncate">
+                                            Destino: {tr.destination?.address || tr.destination?.name || tr.destination_address || 'Dirección de entrega'}
+                                        </span>
+                                    </div>
+
+                                    <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-xs font-black">
+                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider ${
+                                            isSearching ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30 animate-pulse' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                        }`}>
+                                            {badgeLabel}
+                                        </span>
+                                        <span className="text-amber-400 flex items-center gap-1 text-[11px] group-hover:translate-x-1 transition-transform">
+                                            Ver Mapa & Chat <ArrowRight className="w-3.5 h-3.5" />
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })}
                         {activeOrders.map((order) => {
                             const isPendingPayment = order.status === 'pending' || order.status === 'pendiente_pago';
                             const orderTotal = Number(order.total || 0);

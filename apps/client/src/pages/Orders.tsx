@@ -263,10 +263,77 @@ export default function Orders() {
                         {/* Active Transports & Mandados (Fase 4) */}
                         {activeTransports.map((tr) => {
                             const isMandado = tr.service_category === 'muchacho_mandado' || tr.type === 'muchacho_mandado';
-                            const trPrice = Number(tr.client_total || tr.price || 0);
+                            const isFoodDelivery = tr.service_category === 'food_delivery' || tr.type === 'food_delivery' || Boolean(tr.order_id);
+                            const trPrice = Number(tr.client_total || tr.price || tr.total || 0);
                             const trBs = bcvRate > 0 ? (trPrice * bcvRate).toFixed(0) : '0';
-                            const trRoute = isMandado ? `/mandado/tracking/${tr.id}` : `/transport/tracking/${tr.id}`;
+                            
+                            // Navigation route: direct to /track/:orderId for food delivery, /mandado/tracking/:id for mandado, or /taxi/track/:id
+                            let trRoute = `/taxi/track/${tr.id}`;
+                            if (isFoodDelivery && tr.order_id) {
+                                trRoute = `/track/${tr.order_id}`;
+                            } else if (isMandado) {
+                                trRoute = `/mandado/tracking/${tr.id}`;
+                            } else {
+                                trRoute = `/transport/tracking/${tr.id}`;
+                            }
+
                             const isSearching = tr.status === 'searching';
+
+                            // Service Title
+                            let serviceTitle = 'Servicio de Transporte';
+                            if (isFoodDelivery) serviceTitle = 'DELIVERY';
+                            else if (isMandado) serviceTitle = "Muchacho e' Mandao";
+                            else if (tr.service_category === 'mototaxi') serviceTitle = 'Mototaxi';
+                            else if (tr.service_category === 'taxi_driver' || tr.service_category === 'taxi') serviceTitle = 'Carro Taxi';
+                            else if (tr.service_category === 'carro_confort') serviceTitle = 'Carro Confort';
+                            else if (tr.service_category === 'delivery_envios') serviceTitle = 'Envío de Paquete';
+
+                            // Subtitle text
+                            let statusSubtitle = `Conductor: ${tr.driver_name || 'Asignado'}`;
+                            let badgeLabel = tr.status;
+                            if (isFoodDelivery) {
+                                if (isSearching) {
+                                    statusSubtitle = tr.assigned_driver_id ? 'Conectando con el repartidor...' : 'Buscando repartidor para tu pedido...';
+                                    badgeLabel = tr.assigned_driver_id ? 'Conectando' : 'Buscando';
+                                } else if (tr.status === 'accepted') {
+                                    statusSubtitle = tr.driver_name ? `🛵 Repartidor: ${tr.driver_name} va al local a retirar tu pedido` : '🛵 Repartidor va en camino al local a retirar tu pedido';
+                                    badgeLabel = 'En camino';
+                                } else if (tr.status === 'arriving') {
+                                    statusSubtitle = '🏪 Repartidor llegó al comercio a retirar tu pedido';
+                                    badgeLabel = 'En el local';
+                                } else if (tr.status === 'in_progress') {
+                                    statusSubtitle = '🛵 Repartidor en camino a entregarte tu pedido';
+                                    badgeLabel = 'En entrega';
+                                }
+                            } else if (isMandado) {
+                                if (isSearching) {
+                                    statusSubtitle = 'Buscando pilotos para tu mandado...';
+                                    badgeLabel = 'En Radar';
+                                } else if (tr.status === 'accepted') {
+                                    statusSubtitle = `Piloto: ${tr.driver_name || 'Asignado'} va en camino`;
+                                    badgeLabel = 'Piloto Asignado';
+                                } else if (tr.status === 'arriving') {
+                                    statusSubtitle = 'Piloto en el punto de inicio';
+                                    badgeLabel = 'En el sitio';
+                                } else if (tr.status === 'in_progress') {
+                                    statusSubtitle = 'Mandado en curso hacia tu destino';
+                                    badgeLabel = 'En ruta';
+                                }
+                            } else {
+                                if (isSearching) {
+                                    statusSubtitle = 'Buscando conductor cercano...';
+                                    badgeLabel = 'En Radar';
+                                } else if (tr.status === 'accepted') {
+                                    statusSubtitle = `Conductor: ${tr.driver_name || 'Asignado'} va en camino a buscarte`;
+                                    badgeLabel = 'En camino';
+                                } else if (tr.status === 'arriving') {
+                                    statusSubtitle = 'Conductor llegó al punto de recogida';
+                                    badgeLabel = '¡Llegó!';
+                                } else if (tr.status === 'in_progress') {
+                                    statusSubtitle = 'Viaje en curso';
+                                    badgeLabel = 'En viaje';
+                                }
+                            }
 
                             return (
                                 <div
@@ -281,10 +348,10 @@ export default function Orders() {
                                             </div>
                                             <div className="min-w-0">
                                                 <p className="font-black text-sm uppercase tracking-wide text-white truncate">
-                                                    {isMandado ? "Muchacho e' Mandao" : (tr.service_category || 'Servicio de Transporte')}
+                                                    {serviceTitle}
                                                 </p>
                                                 <p className="text-[10px] text-amber-300 font-bold uppercase tracking-tight">
-                                                    {isSearching ? 'Buscando conductor cercano...' : `Conductor: ${tr.driver_name || 'Asignado'}`}
+                                                    {statusSubtitle}
                                                 </p>
                                             </div>
                                         </div>
@@ -301,7 +368,7 @@ export default function Orders() {
                                     <div className="flex items-center gap-1.5 text-xs text-slate-300 truncate mb-3">
                                         <Navigation className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                                         <span className="truncate">
-                                            Destino: {tr.destination?.address || tr.destination?.name || 'Dirección de entrega'}
+                                            Destino: {tr.destination?.address || tr.destination?.name || tr.destination_address || 'Dirección de entrega'}
                                         </span>
                                     </div>
 
@@ -309,7 +376,7 @@ export default function Orders() {
                                         <span className={`px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider ${
                                             isSearching ? 'bg-amber-400/20 text-amber-300 border border-amber-400/30 animate-pulse' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                                         }`}>
-                                            {isSearching ? 'En Radar' : tr.status}
+                                            {badgeLabel}
                                         </span>
                                         <span className="text-amber-400 flex items-center gap-1 text-[11px] group-hover:translate-x-1 transition-transform">
                                             Ver Mapa & Chat <ArrowRight className="w-3.5 h-3.5" />

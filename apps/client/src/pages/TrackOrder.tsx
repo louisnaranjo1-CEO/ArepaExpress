@@ -767,23 +767,29 @@ export default function TrackOrder() {
 
             const itemsSummary = (order.items || []).map((i: any) => `${i.quantity}x ${i.name}`).join(', ');
 
-            const originCoordsVal = restaurant?.location?.coords || (restaurant?.lat ? { lat: Number(restaurant.lat), lng: Number(restaurant.lng) } : null);
-            const destCoordsVal = order.deliveryCoords || order.address?.coords || userLocation || null;
+            // Garantizar coordenadas válidas con fallback para evitar error Invalid LatLng en app conductor
+            const fallbackOrigin = originCoordsVal || (userLocation ? userLocation : { lat: 8.9242, lng: -67.4293 });
+            const fallbackDest = destCoordsVal || (userLocation ? userLocation : { lat: fallbackOrigin.lat + 0.005, lng: fallbackOrigin.lng + 0.005 });
+
+            const originLat = Number(fallbackOrigin.lat) || 8.9242;
+            const originLng = Number(fallbackOrigin.lng) || -67.4293;
+            const destLat = Number(fallbackDest.lat) || (originLat + 0.005);
+            const destLng = Number(fallbackDest.lng) || (originLng + 0.005);
 
             const originData = {
                 address: restaurant?.address || restaurant?.location?.address || order.restaurantName || 'Comercio',
-                lat: originCoordsVal?.lat,
-                lng: originCoordsVal?.lng,
-                coords: originCoordsVal,
+                lat: originLat,
+                lng: originLng,
+                coords: { lat: originLat, lng: originLng },
                 name: restaurant?.name || order.restaurantName || 'Negocio',
                 details: 'Retiro de pedido de comida'
             };
 
             const destinationData = {
                 address: order.deliveryAddress || order.address?.name || 'Dirección del cliente',
-                lat: destCoordsVal?.lat,
-                lng: destCoordsVal?.lng,
-                coords: destCoordsVal,
+                lat: destLat,
+                lng: destLng,
+                coords: { lat: destLat, lng: destLng },
                 name: order.userName || 'Cliente',
                 details: order.address?.reference || order.orderNote || ''
             };
@@ -1867,21 +1873,30 @@ export default function TrackOrder() {
                                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Selecciona el Tipo de Vehículo</p>
                                 <div className="grid grid-cols-3 gap-2.5">
                                     {[
-                                        { key: 'moto', label: 'Moto Taxi', icon: Bike, desc: 'Rápido', basePrice: 2.5 },
-                                        { key: 'carro', label: 'Taxi Eco', icon: Car, desc: 'Económico', basePrice: 4.5 },
-                                        { key: 'ejecutivo', label: 'Carro Confort', icon: Sparkles, desc: 'Con A/A', basePrice: 7.0 }
+                                        { key: 'moto', label: 'Moto Taxi', icon: Bike, desc: 'Rápido' },
+                                        { key: 'carro', label: 'Taxi Eco', icon: Car, desc: 'Económico' },
+                                        { key: 'ejecutivo', label: 'Carro Confort', icon: Sparkles, desc: 'Con A/A' }
                                     ].map((v) => {
                                         const isSel = selectedVehicle === v.key;
                                         const IconComp = v.icon;
-                                        const rates = deliverySettings?.transportRates?.[v.key] || [];
-                                        const rate = rates.find((r: any) => calculatedDistance >= r.from && (calculatedDistance <= r.to || !r.to));
-                                        const priceUsd = rate ? (rate.clientPrice || rate.price) : v.basePrice;
 
                                         return (
                                             <button
                                                 key={v.key}
                                                 type="button"
-                                                onClick={() => setSelectedVehicle(v.key as any)}
+                                                onClick={() => {
+                                                    setSelectedVehicle(v.key as any);
+                                                    if (selectedDriverId) {
+                                                        const d = availableDrivers.find(drv => drv.id === selectedDriverId);
+                                                        if (d) {
+                                                            const vT = (d.vehicle_type || '').toLowerCase();
+                                                            const matches = (v.key === 'moto' && (vT === 'moto' || vT === 'mototaxi' || !vT)) ||
+                                                                            (v.key === 'carro' && (vT === 'carro' || vT === 'taxi')) ||
+                                                                            (v.key === 'ejecutivo' && (vT === 'confort' || vT === 'ejecutivo' || vT === 'carro_confort'));
+                                                            if (!matches) setSelectedDriverId(null);
+                                                        }
+                                                    }
+                                                }}
                                                 className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1.5 transition-all text-center ${
                                                     isSel
                                                         ? 'border-primary bg-primary/10 text-slate-900 shadow-md shadow-primary/10 scale-102 font-black'
@@ -1891,118 +1906,139 @@ export default function TrackOrder() {
                                                 <IconComp className={`w-5 h-5 ${isSel ? 'text-slate-900' : 'text-slate-400'}`} />
                                                 <span className="text-xs font-black leading-tight">{v.label}</span>
                                                 <span className="text-[10px] font-bold text-slate-400 leading-none">{v.desc}</span>
-                                                <span className="text-xs font-black text-slate-900 mt-0.5">
-                                                    ${priceUsd.toFixed(2)}
-                                                </span>
                                             </button>
                                         );
                                     })}
                                 </div>
                             </div>
 
-                            {/* Conductores Disponibles en la Zona */}
-                            {availableDrivers.length > 0 && (
-                                <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <div>
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Conductores en tu Zona</p>
-                                            <p className="text-[11px] font-bold text-slate-600">Elige un conductor o déjalo en radar abierto</p>
-                                        </div>
-                                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-                                            {availableDrivers.length} Activos
-                                        </span>
-                                    </div>
+                            {/* Conductores Disponibles en la Zona filtrados por Tipo de Vehículo */}
+                            {(() => {
+                                const filteredDrivers = availableDrivers.filter((drv) => {
+                                    const vType = (drv.vehicle_type || '').toLowerCase();
+                                    if (selectedVehicle === 'moto') {
+                                        return vType === 'moto' || vType === 'mototaxi' || !vType;
+                                    }
+                                    if (selectedVehicle === 'carro') {
+                                        return vType === 'carro' || vType === 'taxi';
+                                    }
+                                    if (selectedVehicle === 'ejecutivo') {
+                                        return vType === 'confort' || vType === 'ejecutivo' || vType === 'carro_confort';
+                                    }
+                                    return true;
+                                });
 
-                                    {/* Opción 1: Radar General (Sin selección directa) */}
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedDriverId(null)}
-                                        className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all active:scale-[0.99] ${
-                                            selectedDriverId === null
-                                                ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs'
-                                                : 'border-slate-100 bg-slate-50 hover:bg-slate-100/70 text-slate-700'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
-                                                selectedDriverId === null ? 'bg-slate-900 text-primary' : 'bg-white border border-slate-200 text-slate-500'
-                                            }`}>
-                                                <Radio className="w-5 h-5" />
-                                            </div>
+                                const vehicleLabel = selectedVehicle === 'moto' ? 'Moto Taxi' : selectedVehicle === 'carro' ? 'Taxi Eco' : 'Carro Confort';
+
+                                return (
+                                    <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
+                                        <div className="flex items-center justify-between">
                                             <div>
-                                                <div className="flex items-center gap-1.5">
-                                                    <span className="font-black text-xs text-slate-900">Radar General (Automático)</span>
-                                                    <span className="text-[9px] bg-slate-200 text-slate-800 font-black px-1.5 py-0.5 rounded-md">Recomendado</span>
-                                                </div>
-                                                <p className="text-[10px] text-slate-500 font-bold">
-                                                    Notifica a todos los repartidores cercanos. El primero en aceptar toma tu pedido.
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                                                    Conductores en tu Zona ({vehicleLabel})
+                                                </p>
+                                                <p className="text-[11px] font-bold text-slate-600">
+                                                    {filteredDrivers.length > 0 ? 'Elige un conductor o solicita por radar general' : 'Solicita por radar general en tu zona'}
                                                 </p>
                                             </div>
+                                            <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
+                                                {filteredDrivers.length} {filteredDrivers.length === 1 ? 'Activo' : 'Activos'}
+                                            </span>
                                         </div>
-                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                            selectedDriverId === null ? 'border-primary bg-primary text-slate-900' : 'border-slate-300 bg-white'
-                                        }`}>
-                                            {selectedDriverId === null && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                                        </div>
-                                    </button>
 
-                                    {/* Lista de Conductores Específicos */}
-                                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                                        {availableDrivers.map((drv) => {
-                                            const isSelected = selectedDriverId === drv.id;
-                                            const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
-                                            return (
-                                                <button
-                                                    key={drv.id}
-                                                    type="button"
-                                                    onClick={() => {
-                                                        setSelectedDriverId(drv.id);
-                                                        if (drv.vehicle_type === 'carro') setSelectedVehicle('carro');
-                                                        else if (drv.vehicle_type === 'confort' || drv.vehicle_type === 'ejecutivo') setSelectedVehicle('ejecutivo');
-                                                        else setSelectedVehicle('moto');
-                                                    }}
-                                                    className={`w-full p-3 rounded-2xl border-2 flex items-center justify-between text-left transition-all active:scale-[0.99] ${
-                                                        isSelected
-                                                            ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs'
-                                                            : 'border-slate-100 bg-slate-50 hover:bg-slate-100/70'
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center gap-3 min-w-0">
-                                                        <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center font-black text-slate-700 shrink-0">
-                                                            {drv.photo_url ? (
-                                                                <img src={drv.photo_url} alt={drv.full_name} className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                drv.full_name?.charAt(0) || 'D'
-                                                            )}
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="font-black text-xs text-slate-900 truncate">{drv.full_name}</span>
-                                                                <span className="text-[10px] text-amber-500 font-black shrink-0">⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}</span>
+                                        {/* Opción 1: Radar General (Sin selección directa) */}
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedDriverId(null)}
+                                            className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all active:scale-[0.99] ${
+                                                selectedDriverId === null
+                                                    ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs'
+                                                    : 'border-slate-100 bg-slate-50 hover:bg-slate-100/70 text-slate-700'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
+                                                    selectedDriverId === null ? 'bg-slate-900 text-primary' : 'bg-white border border-slate-200 text-slate-500'
+                                                }`}>
+                                                    <Radio className="w-5 h-5" />
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="font-black text-xs text-slate-900">Radar General (Automático)</span>
+                                                        <span className="text-[9px] bg-slate-200 text-slate-800 font-black px-1.5 py-0.5 rounded-md">Recomendado</span>
+                                                    </div>
+                                                    <p className="text-[10px] text-slate-500 font-bold">
+                                                        Notifica a todos los repartidores cercanos de {vehicleLabel}. El primero en aceptar toma tu pedido.
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                                selectedDriverId === null ? 'border-primary bg-primary text-slate-900' : 'border-slate-300 bg-white'
+                                            }`}>
+                                                {selectedDriverId === null && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                            </div>
+                                        </button>
+
+                                        {/* Lista de Conductores Específicos Filtrados */}
+                                        {filteredDrivers.length > 0 ? (
+                                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                                {filteredDrivers.map((drv) => {
+                                                    const isSelected = selectedDriverId === drv.id;
+                                                    const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
+                                                    return (
+                                                        <button
+                                                            key={drv.id}
+                                                            type="button"
+                                                            onClick={() => setSelectedDriverId(drv.id)}
+                                                            className={`w-full p-3 rounded-2xl border-2 flex items-center justify-between text-left transition-all active:scale-[0.99] ${
+                                                                isSelected
+                                                                    ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs'
+                                                                    : 'border-slate-100 bg-slate-50 hover:bg-slate-100/70'
+                                                            }`}
+                                                        >
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center font-black text-slate-700 shrink-0">
+                                                                    {drv.photo_url ? (
+                                                                        <img src={drv.photo_url} alt={drv.full_name} className="w-full h-full object-cover" />
+                                                                    ) : (
+                                                                        drv.full_name?.charAt(0) || 'D'
+                                                                    )}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <span className="font-black text-xs text-slate-900 truncate">{drv.full_name}</span>
+                                                                        <span className="text-[10px] text-amber-500 font-black shrink-0">⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}</span>
+                                                                    </div>
+                                                                    <p className="text-[10px] text-slate-500 font-bold truncate">
+                                                                        {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''}
+                                                                    </p>
+                                                                </div>
                                                             </div>
-                                                            <p className="text-[10px] text-slate-500 font-bold truncate">
-                                                                {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0 ml-2">
-                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
-                                                            isSelected ? 'bg-primary text-slate-950 font-black' : 'bg-emerald-50 text-emerald-600'
-                                                        }`}>
-                                                            {isSelected ? 'Elegido' : 'Disponible'}
-                                                        </span>
-                                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                                                            isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300 bg-white'
-                                                        }`}>
-                                                            {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                                                        </div>
-                                                    </div>
-                                                </button>
-                                            );
-                                        })}
+                                                            <div className="flex items-center gap-2 shrink-0 ml-2">
+                                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                                                    isSelected ? 'bg-primary text-slate-950 font-black' : 'bg-emerald-50 text-emerald-600'
+                                                                }`}>
+                                                                    {isSelected ? 'Elegido' : 'Disponible'}
+                                                                </span>
+                                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                                                    isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300 bg-white'
+                                                                }`}>
+                                                                    {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                                                </div>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        ) : (
+                                            <div className="p-3.5 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
+                                                <p className="text-xs font-black text-slate-700">Sin conductores activos en {vehicleLabel}</p>
+                                                <p className="text-[10px] text-slate-500 font-bold mt-0.5">Usa Radar General para notificar a cualquier unidad disponible o cambia de tipo de vehículo.</p>
+                                            </div>
+                                        )}
                                     </div>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             {/* Botón Principal: Confirmar y Solicitar Repartidor */}
                             <button
