@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ShoppingBag, Clock, ChevronRight, Bike, Navigation, Store, MessageCircle, ArrowRight } from 'lucide-react';
+import { ShoppingBag, Clock, ChevronRight, Bike, Navigation, Store, MessageCircle, ArrowRight, Phone, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -17,6 +17,8 @@ export default function Orders() {
     const { bcvRate } = useCurrency();
     const [activeOrders, setActiveOrders] = useState<any[]>([]);
     const [activeTransports, setActiveTransports] = useState<any[]>([]);
+    const [recentOrders, setRecentOrders] = useState<any[]>([]);
+    const [recentTransportsMap, setRecentTransportsMap] = useState<Record<string, any>>({});
     const [restaurantLogos, setRestaurantLogos] = useState<Record<string, string>>({});
     const [loadingOrders, setLoadingOrders] = useState(true);
     const notifiedOrdersRef = useRef<Set<string>>(new Set());
@@ -79,6 +81,48 @@ export default function Orders() {
                     setActiveTransports(trData);
                 }
 
+                // Also fetch recent completed / delivered orders (Historial)
+                let recentQuery = supabase
+                    .from('orders')
+                    .select('*')
+                    .in('status', ['completed', 'delivered'])
+                    .order('created_at', { ascending: false })
+                    .limit(15);
+
+                if (authUUID && validLocalOrderUUID && authUUID !== validLocalOrderUUID) {
+                    recentQuery = recentQuery.or(`user_id.eq.${authUUID},id.eq.${validLocalOrderUUID}`);
+                } else if (authUUID) {
+                    recentQuery = recentQuery.eq('user_id', authUUID);
+                } else if (validLocalOrderUUID) {
+                    recentQuery = recentQuery.eq('id', validLocalOrderUUID);
+                }
+
+                const { data: recData } = await recentQuery;
+                if (recData && recData.length > 0) {
+                    setRecentOrders(recData);
+
+                    // Fetch linked transport_requests to have driver phone / driver details
+                    const orderIds = recData.map((o: any) => o.id).filter(Boolean);
+                    try {
+                        const { data: trRecData } = await supabase
+                            .from('transport_requests')
+                            .select('id, order_id, driver_id, driver_name, driver_phone, driver_photo, vehicle_type')
+                            .in('order_id', orderIds);
+                        
+                        if (trRecData) {
+                            const trMap: Record<string, any> = {};
+                            trRecData.forEach((tr: any) => {
+                                if (tr.order_id) trMap[tr.order_id] = tr;
+                            });
+                            setRecentTransportsMap(trMap);
+                        }
+                    } catch (trErr) {
+                        console.warn("Error fetching recent transport details:", trErr);
+                    }
+                } else {
+                    setRecentOrders([]);
+                }
+
                 if (!error && data) {
                     setActiveOrders(data);
 
@@ -131,7 +175,8 @@ export default function Orders() {
             const newLogos = { ...restaurantLogos };
             let changed = false;
 
-            for (const order of activeOrders) {
+            const allOrdersToInspect = [...activeOrders, ...recentOrders];
+            for (const order of allOrdersToInspect) {
                 const restId = order.restaurant_id || order.restaurantId;
                 if (restId && !newLogos[restId]) {
                     try {
@@ -156,10 +201,10 @@ export default function Orders() {
             }
         };
 
-        if (activeOrders.length > 0) {
+        if (activeOrders.length > 0 || recentOrders.length > 0) {
             fetchLogos();
         }
-    }, [activeOrders]);
+    }, [activeOrders, recentOrders]);
 
     // Update URL when tab changes
     const handleTabChange = (tab: TabType) => {
@@ -234,14 +279,14 @@ export default function Orders() {
                         <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
                         <p className="font-bold text-slate-400 uppercase tracking-widest text-xs">Buscando tus pedidos...</p>
                     </div>
-                ) : (activeOrders.length === 0 && activeTransports.length === 0) ? (
+                ) : (activeOrders.length === 0 && activeTransports.length === 0 && recentOrders.length === 0) ? (
                     <div className="flex flex-col items-center justify-center py-20 px-10 text-center space-y-6">
                         <div className="relative">
                             <div className="absolute inset-0 bg-primary/10 blur-3xl rounded-full"></div>
                             <Bike className="w-20 h-20 text-slate-200 relative z-10" />
                         </div>
                         <div className="space-y-2 relative z-10">
-                            <h3 className="text-xl font-black text-slate-900">No tienes pedidos activos</h3>
+                            <h3 className="text-xl font-black text-slate-900">No tienes pedidos registrados</h3>
                             <p className="text-slate-500 text-sm font-medium leading-relaxed">Explora todas las tiendas o solicita un servicio de transporte ahora mismo.</p>
                         </div>
                         <button
@@ -253,12 +298,16 @@ export default function Orders() {
                     </div>
                 ) : (
                     <div className="space-y-4 pb-10">
-                        <div className="flex items-center justify-between px-2">
-                            <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Rastreo en Tiempo Real</h2>
-                            <span className="text-[10px] font-bold text-slate-900 bg-primary/10 px-2 py-0.5 rounded-full">
-                                {activeOrders.length + activeTransports.length} Activos
-                            </span>
-                        </div>
+                        {(activeOrders.length > 0 || activeTransports.length > 0) && (
+                            <>
+                                <div className="flex items-center justify-between px-2">
+                                    <h2 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">En Curso y Rastreo en Tiempo Real</h2>
+                                    <span className="text-[10px] font-bold text-slate-900 bg-primary/10 px-2 py-0.5 rounded-full">
+                                        {activeOrders.length + activeTransports.length} Activos
+                                    </span>
+                                </div>
+                            </>
+                        )}
 
                         {/* Active Transports & Mandados (Fase 4) */}
                         {activeTransports.map((tr) => {
@@ -530,6 +579,131 @@ export default function Orders() {
                                 </div>
                             );
                         })}
+
+                        {recentOrders.length > 0 && (
+                            <div className="space-y-3 pt-2">
+                                <div className="flex items-center justify-between px-2 pt-2 border-t border-slate-200">
+                                    <div className="flex items-center gap-2">
+                                        <Clock className="w-4 h-4 text-slate-400" />
+                                        <h2 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em]">Pedidos Recientes / Historial</h2>
+                                    </div>
+                                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200">
+                                        {recentOrders.length} Recientes
+                                    </span>
+                                </div>
+
+                                {recentOrders.map((order) => {
+                                    const orderTotal = Number(order.total || 0);
+                                    const bsTotal = bcvRate > 0 ? (orderTotal * bcvRate).toFixed(0) : '0';
+                                    const trLinked = recentTransportsMap[order.id];
+                                    const driverName = order.driver_name || order.driverName || trLinked?.driver_name || '';
+                                    const driverPhone = order.driver_phone || trLinked?.driver_phone || '';
+                                    const hasDriver = Boolean(order.driver_id || order.delivery_driver_id || order.preferred_driver_id || trLinked?.driver_id || driverName);
+                                    const deliveryLabel = order.delivery_method === 'pickup' 
+                                        ? 'Retiro en tienda (PickUp)' 
+                                        : (order.delivery_address || order.address?.name || 'Entrega a domicilio');
+
+                                    return (
+                                        <div
+                                            key={order.id}
+                                            className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 relative overflow-hidden"
+                                        >
+                                            {/* Header Row */}
+                                            <div className="flex justify-between items-start mb-3">
+                                                <div className="flex items-center gap-3 min-w-0">
+                                                    <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 overflow-hidden border border-slate-100 shrink-0">
+                                                        {restaurantLogos[order.restaurant_id || order.restaurantId] ? (
+                                                            <img src={restaurantLogos[order.restaurant_id || order.restaurantId]} alt="Logo" className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <ShoppingBag className="w-6 h-6" />
+                                                        )}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="font-black text-slate-900 text-sm truncate">{order.restaurant_name || order.restaurantName || 'Comercio'}</p>
+                                                            <span className="text-[10px] font-bold text-slate-400">#{order.id.slice(-6).toUpperCase()}</span>
+                                                        </div>
+                                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">
+                                                            {formatOrderDate(order.created_at || order.createdAt)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="text-right shrink-0">
+                                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                                                        <CheckCircle className="w-3 h-3 text-emerald-600" /> Entregado
+                                                    </span>
+                                                    <p className="text-xs font-black text-slate-900 mt-1">${orderTotal.toFixed(2)}</p>
+                                                    <p className="text-[9px] font-bold text-slate-400">{bsTotal} Bs</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Address & Items summary */}
+                                            <div className="text-xs text-slate-600 mb-3 space-y-1">
+                                                <div className="flex items-center gap-1.5 truncate">
+                                                    <Navigation className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                                    <span className="truncate font-medium">{deliveryLabel}</span>
+                                                </div>
+                                                {order.items && order.items.length > 0 && (
+                                                    <p className="text-[11px] text-slate-400 truncate pl-5">
+                                                        {order.items.map((it: any) => `${it.quantity}x ${it.name}`).join(', ')}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Dedicated Driver Contact Box */}
+                                            {hasDriver && (
+                                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/90 mb-3 flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-sm shrink-0 shadow-xs">
+                                                            🛵
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Repartidor asignado</p>
+                                                            <p className="text-xs font-black text-slate-900 truncate mt-0.5">{driverName || 'Conductor asignado'}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        {driverPhone && (
+                                                            <a
+                                                                href={`tel:${driverPhone}`}
+                                                                className="w-8 h-8 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow-xs transition-all active:scale-95"
+                                                                title={`Llamar a ${driverName || 'repartidor'}`}
+                                                            >
+                                                                <Phone className="w-4 h-4 fill-white" />
+                                                            </a>
+                                                        )}
+                                                        <button
+                                                            onClick={() => navigate(`/track/${order.id}?chat=true`)}
+                                                            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
+                                                            title="Abrir chat con el repartidor"
+                                                        >
+                                                            <MessageCircle className="w-3.5 h-3.5 text-primary" />
+                                                            <span>Chat</span>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Footer: Detail navigation */}
+                                            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                                                <span className="text-[10px] font-bold text-slate-400">
+                                                    {order.has_reviewed ? '⭐ Calificación registrada' : 'Ciclo completado'}
+                                                </span>
+                                                <button
+                                                    onClick={() => navigate(`/track/${order.id}`)}
+                                                    className="font-black text-slate-900 hover:text-primary flex items-center gap-1 transition-colors text-xs"
+                                                >
+                                                    <span>Ver Detalle del Pedido</span>
+                                                    <ChevronRight className="w-4 h-4 text-primary" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

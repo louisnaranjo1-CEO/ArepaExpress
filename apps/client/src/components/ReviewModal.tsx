@@ -201,8 +201,25 @@ export default function ReviewModal({
                 has_reviewed: true,
                 hasReviewed: true,
                 status: 'completed',
+                completed_at: new Date().toISOString(),
+                delivered_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             }).eq('id', orderId);
+
+            // Also mark linked transport_request as completed
+            try {
+                await supabase.from('transport_requests').update({
+                    status: 'completed',
+                    completed_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).eq('order_id', orderId);
+            } catch (trErr) {
+                console.warn("Could not update transport_request status:", trErr);
+            }
+
+            // Clear local active IDs so bottom nav and trackers know the cycle is finished
+            localStorage.removeItem('active_order_id');
+            localStorage.removeItem('active_transport_req_id');
 
             // 4. Otorgar puntos de fidelización por compra al usuario
             if (user?.id && !liveOrder?.points_credited && !liveOrder?.pointsCredited) {

@@ -551,8 +551,8 @@ export default function RideChat({
                         </button>
                     )}
 
-                    {/* Green Call Button */}
-                    {!isCompleted && (
+                    {/* Green Call Button (Active during trip and 48h retention) */}
+                    {!isChatLocked && (
                         <button
                             type="button"
                             onClick={handleCallAction}

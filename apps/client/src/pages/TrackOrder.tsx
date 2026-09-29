@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import {
@@ -136,6 +136,16 @@ export default function TrackOrder() {
 
     const { orderId } = useParams();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+
+    // Auto-open chat if ?chat=true is passed (e.g. from Mis Pedidos / Pedidos Recientes)
+    useEffect(() => {
+        if (searchParams.get('chat') === 'true') {
+            setShowChat(true);
+            setHasUnreadChat(false);
+        }
+    }, [searchParams]);
+
     const { bcvRate } = useCurrency();
     const { user } = useAuth();
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2295,13 +2305,39 @@ export default function TrackOrder() {
                         </div>
 
                         {/* Confirmation and Review CTA Button (Pilar 5) */}
-                        <button
-                            onClick={() => setShowReviewModal(true)}
-                            className="w-full bg-primary text-slate-950 font-black py-3.5 rounded-2xl hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-primary/30"
-                        >
-                            <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                            {isDelivered ? 'Calificar Tienda y Repartidor' : '¿Recibiste tu pedido? Confirmar y Calificar'}
-                        </button>
+                        {order.status === 'completed' || order.has_reviewed || order.hasReviewed ? (
+                            <div className="space-y-2 pt-1">
+                                <div className="p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center gap-2.5 text-emerald-400">
+                                    <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black text-white">¡Pedido entregado y calificado!</p>
+                                        <p className="text-[10px] text-slate-300 font-bold">Ciclo completado. Gracias por tu preferencia.</p>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => navigate('/', { replace: true })}
+                                        className="flex-1 bg-primary text-slate-950 font-black py-3 rounded-2xl hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-xs shadow-lg shadow-primary/20"
+                                    >
+                                        <Store className="w-4 h-4" /> Ir al Menú de Inicio
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/orders?tab=active')}
+                                        className="px-4 bg-white/10 text-white font-black py-3 rounded-2xl hover:bg-white/20 active:scale-[0.98] transition-all flex items-center justify-center gap-1.5 text-xs border border-white/10"
+                                    >
+                                        <Clock className="w-4 h-4" /> Mis Pedidos
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <button
+                                onClick={() => setShowReviewModal(true)}
+                                className="w-full bg-primary text-slate-950 font-black py-3.5 rounded-2xl hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-primary/30"
+                            >
+                                <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                                {isDelivered ? 'Calificar Tienda y Repartidor' : '¿Recibiste tu pedido? Confirmar y Calificar'}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -2486,7 +2522,12 @@ export default function TrackOrder() {
                 restaurantId={order.restaurantId || order.restaurant_id}
                 orderId={orderId!}
                 orderInfo={order}
-                onReviewSubmitted={() => setShowReviewModal(false)}
+                onReviewSubmitted={() => {
+                    setShowReviewModal(false);
+                    localStorage.removeItem('active_order_id');
+                    localStorage.removeItem('active_transport_req_id');
+                    navigate('/', { replace: true });
+                }}
             />
         </div>
     );
