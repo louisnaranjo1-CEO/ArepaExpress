@@ -122,6 +122,11 @@ export default function ReviewModal({
             return;
         }
 
+        if (hasDriver && driverRating === 0) {
+            setError(`Por favor, califica también el servicio del conductor (${driverName}) con al menos 1 estrella.`);
+            return;
+        }
+
         if (comment.trim().length < 4) {
             setError("Por favor, escribe un breve comentario sobre tu experiencia.");
             return;
@@ -317,16 +322,21 @@ export default function ReviewModal({
                         {/* SECTION 2: Calificación del Conductor (if delivery) */}
                         {hasDriver && (
                             <div className="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100 space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-8 h-8 rounded-xl bg-indigo-500 text-white flex items-center justify-center">
-                                        <Bike className="w-4 h-4" />
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-8 h-8 rounded-xl bg-indigo-500 text-white flex items-center justify-center">
+                                            <Bike className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-black text-slate-900 text-xs">Calificación del Conductor</h4>
+                                            <p className="text-[10px] text-slate-500 font-bold">
+                                                {driverName}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <h4 className="font-black text-slate-900 text-xs">Calificación del Conductor</h4>
-                                        <p className="text-[10px] text-slate-500 font-bold">
-                                            {driverName}
-                                        </p>
-                                    </div>
+                                    <span className="text-[9px] font-black uppercase text-indigo-700 bg-indigo-100 border border-indigo-200 px-2 py-0.5 rounded-full">
+                                        Obligatorio
+                                    </span>
                                 </div>
 
                                 <div className="flex items-center justify-center gap-1.5 py-1">

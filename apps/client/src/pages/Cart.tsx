@@ -1,4 +1,4 @@
-import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle, Award, X, Store, Bike, Navigation, Loader2, MessageCircle } from 'lucide-react';
+import { ArrowLeft, ShoppingCart, MapPin, CreditCard, Trash2, Minus, Plus, ArrowRight, CheckCircle2, Gift, AlertCircle, Award, X, Store, Bike, Navigation, Loader2, MessageCircle, RefreshCw, Check } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -77,8 +77,9 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [selectedAddress, setSelectedAddress] = useState<any>(null);
   const [showAddressSelector, setShowAddressSelector] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState(false);
+  const [showFullscreenDeliveryMap, setShowFullscreenDeliveryMap] = useState(false);
 
-  const { isLoaded: isMapLoaded } = useJsApiLoader({
+  const { isLoaded: isMapLoaded, loadError } = useJsApiLoader({
     id: 'google-map-script',
     googleMapsApiKey: GOOGLE_MAPS_API_KEY,
     libraries: GOOGLE_MAPS_LIBRARIES
@@ -804,54 +805,61 @@ export default function Cart({ hideHeader = false }: CartProps) {
                     <input placeholder="Cliente" value={customerName} onChange={e => setCustomerName(e.target.value)} className="w-full p-4 bg-white rounded-2xl border border-slate-100" />
                   </div>
                 ) : (
-                  <div className="space-y-4">
-                     {/* 2 Opciones claras y obligatorias de entrega */}
-                     <div className="space-y-2">
+                  <div className="space-y-5">
+                     {/* 2 Opciones de Entrega: Minimalistas de Bloque Grande */}
+                     <div className="space-y-3">
                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">
-                         Método de Entrega (Obligatorio)
+                         Selecciona tu Método de Entrega
                        </label>
-                       <div className="grid grid-cols-2 gap-3">
+                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                         {/* 1. Retiro en Tienda (Pickup sin costo) */}
                          <button
                            type="button"
                            onClick={() => setDeliveryMethod('pickup')}
-                           className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center text-center gap-2 cursor-pointer ${
+                           className={`p-5 rounded-3xl border-2 transition-all flex items-center gap-4 text-left cursor-pointer ${
                              deliveryMethod === 'pickup'
                                ? 'border-primary bg-primary/10 text-slate-900 shadow-md ring-2 ring-primary/30 font-black'
                                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 font-bold'
                            }`}
                          >
-                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${deliveryMethod === 'pickup' ? 'bg-primary text-slate-900' : 'bg-slate-100 text-slate-500'}`}>
-                             <Store className="w-6 h-6" />
+                           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${deliveryMethod === 'pickup' ? 'bg-primary text-slate-900 shadow-sm' : 'bg-slate-100 text-slate-500'}`}>
+                             <Store className="w-7 h-7" />
                            </div>
-                           <span className="text-xs uppercase tracking-wider">Retiro en tienda</span>
-                           <span className="text-[10px] text-slate-400">PickUp sin costo</span>
+                           <div className="min-w-0 flex-1">
+                             <span className="block text-sm font-black uppercase tracking-wider text-slate-900">Retiro en Tienda</span>
+                             <span className="block text-xs font-bold text-emerald-600 mt-0.5">Pickup sin costo</span>
+                           </div>
                          </button>
 
+                         {/* 2. Delivery a tu Dirección */}
                          <button
                            type="button"
                            onClick={() => {
                              setDeliveryMethod('app_delivery');
-                             if (!gpsCoords) fetchCurrentLocation();
+                             fetchCurrentLocation();
+                             setShowFullscreenDeliveryMap(true);
                            }}
-                           className={`p-4 rounded-3xl border-2 transition-all flex flex-col items-center text-center gap-2 cursor-pointer ${
+                           className={`p-5 rounded-3xl border-2 transition-all flex items-center gap-4 text-left cursor-pointer ${
                              deliveryMethod !== 'pickup'
                                ? 'border-primary bg-primary/10 text-slate-900 shadow-md ring-2 ring-primary/30 font-black'
                                : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 font-bold'
                            }`}
                          >
-                           <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-colors ${deliveryMethod !== 'pickup' ? 'bg-primary text-slate-900' : 'bg-slate-100 text-slate-500'}`}>
-                             <Bike className="w-6 h-6" />
+                           <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 transition-colors ${deliveryMethod !== 'pickup' ? 'bg-primary text-slate-900 shadow-sm' : 'bg-slate-100 text-slate-500'}`}>
+                             <Bike className="w-7 h-7" />
                            </div>
-                           <span className="text-xs uppercase tracking-wider">Delivery</span>
-                           <span className="text-[10px] text-slate-400">A tu dirección</span>
+                           <div className="min-w-0 flex-1">
+                             <span className="block text-sm font-black uppercase tracking-wider text-slate-900">Delivery a tu Dirección</span>
+                             <span className="block text-xs font-bold text-slate-400 mt-0.5">Ubicación GPS en vivo</span>
+                           </div>
                          </button>
                        </div>
                      </div>
 
                      {/* Vista Retiro en Tienda */}
                      {deliveryMethod === 'pickup' && (
-                       <div className="p-6 bg-blue-50/50 rounded-3xl border border-blue-100 text-center animate-in fade-in slide-in-from-bottom-2 space-y-2">
-                         <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                       <div className="p-6 bg-blue-50/70 rounded-3xl border border-blue-100 text-center animate-in fade-in slide-in-from-bottom-2 space-y-2.5">
+                         <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-1">
                            <Store className="w-6 h-6" />
                          </div>
                          <p className="font-black text-slate-900 text-sm uppercase tracking-tight">Retiro en Mostrador</p>
@@ -864,113 +872,73 @@ export default function Cart({ hideHeader = false }: CartProps) {
                        </div>
                      )}
 
-                     {/* Vista Delivery con Geolocalización Automática y Mapa */}
+                     {/* Vista Delivery: Resumen y botón para ajustar en mapa */}
                      {deliveryMethod !== 'pickup' && (
                        <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2">
-                         <div className="flex items-center justify-between px-1">
-                           <p className="font-black text-slate-800 text-xs uppercase tracking-wider flex items-center gap-1.5">
-                             <MapPin className="w-4 h-4 text-primary" /> Dirección de Entrega (GPS)
-                           </p>
-                           <button
-                             type="button"
-                             onClick={fetchCurrentLocation}
-                             disabled={isLocatingGps}
-                             className="text-[10px] font-black uppercase text-primary hover:underline flex items-center gap-1 cursor-pointer"
-                           >
-                             {isLocatingGps ? <Loader2 className="w-3 h-3 animate-spin" /> : <Navigation className="w-3 h-3" />}
-                             {isLocatingGps ? 'Obteniendo GPS...' : 'Actualizar GPS'}
-                           </button>
-                         </div>
-
-                         {/* Google Maps: Confirmación visual de lectura (optimizado) */}
-                         <div className="w-full h-44 rounded-3xl overflow-hidden border border-slate-200 shadow-xs relative bg-slate-100">
-                           {isMapLoaded && (gpsCoords || selectedAddress?.lat) ? (
-                             <GoogleMap
-                               mapContainerStyle={{ width: '100%', height: '100%' }}
-                               center={gpsCoords || { lat: selectedAddress.lat, lng: selectedAddress.lng }}
-                               zoom={16}
-                               options={{
-                                 disableDefaultUI: true,
-                                 zoomControl: false,
-                                 streetViewControl: false,
-                                 mapTypeControl: false,
-                                 fullscreenControl: false,
-                                 draggable: false, // Solo confirmación visual de lectura
-                                 scrollwheel: false,
-                                 disableDoubleClickZoom: true,
-                                 styles: googleMapsDarkStyles
+                         <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-3">
+                           <div className="flex items-center justify-between">
+                             <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
+                               <MapPin className="w-3.5 h-3.5 text-primary" /> Ubicación GPS de Entrega
+                             </span>
+                             <button
+                               type="button"
+                               onClick={() => {
+                                 fetchCurrentLocation();
+                                 setShowFullscreenDeliveryMap(true);
                                }}
+                               className="text-xs font-black text-primary hover:underline flex items-center gap-1 cursor-pointer"
                              >
-                               <Marker position={gpsCoords || { lat: selectedAddress.lat, lng: selectedAddress.lng }} />
-                             </GoogleMap>
-                           ) : (
-                             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 text-xs font-bold gap-2">
-                               <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                               <span>Detectando tu ubicación GPS automáticamente...</span>
+                               <Navigation className="w-3.5 h-3.5" /> Abrir Mapa Completo
+                             </button>
+                           </div>
+
+                           <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between">
+                             <div>
+                               <p className="font-black text-xs text-slate-800">
+                                 {selectedAddress?.name || 'Ubicación GPS Detectada'}
+                               </p>
+                               {manualReference && (
+                                 <p className="text-[11px] font-bold text-slate-500 mt-0.5">
+                                   Ref: {manualReference}
+                                 </p>
+                               )}
                              </div>
-                           )}
-
-                           <button
-                             type="button"
-                             onClick={() => setShowMapPicker(true)}
-                             className="absolute bottom-2 right-2 bg-white/95 backdrop-blur-xs text-slate-900 text-[10px] font-black px-3 py-1.5 rounded-xl shadow-md border border-slate-200 hover:bg-white flex items-center gap-1 cursor-pointer"
-                           >
-                             <MapPin className="w-3.5 h-3.5 text-primary" /> Ajustar pin
-                           </button>
+                             <button
+                               type="button"
+                               onClick={() => setShowFullscreenDeliveryMap(true)}
+                               className="px-3 py-1.5 bg-white text-slate-900 text-[11px] font-black rounded-xl border border-slate-200 shadow-xs hover:bg-slate-100 cursor-pointer"
+                             >
+                               Ajustar
+                             </button>
+                           </div>
                          </div>
-
-                         {/* TextInput opcional debajo del mapa para referencias manuales */}
-                         <div className="space-y-1">
-                           <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">
-                             Punto de Referencia (Opcional)
-                           </label>
-                           <input
-                             type="text"
-                             placeholder="Ej. Casa amarilla con rejas blancas, timbre negro, frente a la plaza..."
-                             value={manualReference}
-                             onChange={(e) => {
-                               setManualReference(e.target.value);
-                               setSelectedAddress((prev: any) => ({
-                                 ...prev,
-                                 name: prev?.name || 'Ubicación GPS detectada',
-                                 lat: gpsCoords?.lat || prev?.lat,
-                                 lng: gpsCoords?.lng || prev?.lng,
-                                 reference: e.target.value
-                               }));
-                             }}
-                             className="w-full bg-slate-50 border border-slate-200 focus:border-primary p-3.5 rounded-2xl outline-none font-bold text-xs text-slate-800 transition-all placeholder:text-slate-400"
-                           />
-                         </div>
-
-                         <p className="text-[10px] text-slate-400 font-bold uppercase text-center px-4 leading-normal">
-                           Para asegurar una entrega exitosa, verifica que tu punto de referencia sea descriptivo.
-                         </p>
                        </div>
                      )}
+
+                     <button 
+                       type="button"
+                       onClick={() => {
+                           if (!isWaiter && deliveryMethod !== 'pickup' && (!selectedAddress || !selectedAddress.lat) && restaurantData?.businessType !== 'hotel') {
+                               if (gpsCoords) {
+                                 setSelectedAddress({
+                                   name: 'Ubicación GPS detectada',
+                                   lat: gpsCoords.lat,
+                                   lng: gpsCoords.lng,
+                                   reference: manualReference
+                                 });
+                               } else {
+                                 setShowFullscreenDeliveryMap(true);
+                                 return;
+                               }
+                           }
+                           setCurrentStep(3);
+                       }} 
+                       className="w-full bg-primary text-slate-900 py-4.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all mt-2 cursor-pointer"
+                     >
+                       Confirmar Datos y Continuar
+                     </button>
                   </div>
                 )}
-                
-                <button 
-                  onClick={() => {
-                      if (!isWaiter && deliveryMethod !== 'pickup' && (!selectedAddress || !selectedAddress.lat) && restaurantData?.businessType !== 'hotel') {
-                          if (gpsCoords) {
-                            setSelectedAddress({
-                              name: 'Ubicación GPS detectada',
-                              lat: gpsCoords.lat,
-                              lng: gpsCoords.lng,
-                              reference: manualReference
-                            });
-                          } else {
-                            alert("Por favor habilita el GPS o selecciona tu ubicación en el mapa.");
-                            return;
-                          }
-                      }
-                      setCurrentStep(3);
-                  }} 
-                  className="w-full bg-primary text-slate-900 py-4.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all mt-2 cursor-pointer"
-                >
-                  Confirmar Datos y Continuar
-                </button>
               </div>
             )}
             {currentStep === 3 && (
@@ -1324,6 +1292,126 @@ export default function Cart({ hideHeader = false }: CartProps) {
           </div>
         </div>
       )}
+      {/* Google Maps Pantalla Completa para Selección de Delivery */}
+      {showFullscreenDeliveryMap && (
+        <div className="fixed inset-0 z-[120] bg-slate-900 flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden">
+          {/* Top Floating Bar */}
+          <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between gap-3 pointer-events-none">
+            <button
+              type="button"
+              onClick={() => setShowFullscreenDeliveryMap(false)}
+              className="pointer-events-auto w-11 h-11 rounded-2xl bg-white/95 backdrop-blur-md text-slate-900 shadow-xl flex items-center justify-center hover:bg-white active:scale-95 transition-all border border-black/10 cursor-pointer"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="pointer-events-auto bg-white/95 backdrop-blur-md px-4 py-2 rounded-2xl shadow-xl border border-black/10 flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-primary" />
+              <span className="text-xs font-black uppercase text-slate-900 tracking-wider">Ubicación de Entrega</span>
+            </div>
+            <button
+              type="button"
+              onClick={fetchCurrentLocation}
+              disabled={isLocatingGps}
+              className="pointer-events-auto w-11 h-11 rounded-2xl bg-white/95 backdrop-blur-md text-primary shadow-xl flex items-center justify-center hover:bg-white active:scale-95 transition-all border border-black/10 cursor-pointer"
+              title="Centrar en mi GPS"
+            >
+              {isLocatingGps ? <Loader2 className="w-5 h-5 animate-spin" /> : <Navigation className="w-5 h-5" />}
+            </button>
+          </div>
+
+          {/* Map Area */}
+          <div className="flex-1 w-full h-full relative">
+            {isMapLoaded && (gpsCoords || selectedAddress?.lat) ? (
+              <GoogleMap
+                mapContainerStyle={{ width: '100%', height: '100%' }}
+                center={gpsCoords || { lat: selectedAddress?.lat || 8.9326, lng: selectedAddress?.lng || -67.4264 }}
+                zoom={17}
+                onClick={(e) => {
+                  if (e.latLng) {
+                    const newPos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                    setGpsCoords(newPos);
+                  }
+                }}
+                options={{
+                  disableDefaultUI: true,
+                  zoomControl: false,
+                  streetViewControl: false,
+                  mapTypeControl: false,
+                  fullscreenControl: false,
+                  styles: googleMapsDarkStyles
+                }}
+              >
+                <Marker 
+                  position={gpsCoords || { lat: selectedAddress?.lat || 8.9326, lng: selectedAddress?.lng || -67.4264 }}
+                  draggable={true}
+                  onDragEnd={(e) => {
+                    if (e.latLng) {
+                      setGpsCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                    }
+                  }}
+                />
+              </GoogleMap>
+            ) : (
+              <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-6 text-center text-white">
+                <div className="w-16 h-16 rounded-3xl bg-primary/20 text-primary flex items-center justify-center mb-4">
+                  <MapPin className="w-8 h-8 animate-bounce" />
+                </div>
+                <h3 className="text-lg font-black mb-1">Localizando tu Posición GPS</h3>
+                <p className="text-xs text-slate-400 max-w-xs mb-4">
+                  {isLocatingGps ? 'Obteniendo coordenadas satelitales...' : 'Ubicación GPS fijada en pantalla.'}
+                </p>
+                <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-3 text-[11px] font-mono text-primary mb-3">
+                  Lat: {gpsCoords?.lat?.toFixed(5) || 'Detectando...'} | Lng: {gpsCoords?.lng?.toFixed(5) || 'Detectando...'}
+                </div>
+                <button
+                  type="button"
+                  onClick={fetchCurrentLocation}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold border border-slate-700 flex items-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" /> Actualizar Coordenadas
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Floating Control: Reference Input & Confirm Button */}
+          <div className="absolute bottom-0 left-0 right-0 p-4 pb-8 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent z-20 space-y-3">
+            <div className="max-w-md mx-auto space-y-3">
+              <div className="bg-white/95 backdrop-blur-md rounded-2xl p-3.5 shadow-2xl border border-white/20">
+                <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1.5 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-primary" /> Punto de Referencia (Opcional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej. Casa blanca con rejas, frente a la farmacia, timbre negro..."
+                  value={manualReference}
+                  onChange={(e) => setManualReference(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-xs text-slate-800 transition-all placeholder:text-slate-400"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const targetCoords = gpsCoords || { lat: 8.9326, lng: -67.4264 };
+                  setSelectedAddress({
+                    name: 'Ubicación GPS confirmada',
+                    lat: targetCoords.lat,
+                    lng: targetCoords.lng,
+                    reference: manualReference
+                  });
+                  setShowFullscreenDeliveryMap(false);
+                  setCurrentStep(3);
+                }}
+                className="w-full bg-primary text-slate-900 py-4.5 rounded-2xl font-black text-xs uppercase tracking-widest shadow-2xl shadow-primary/30 active:scale-95 hover:bg-yellow-400 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Check className="w-5 h-5 stroke-[3]" /> Confirmar Datos
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showMapPicker && (
           <AddressPicker 
               onClose={() => setShowMapPicker(false)}

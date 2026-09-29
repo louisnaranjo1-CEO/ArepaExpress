@@ -60,6 +60,56 @@ export default function OrdersRadar() {
         reference: string;
         distanceKm?: number;
     } | null>(null);
+
+    // Edge Case 6.3: Driver Offline Storage Cache for transit connectivity loss
+    const [isNetworkOffline, setIsNetworkOffline] = useState(!navigator.onLine);
+    const [offlineTripData, setOfflineTripData] = useState<any>(() => {
+        try {
+            const saved = localStorage.getItem('driver_active_offline_trip');
+            return saved ? JSON.parse(saved) : null;
+        } catch (_) {
+            return null;
+        }
+    });
+
+    useEffect(() => {
+        const handleOnline = () => setIsNetworkOffline(false);
+        const handleOffline = () => setIsNetworkOffline(true);
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
+
+    // Sync active transport or order into offline storage
+    useEffect(() => {
+        const targetTrip = activeTransport || activeOrder;
+        if (targetTrip) {
+            const cache = {
+                id: targetTrip.id,
+                clientName: targetTrip.user_name || targetTrip.userName || 'Cliente',
+                clientPhone: targetTrip.user_phone || targetTrip.userPhone || '',
+                clientDNI: targetTrip.user_cedula || targetTrip.clientDNI || '',
+                address: targetTrip.destination?.address || targetTrip.delivery_address || targetTrip.deliveryAddress || 'Dirección de entrega',
+                reference: targetTrip.destination?.reference || targetTrip.delivery_address_reference || targetTrip.order_note || targetTrip.notes || '',
+                amountToCollect: Number(targetTrip.client_total || targetTrip.total || targetTrip.price || 0),
+                paymentMethod: targetTrip.payment_method || targetTrip.paymentMethod || 'Pago Móvil / Efectivo',
+                fletePagadoPor: targetTrip.flete_pagado_por || null,
+                cachedAt: new Date().toISOString()
+            };
+            setOfflineTripData(cache);
+            try {
+                localStorage.setItem('driver_active_offline_trip', JSON.stringify(cache));
+            } catch (_) {}
+        } else if (!activeTransport && !activeOrder && !isNetworkOffline) {
+            try {
+                localStorage.removeItem('driver_active_offline_trip');
+                setOfflineTripData(null);
+            } catch (_) {}
+        }
+    }, [activeTransport, activeOrder, isNetworkOffline]);
     
     // Consejos y Anuncios Dinámicos del Radar
     const [radarTips, setRadarTips] = useState<string[]>([
@@ -489,18 +539,23 @@ export default function OrdersRadar() {
                 const drvLoc = driverProfile?.current_location;
                 const reqs = data.filter((req: any) => {
                     // Si el viaje fue solicitado directamente a otro conductor específico, no mostrarlo ni sonar para mí
-                    if (req.assigned_driver_id && req.assigned_driver_id !== user?.uid) {
+                    const myId = user?.id || (user as any)?.uid;
+                    if (req.assigned_driver_id && req.assigned_driver_id !== myId) {
                         return false;
                     }
 
                     const reqType = req.type || req.service_category || 'transport';
                     const isMandado = reqType === 'muchacho_mandado' || req.service_category === 'muchacho_mandado';
 
-                    // Geolocation proximity filter: if driver has known GPS and request has coordinates,
-                    // restrict to drivers within 35km radius (same city/metropolitan zone)
-                    if (drvLoc?.lat && drvLoc?.lng && (req.origin?.lat || req.destination?.lat)) {
-                        const targetLat = req.origin?.lat || req.destination?.lat;
-                        const targetLng = req.origin?.lng || req.destination?.lng;
+                    // Geolocation proximity filter: evaluate both direct and nested coordinates
+                    const reqOriginLat = req.origin?.lat || req.origin?.coords?.lat;
+                    const reqOriginLng = req.origin?.lng || req.origin?.coords?.lng;
+                    const reqDestLat = req.destination?.lat || req.destination?.coords?.lat;
+                    const reqDestLng = req.destination?.lng || req.destination?.coords?.lng;
+
+                    if (drvLoc?.lat && drvLoc?.lng && (reqOriginLat || reqDestLat)) {
+                        const targetLat = reqOriginLat || reqDestLat;
+                        const targetLng = reqOriginLng || reqDestLng;
                         const distM = calculateDistance(drvLoc.lat, drvLoc.lng, targetLat, targetLng);
                         if (distM > 35000) {
                             return false;
@@ -508,7 +563,7 @@ export default function OrdersRadar() {
                     }
 
                     if (isMandado) return true;
-                    if (reqType === 'food_delivery' || reqType === 'package_delivery') return true;
+                    if (reqType === 'food_delivery' || reqType === 'package_delivery' || reqType === 'delivery_envios') return true;
                     const reqVehicle = (req.vehicle_type || req.vehicleType || 'moto').toLowerCase();
                     if (reqVehicle === drvVehicle) return true;
                     if (drvVehicle === 'carro' && reqVehicle === 'moto') return true;
@@ -1338,6 +1393,54 @@ export default function OrdersRadar() {
                     role="caller"
                     onClose={() => setShowOutgoingCall(false)}
                 />
+            )}
+            {/* Edge Case 6.3: Offline Rescue Banner if connection drops in transit */}
+            {isNetworkOffline && offlineTripData && (
+                <div className="bg-red-600 text-white p-4 rounded-3xl shadow-2xl mb-4 border-2 border-red-400 space-y-2.5 animate-in slide-in-from-top-4">
+                    <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-yellow-300">
+                            <AlertTriangle className="w-4 h-4 animate-bounce" /> Modo Sin Conexión Activado
+                        </span>
+                        <span className="text-[10px] font-bold bg-white/20 px-2.5 py-0.5 rounded-full">
+                            Datos en Caché Local
+                        </span>
+                    </div>
+                    <p className="text-xs font-semibold leading-relaxed">
+                        Sin conexión a internet. Los datos críticos para concretar la entrega se han conservado en la memoria de tu dispositivo:
+                    </p>
+                    <div className="bg-white/10 rounded-2xl p-3 space-y-2 text-xs">
+                        <div className="flex justify-between items-center">
+                            <span className="text-slate-300 font-bold">Cliente:</span>
+                            <span className="font-black text-white">{offlineTripData.clientName}</span>
+                        </div>
+                        {offlineTripData.clientPhone && (
+                            <div className="flex justify-between items-center">
+                                <span className="text-slate-300 font-bold">Teléfono:</span>
+                                <a href={`tel:${offlineTripData.clientPhone}`} className="bg-yellow-400 text-slate-950 px-2.5 py-1 rounded-lg font-black flex items-center gap-1">
+                                    <Phone className="w-3.5 h-3.5" /> Llamar: {offlineTripData.clientPhone}
+                                </a>
+                            </div>
+                        )}
+                        <div className="flex justify-between">
+                            <span className="text-slate-300 font-bold">Dirección:</span>
+                            <span className="font-black text-white text-right max-w-[200px] truncate">{offlineTripData.address}</span>
+                        </div>
+                        {offlineTripData.reference && (
+                            <div className="flex justify-between">
+                                <span className="text-slate-300 font-bold">Punto Referencia:</span>
+                                <span className="font-black text-yellow-300 text-right max-w-[200px]">{offlineTripData.reference}</span>
+                            </div>
+                        )}
+                        <div className="flex justify-between pt-1 border-t border-white/20">
+                            <span className="text-slate-300 font-bold">Monto a Cobrar:</span>
+                            <span className="font-black text-yellow-300 text-sm">
+                                {offlineTripData.fletePagadoPor === 'negocio' 
+                                    ? 'Flete pagado por el comercio ($0 al cliente)' 
+                                    : `$${offlineTripData.amountToCollect.toFixed(2)} USD`}
+                            </span>
+                        </div>
+                    </div>
+                </div>
             )}
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
                 <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2.5rem] mb-4 flex items-center gap-4">

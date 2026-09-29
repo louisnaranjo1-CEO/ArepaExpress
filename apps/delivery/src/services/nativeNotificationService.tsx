@@ -177,6 +177,8 @@ export async function postNativeNotification(options: NotificationOptions) {
                             badge: icon,
                             tag: tag || `app-notif-${Date.now()}`,
                             data,
+                            channelId: options.soundType === 'driver' ? 'driver_dispatch_channel' : 'un_2x3_high_priority',
+                            requireInteraction: options.soundType === 'driver',
                             vibrate: vibratePattern || [200, 100, 200]
                         } as any);
                         return;

@@ -36,6 +36,7 @@ export default function RestaurantPage() {
   const [isStoreCartOpen, setIsStoreCartOpen] = useState(false);
   const [showClearCartModal, setShowClearCartModal] = useState(false);
   const [pendingCartItem, setPendingCartItem] = useState<{product: Product, variant?: any, modifiers?: any} | null>(null);
+  const [activeOrder, setActiveOrder] = useState<any | null>(null);
 
   const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>(() => {
     try {
@@ -276,6 +277,24 @@ export default function RestaurantPage() {
               if (followSnap) {
                 setIsFollowing(true);
               }
+
+              // Check for active in-progress order with this restaurant
+              try {
+                const { data: ord } = await supabase
+                  .from('orders')
+                  .select('id, status, total, created_at')
+                  .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                  .eq('restaurant_id', id)
+                  .not('status', 'in', '("completed","cancelled","rejected")')
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .maybeSingle();
+                if (ord) {
+                  setActiveOrder(ord);
+                }
+              } catch (ordErr) {
+                console.warn("Could not check active order:", ordErr);
+              }
             } catch (favErr) {
               console.warn("Could not check favorites/following status:", favErr);
             }
@@ -427,7 +446,10 @@ export default function RestaurantPage() {
 
   const handleGoToCart = () => {
     setShowClearCartModal(false);
-    navigate('/orders');
+    if (restaurant?.id) {
+      setActiveRestaurantId(restaurant.id);
+    }
+    navigate(`/cart?restaurantId=${restaurant?.id || ''}`);
   };
 
   const getBusinessLabel = () => {
@@ -1465,17 +1487,45 @@ export default function RestaurantPage() {
         </div>
       )}
 
+      {/* Active in-progress order banner if customer already has a running order in this restaurant */}
+      {activeOrder && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 w-full px-4 max-w-md z-[55] animate-in slide-in-from-top-3 duration-300">
+          <div 
+            onClick={() => navigate(`/track/${activeOrder.id}`)}
+            className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 rounded-2xl shadow-xl flex items-center justify-between cursor-pointer border border-primary/40 hover:bg-slate-900 transition-all group"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-primary text-slate-950 flex items-center justify-center font-black shrink-0">
+                <Clock className="w-5 h-5 animate-spin" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-black text-white leading-tight truncate">Tienes un pedido en curso aquí</p>
+                <p className="text-[10px] font-bold text-slate-400">Toca para ver estado, cocina y chat</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-primary text-xs font-black group-hover:translate-x-1 transition-transform shrink-0">
+              <span>Ver Pedido</span>
+              <ChevronRight className="w-4 h-4" />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Floating Store Cart Button */}
       {storeTotalItems > 0 && (
         <div className="fixed bottom-24 left-1/2 transform -translate-x-1/2 w-full px-5 max-w-md z-[60] animate-in slide-in-from-bottom-4 fade-in duration-300">
           <button 
             type="button"
             onClick={() => {
-              vibrate(30);
+              try {
+                if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+                  navigator.vibrate(30);
+                }
+              } catch (e) {}
               if (restaurant?.id) {
                 setActiveRestaurantId(restaurant.id);
               }
-              navigate('/cart');
+              navigate(`/cart?restaurantId=${restaurant?.id || ''}`);
             }}
             className="w-full bg-[#FFDE00] hover:bg-yellow-400 active:bg-yellow-500 text-slate-950 rounded-2xl p-4 shadow-xl shadow-primary/30 flex items-center justify-between transition-all ring-4 ring-black/5 active:scale-95 cursor-pointer border border-black/10"
           >

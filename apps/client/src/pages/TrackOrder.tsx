@@ -709,21 +709,29 @@ export default function TrackOrder() {
 
             const itemsSummary = (order.items || []).map((i: any) => `${i.quantity}x ${i.name}`).join(', ');
 
+            const originCoordsVal = restaurant?.location?.coords || (restaurant?.lat ? { lat: Number(restaurant.lat), lng: Number(restaurant.lng) } : null);
+            const destCoordsVal = order.deliveryCoords || order.address?.coords || userLocation || null;
+
             const originData = {
                 address: restaurant?.address || restaurant?.location?.address || order.restaurantName || 'Comercio',
-                coords: restaurant?.location?.coords || (restaurant?.lat ? { lat: Number(restaurant.lat), lng: Number(restaurant.lng) } : null),
+                lat: originCoordsVal?.lat,
+                lng: originCoordsVal?.lng,
+                coords: originCoordsVal,
                 name: restaurant?.name || order.restaurantName || 'Negocio',
                 details: 'Retiro de pedido de comida'
             };
 
             const destinationData = {
                 address: order.deliveryAddress || order.address?.name || 'Dirección del cliente',
-                coords: order.deliveryCoords || order.address?.coords || userLocation || null,
+                lat: destCoordsVal?.lat,
+                lng: destCoordsVal?.lng,
+                coords: destCoordsVal,
                 name: order.userName || 'Cliente',
                 details: order.address?.reference || order.orderNote || ''
             };
 
             const transportId = crypto.randomUUID();
+            const clientAuthId = order.user_id || order.userId || user?.id || user?.uid || null;
 
             const transportData: any = {
                 id: transportId,
@@ -734,7 +742,7 @@ export default function TrackOrder() {
                 type: 'food_delivery',
                 service_category: 'food_delivery',
                 status: 'searching',
-                user_id: order.userId || user?.uid || null,
+                user_id: clientAuthId,
                 user_name: order.userName || 'Cliente',
                 user_phone: order.userPhone || user?.phoneNumber || '',
                 user_cedula: order.userCedula || '',
@@ -773,7 +781,7 @@ export default function TrackOrder() {
             await supabase.from('messages').insert({
                 order_id: orderId,
                 text: `🛵 *Delivery Solicitado:* Vehículo: ${selectedVehicle.toUpperCase()} · Tarifa: $${deliveryFee.toFixed(2)}. Buscando repartidor disponible.`,
-                sender_id: user?.uid || 'guest',
+                sender_id: user?.uid || user?.id || 'guest',
                 sender_name: order.userName || 'Cliente',
                 sender_role: 'client',
                 created_at: new Date().toISOString()
@@ -785,6 +793,97 @@ export default function TrackOrder() {
             toast.error('Error al solicitar repartidor');
         } finally {
             setIsSubmittingDelivery(false);
+        }
+    };
+
+    // Fase 3.2: Confirmación de Retiro en Tienda por el Cliente ("Retiré mi pedido")
+    const handleClientCompletedPickup = async () => {
+        try {
+            await supabase.from('orders').update({
+                status: 'completed',
+                delivery_status: 'completed',
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            // Asignar puntos de fidelización
+            if (user?.id && !order.points_credited && !order.pointsCredited) {
+                const orderTotal = Number(order.total || itemsTotal || 10);
+                const pointsEarned = Math.round(orderTotal * 2.5);
+                try {
+                    const { data: prof } = await supabase.from('profiles').select('points').eq('id', user.id).maybeSingle();
+                    const currentPts = prof?.points || 0;
+                    await supabase.from('profiles').update({ points: currentPts + pointsEarned }).eq('id', user.id);
+                    await supabase.from('orders').update({ points_credited: true }).eq('id', orderId);
+                    toast.success(`✨ ¡Ganaste +${pointsEarned} puntos por tu compra!`);
+                } catch (ptsErr) {
+                    console.warn("Points error:", ptsErr);
+                }
+            }
+
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                text: '🎉 *¡Pedido Retirado!* El cliente ha confirmado el retiro de su mercancía en la tienda. Venta completada exitosamente.',
+                sender_id: user?.uid || user?.id || 'guest',
+                sender_name: order.userName || 'Cliente',
+                sender_role: 'client',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success('¡Venta completada! Has retirado tu pedido y recibido tus puntos.');
+            setShowReviewModal(true);
+        } catch (e) {
+            console.error(e);
+            toast.error('Error al registrar retiro de pedido');
+        }
+    };
+
+    // Fase 6.2: Solicitar Asistencia al Negocio cuando no hay conductor
+    const handleRequestBusinessLogisticsHelp = async () => {
+        try {
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                text: '🚨 *ASISTENCIA LOGÍSTICA SOLICITADA:* La comida está lista pero no se han encontrado conductores disponibles en la zona tras varios intentos. ¿Podrías apoyarme con un delivery propio o coordinamos retiro en tienda?',
+                sender_id: user?.uid || user?.id || 'guest',
+                sender_name: order.userName || 'Cliente',
+                sender_role: 'client',
+                created_at: new Date().toISOString()
+            });
+            toast.success('Mensaje de asistencia enviado a la tienda', { icon: '🚨' });
+            openChat();
+        } catch (e) {
+            toast.error('Error al solicitar asistencia');
+        }
+    };
+
+    // Fase 6.2: Cancelar conductor y seleccionar uno nuevo
+    const handleCancelDriverSearchAndRetry = async () => {
+        try {
+            if (order.transport_request_id) {
+                await supabase.from('transport_requests').update({
+                    status: 'cancelled',
+                    updated_at: new Date().toISOString()
+                }).eq('id', order.transport_request_id);
+            }
+            await supabase.from('orders').update({
+                status: 'ready',
+                transport_request_id: null,
+                driver_id: null,
+                delivery_driver_id: null,
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                text: '🔄 El cliente canceló la búsqueda del conductor actual para seleccionar uno nuevo o cambiar método.',
+                sender_id: user?.uid || user?.id || 'guest',
+                sender_name: order.userName || 'Cliente',
+                sender_role: 'client',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success('Búsqueda reiniciada. Puedes escoger otro vehículo o método.');
+        } catch (e) {
+            toast.error('Error al reiniciar búsqueda de conductor');
         }
     };
 
@@ -1034,6 +1133,16 @@ export default function TrackOrder() {
             <StepProgressHeader currentStep={currentStep} />
 
             <div className="px-4 pt-5 space-y-4 max-w-lg mx-auto">
+                {/* Banner predeterminado Fase 2.1 */}
+                <div className="bg-amber-50/95 border-2 border-amber-300 rounded-3xl p-4 flex items-start gap-3.5 text-amber-950 shadow-sm">
+                    <div className="w-9 h-9 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 mt-0.5">
+                        <AlertCircle className="w-5 h-5" />
+                    </div>
+                    <p className="text-xs font-bold leading-relaxed">
+                        Espera a que el negocio te asegure el stock de los productos antes de realizar tu pago. ¡Puedes escribirle primero!
+                    </p>
+                </div>
+
                 {/* Botón Prominente: [Ir al Chat con la Tienda] */}
                 <motion.button
                     whileHover={{ scale: 1.01 }}
@@ -1167,7 +1276,7 @@ export default function TrackOrder() {
     );
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // PASO 2 — Pago al Negocio
+    // PASO 2 — Pago al Negocio (Todo el flujo de pago se realiza en el Chat)
     // ═══════════════════════════════════════════════════════════════════════════
     const renderStep2 = () => {
         const isVerifying = order.status === 'pending_verification';
@@ -1243,13 +1352,13 @@ export default function TrackOrder() {
                             </button>
                         </div>
                     ) : (
-                        /* Formulario de Pago — Solo Chat */
+                        /* Fase 2.1: Todo el proceso de pago se traslada al interior del Chat */
                         <>
-                            {/* Botón Destacado: Ver Datos de Pago Móvil */}
+                            {/* Llamado a la acción Principal: Pagar en el Chat */}
                             <motion.button
                                 whileHover={{ scale: 1.01 }}
                                 whileTap={{ scale: 0.98 }}
-                                onClick={() => setShowPagoMovilModal(true)}
+                                onClick={openChat}
                                 className="w-full bg-primary text-slate-900 p-5 rounded-3xl shadow-xl shadow-primary/25 flex items-center justify-between border-2 border-primary group"
                             >
                                 <div className="flex items-center gap-3.5">
@@ -1257,8 +1366,8 @@ export default function TrackOrder() {
                                         <Wallet className="w-6 h-6" />
                                     </div>
                                     <div className="text-left">
-                                        <p className="font-black text-base leading-tight">Ver Datos de Pago Móvil</p>
-                                        <p className="text-xs font-bold text-slate-700">Copiar monto en Bs y datos en 1 clic</p>
+                                        <p className="font-black text-base leading-tight">Completar Pago en el Chat</p>
+                                        <p className="text-xs font-bold text-slate-700">Ver datos bancarios, copiar en 1 clic y adjuntar comprobante</p>
                                     </div>
                                 </div>
                                 <div className="w-9 h-9 rounded-full bg-slate-900/10 flex items-center justify-center group-hover:translate-x-1 transition-transform">
@@ -1266,33 +1375,19 @@ export default function TrackOrder() {
                                 </div>
                             </motion.button>
 
-                            {/* Instrucción: Enviar comprobante por Chat */}
-                            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-4">
+                            {/* Instrucción explicativa */}
+                            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
                                 <div className="flex items-start gap-3">
-                                    <div className="w-10 h-10 rounded-2xl bg-slate-900 text-primary flex items-center justify-center shrink-0 mt-0.5">
-                                        <MessageSquare className="w-5 h-5" />
+                                    <div className="w-9 h-9 rounded-2xl bg-slate-100 text-slate-700 flex items-center justify-center shrink-0 mt-0.5">
+                                        <MessageSquare className="w-4 h-4" />
                                     </div>
                                     <div>
-                                        <p className="font-black text-sm text-slate-900 leading-tight">Envía tu comprobante por el Chat</p>
+                                        <p className="font-black text-sm text-slate-900 leading-tight">Atención directa y segura</p>
                                         <p className="text-xs font-bold text-slate-500 mt-1 leading-relaxed">
-                                            Una vez realizado el pago, abre el chat con el negocio y adjunta la foto/captura de tu comprobante directamente desde allí. El negocio lo revisará y confirmará tu pago.
+                                            Los datos de Pago Móvil oficiales y el formulario de comprobante se gestionan dentro de la conversación directa para garantizar la confirmación inmediata.
                                         </p>
                                     </div>
                                 </div>
-
-                                <button
-                                    onClick={openChat}
-                                    className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-slate-900/20 relative"
-                                >
-                                    <MessageSquare className="w-5 h-5 text-primary" />
-                                    Abrir Chat · Adjuntar Comprobante
-                                    {/* Unread badge */}
-                                    {hasUnreadChat && (
-                                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-md animate-bounce">
-                                            1
-                                        </span>
-                                    )}
-                                </button>
                             </div>
 
                             {/* Opción de Pago en Sitio para Pickup */}
@@ -1317,9 +1412,10 @@ export default function TrackOrder() {
     const renderStep3 = () => {
         const isBuscando = order.status === 'buscando_piloto' || transportRequest?.status === 'searching';
         const isFreeDelivery = order.free_delivery === true || restaurant?.free_delivery === true;
-        const isKitchenPreparing = order.status === 'preparing' || Boolean(order.estimated_ready_at);
+        const isKitchenPreparing = order.status === 'preparing' || (Boolean(order.estimated_ready_at) && countdownSeconds > 0);
+        const isOrderReady = order.status === 'ready' || order.status === 'ready_for_pickup' || (!isKitchenPreparing && !isBuscando && order.status !== 'buscando_piloto');
 
-        if (isPickup) {
+        if (isPickup || order.delivery_method === 'pickup') {
             return (
                 <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
                     <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
@@ -1330,7 +1426,7 @@ export default function TrackOrder() {
                             <ArrowLeft className="w-5 h-5 text-slate-700" />
                         </button>
                         <div className="flex-1">
-                            <h1 className="text-base font-black text-slate-900 leading-tight">Retiro en Local</h1>
+                            <h1 className="text-base font-black text-slate-900 leading-tight">Retiro en Tienda</h1>
                             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">PickUp · Paso 3</p>
                         </div>
                     </div>
@@ -1371,7 +1467,7 @@ export default function TrackOrder() {
                         <div>
                             <h2 className="text-2xl font-black text-slate-900">Retiro en Tienda</h2>
                             <p className="text-sm font-medium text-slate-500 mt-1 max-w-xs mx-auto">
-                                Cuando el contador llegue a cero, puedes pasar al local a retirar tu compra sin hacer cola.
+                                Acércate a la sucursal del comercio para retirar tus productos. Al tener tu compra en mano, presiona el botón inferior.
                             </p>
                         </div>
 
@@ -1381,11 +1477,12 @@ export default function TrackOrder() {
                             <p className="text-xs text-slate-500 font-bold">{restaurant?.address || restaurant?.location?.address || 'Dirección del comercio'}</p>
                         </div>
 
+                        {/* Botón Fase 3.2: "Retiré mi pedido" */}
                         <button
-                            onClick={() => setShowReviewModal(true)}
-                            className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl hover:bg-emerald-700 active:scale-95 transition-all shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2"
+                            onClick={handleClientCompletedPickup}
+                            className="w-full bg-emerald-600 text-white font-black py-4 rounded-2xl hover:bg-emerald-700 active:scale-95 transition-all shadow-xl shadow-emerald-600/20 flex items-center justify-center gap-2 text-base"
                         >
-                            <CheckCircle2 className="w-5 h-5" /> Ya retiré mi compra · Calificar
+                            <CheckCircle2 className="w-6 h-6" /> Retiré mi pedido
                         </button>
                     </div>
                 </div>
@@ -1404,10 +1501,10 @@ export default function TrackOrder() {
                     </button>
                     <div className="flex-1 min-w-0">
                         <h1 className="text-base font-black text-slate-900 leading-tight">
-                            {isKitchenPreparing ? 'Cocina & Despacho' : 'Escoger Repartidor'}
+                            {isKitchenPreparing ? 'Cocina en Proceso' : 'Despacho de Pedido'}
                         </h1>
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                            {isFreeDelivery ? 'Envío Gratis Patrocinado' : 'Envío de Paquete'} · Paso 3
+                            {isFreeDelivery ? 'Envío Gratis Patrocinado' : 'Entrega'} · Paso 3
                         </p>
                     </div>
                     {isFreeDelivery && (
@@ -1456,8 +1553,27 @@ export default function TrackOrder() {
                         </div>
                     )}
 
-                    {/* Pilar 3: Caso Envío Gratis (El cliente nunca ve tarifas) */}
-                    {isFreeDelivery ? (
+                    {/* Bloqueo Fase 3.2: El usuario tiene bloqueada la opción de pedir repartidor mientras está en cocina */}
+                    {isKitchenPreparing ? (
+                        <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 text-center space-y-4">
+                            <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto shadow-xs">
+                                <Clock className="w-7 h-7 animate-spin" />
+                            </div>
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900">Tu pedido se está preparando</h3>
+                                <p className="text-xs font-bold text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
+                                    Te avisaremos cuando esté listo para que solicites tu repartidor.
+                                </p>
+                            </div>
+                            <button
+                                onClick={openChat}
+                                className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-sm shadow-md"
+                            >
+                                <MessageSquare className="w-4 h-4 text-primary" /> Abrir Chat con el Negocio
+                            </button>
+                        </div>
+                    ) : isFreeDelivery ? (
+                        /* Pilar 3: Caso Envío Gratis (El comercio asume el costo) */
                         <div className="bg-white rounded-3xl p-6 shadow-xs border-2 border-emerald-500/20 text-center space-y-4">
                             <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-3xl flex items-center justify-center mx-auto shadow-md">
                                 <Sparkles className="w-9 h-9" />
@@ -1487,7 +1603,7 @@ export default function TrackOrder() {
                             </button>
                         </div>
                     ) : isBuscando ? (
-                        /* Radar de Búsqueda Activo si el cliente paga */
+                        /* Radar de Búsqueda Activo con Botones de Asistencia (Edge Case 6.2) */
                         <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 text-center space-y-5">
                             <div className="relative w-24 h-24 mx-auto flex items-center justify-center">
                                 <div className="absolute inset-0 rounded-full bg-primary/20 animate-ping opacity-60" />
@@ -1504,10 +1620,61 @@ export default function TrackOrder() {
                             <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 text-xs font-bold text-slate-600">
                                 Vehículo: <span className="font-black uppercase">{order.vehicleType || selectedVehicle}</span> · Distancia: {calculatedDistance} km
                             </div>
+
+                            {/* Casos Extremos 6.2: Asistencia Logística o Cancelar y Buscar Nuevo */}
+                            <div className="space-y-2 pt-2 border-t border-slate-100">
+                                <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider text-center">¿Demora en encontrar conductor?</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <button
+                                        onClick={handleRequestBusinessLogisticsHelp}
+                                        className="w-full bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 font-black py-3 px-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                                    >
+                                        <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                                        <span>Solicitar asistencia al negocio</span>
+                                    </button>
+                                    <button
+                                        onClick={handleCancelDriverSearchAndRetry}
+                                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 font-black py-3 px-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                                    >
+                                        <X className="w-4 h-4 text-slate-500 shrink-0" />
+                                        <span>Cancelar y buscar nuevo</span>
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     ) : (
-                        /* Pilar 3: Selección de Vehículo y Drivers cuando el cliente paga */
+                        /* Fase 3.2: Pedido Listo — Elección entre Pedir Repartidor o Buscar Pick Up */
                         <>
+                            {/* Selector de Opción de Retiro / Envío */}
+                            <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">¿Cómo deseas recibir tu comida?</p>
+                                <div className="grid grid-cols-2 gap-2.5">
+                                    <button
+                                        type="button"
+                                        onClick={handleSwitchToPickup}
+                                        className="p-3.5 rounded-2xl border-2 border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-white text-slate-800 flex flex-col items-center gap-2 transition-all active:scale-95"
+                                    >
+                                        <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                                            <Store className="w-5 h-5" />
+                                        </div>
+                                        <div className="text-center">
+                                            <span className="font-black text-xs block">Buscar Pick Up</span>
+                                            <span className="text-[10px] font-bold text-slate-400">Sin costo ($0)</span>
+                                        </div>
+                                    </button>
+
+                                    <div className="p-3.5 rounded-2xl border-2 border-primary bg-primary/10 text-slate-900 flex flex-col items-center gap-2 shadow-xs">
+                                        <div className="w-10 h-10 rounded-xl bg-slate-900 text-primary flex items-center justify-center">
+                                            <Motorbike className="w-5 h-5" />
+                                        </div>
+                                        <div className="text-center">
+                                            <span className="font-black text-xs block">Pedir Repartidor</span>
+                                            <span className="text-[10px] font-bold text-slate-600">A tu dirección</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             {/* Ruta precargada */}
                             <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-4">
                                 <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -1633,14 +1800,6 @@ export default function TrackOrder() {
                                 ) : (
                                     <><Motorbike className="w-5 h-5 text-primary" /> Confirmar y Solicitar Repartidor</>
                                 )}
-                            </button>
-
-                            {/* Cambiar a Pickup */}
-                            <button
-                                onClick={handleSwitchToPickup}
-                                className="w-full text-slate-500 hover:text-slate-800 text-xs font-bold py-2 transition-colors"
-                            >
-                                Cambiar a Retiro en Local ($0 costo)
                             </button>
                         </>
                     )}
@@ -1884,7 +2043,7 @@ export default function TrackOrder() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={openChat}
-                    className="fixed bottom-6 right-5 z-40 bg-slate-900 text-white p-4 rounded-full shadow-2xl shadow-slate-900/40 flex items-center gap-2 border-2 border-white relative"
+                    className="fixed bottom-28 right-5 z-40 bg-slate-900 text-white p-4 rounded-full shadow-2xl shadow-slate-900/40 flex items-center gap-2 border-2 border-white relative active:scale-95 transition-transform"
                     title="Abrir Chat"
                 >
                     <MessageSquare className="w-6 h-6 text-primary" />

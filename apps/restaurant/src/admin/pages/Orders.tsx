@@ -110,6 +110,11 @@ export default function Orders() {
     const [missingItemsByOrder, setMissingItemsByOrder] = useState<Record<string, string[]>>({});
     const [chatOrderId, setChatOrderId] = useState<string | null>(null);
 
+    // Smart Rejection State (Fase 2.3)
+    const [smartRejectModalOpen, setSmartRejectModalOpen] = useState(false);
+    const [selectedOrderForReject, setSelectedOrderForReject] = useState<Order | null>(null);
+    const [smartRejectReason, setSmartRejectReason] = useState<'closed' | 'no_stock' | null>(null);
+
     const handleCloseSale = async () => {
         if (!selectedOrderForClose) return;
         setIsAccepting(true);
@@ -644,8 +649,9 @@ export default function Orders() {
                 updates.dispatched_at = new Date().toISOString();
                 updates.preferred_driver_expires_at = new Date(Date.now() + 120000).toISOString();
 
-                // Enlazar transport_requests exclusivo para este repartidor
+                // Enlazar transport_requests exclusivo para este repartidor con manifiesto unificado (Fase 5)
                 try {
+                    const itemsSummary = selectedOrderForDispatch.items?.map((i: any) => `${i.quantity}x ${i.name}`).join(', ') || 'Productos del comercio';
                     await supabase.from('transport_requests').upsert({
                         order_id: selectedOrderForDispatch.id,
                         restaurant_id: rid,
@@ -653,6 +659,7 @@ export default function Orders() {
                         user_id: selectedOrderForDispatch.userId,
                         user_name: selectedOrderForDispatch.userName || 'Cliente',
                         user_phone: selectedOrderForDispatch.userPhone || '',
+                        user_cedula: selectedOrderForDispatch.clientDNI || '',
                         driver_id: driverObj.id,
                         assigned_driver_id: driverObj.id,
                         driver_name: driverObj.full_name,
@@ -662,6 +669,9 @@ export default function Orders() {
                         status: 'searching',
                         price: payout,
                         driver_payout: payout,
+                        items_summary: itemsSummary,
+                        flete_pagado_por: 'negocio',
+                        notes: `🎁 Flete pagado por el comercio (Envío Gratis). Entregar a: ${selectedOrderForDispatch.userName || 'Cliente'} (Tlf: ${selectedOrderForDispatch.userPhone || 'N/A'}). Ítems: ${itemsSummary}`,
                         origin: {
                             address: restaurantConfig?.address || restaurantConfig?.name || 'Local',
                             lat: restaurantConfig?.location?.lat,
@@ -917,8 +927,11 @@ export default function Orders() {
         if (!selectedOrderForVerify) return;
         setIsVerifying(true);
         try {
-            const nextStatus = 'preparing';
-            const readyAt = new Date(Date.now() + prepMinutes * 60 * 1000).toISOString();
+            const isReadyNow = prepMinutes === 0;
+            const nextStatus = isReadyNow ? 'ready' : 'preparing';
+            const readyAt = isReadyNow 
+                ? new Date().toISOString() 
+                : new Date(Date.now() + prepMinutes * 60 * 1000).toISOString();
 
             await supabase.from('orders').update({ 
                 status: nextStatus,
@@ -930,12 +943,16 @@ export default function Orders() {
 
             // Anunciar en el chat el tiempo de cocina asignado
             try {
+                const msgText = isReadyNow
+                    ? `👨‍🍳 *¡Pago verificado y pedido listo de inmediato!* Ya puedes solicitar tu repartidor o buscar tu pedido por pickup.`
+                    : `👨‍🍳 *¡Pago verificado y comanda iniciada!* Tiempo estimado de preparación: *${prepMinutes} minutos*. Te avisaremos cuando esté listo para que solicites tu repartidor.`;
+
                 await supabase.from('messages').insert({
                     order_id: selectedOrderForVerify.id,
                     sender_id: user?.uid,
                     sender_name: 'Restaurante',
                     sender_role: 'restaurant',
-                    text: `👨‍🍳 *¡Pago verificado y comanda iniciada!* Tiempo estimado de preparación: *${prepMinutes} minutos*. Sigue la cuenta regresiva en vivo en tu pantalla.`,
+                    text: msgText,
                     action: 'payment_confirmed',
                     created_at: new Date().toISOString()
                 });
@@ -1634,9 +1651,54 @@ export default function Orders() {
                                 )}
                             </button>
                         )}
+                        {/* Edge Case 6.1: Pre-payment 45-min inactivity timeout */}
+                        {(() => {
+                            const orderCreatedTime = order.createdAt?.toDate ? order.createdAt.toDate().getTime() : new Date(order.createdAt).getTime();
+                            const isInactive45Min = (Date.now() - orderCreatedTime > 45 * 60 * 1000) && !order.paymentProofUrl && ['pending', 'pendiente_pago', 'awaiting_payment'].includes(order.status);
+                            if (!isInactive45Min) return null;
+                            return (
+                                <button
+                                    onClick={async () => {
+                                        if (window.confirm("¿Deseas cancelar esta orden por inactividad tras más de 45 min sin pago? Esto liberará el stock.")) {
+                                            try {
+                                                await supabase.from('orders').update({
+                                                    status: 'cancelled',
+                                                    cancellation_reason: 'inactivity_timeout',
+                                                    updated_at: new Date().toISOString()
+                                                }).eq('id', order.id);
+
+                                                await supabase.from('messages').insert({
+                                                    order_id: order.id,
+                                                    sender_id: user?.uid,
+                                                    sender_name: 'Restaurante',
+                                                    sender_role: 'restaurant',
+                                                    text: "❌ *Orden cancelada por inactividad:* Tras más de 45 minutos sin confirmación de pago, la orden ha sido cancelada para liberar el inventario.",
+                                                    created_at: new Date().toISOString()
+                                                });
+
+                                                toast.success("Orden cancelada por inactividad. Stock liberado.");
+                                                fetchOrders();
+                                            } catch (e) {
+                                                console.error(e);
+                                                toast.error("Error al cancelar orden");
+                                            }
+                                        }
+                                    }}
+                                    className="px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-black hover:bg-red-100 transition-all flex items-center gap-1 shrink-0"
+                                    title="Liberar Stock por Inactividad (45+ min)"
+                                >
+                                    <Clock className="w-3.5 h-3.5" /> Liberar Stock (Inactividad)
+                                </button>
+                            );
+                        })()}
+
                         {order.status !== 'awaiting_payment' && !order.restaurantPaid && (
                             <button
-                                onClick={() => updateStatus(order.id, 'rejected')}
+                                onClick={() => {
+                                    setSelectedOrderForReject(order);
+                                    setSmartRejectReason(null);
+                                    setSmartRejectModalOpen(true);
+                                }}
                                 className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
                             >
                                 Rechazar
@@ -2659,18 +2721,23 @@ export default function Orders() {
                                             </p>
 
                                             <div className="grid grid-cols-4 gap-2">
-                                                {[15, 20, 30, 45].map((mins) => (
+                                                {[
+                                                    { mins: 0, label: 'Listo ya' },
+                                                    { mins: 15, label: '15 min' },
+                                                    { mins: 20, label: '20 min' },
+                                                    { mins: 30, label: '30 min' }
+                                                ].map((item) => (
                                                     <button
-                                                        key={mins}
+                                                        key={item.mins}
                                                         type="button"
-                                                        onClick={() => setPrepMinutes(mins)}
-                                                        className={`py-2 rounded-xl font-black text-xs transition-all border ${
-                                                            prepMinutes === mins 
+                                                        onClick={() => setPrepMinutes(item.mins)}
+                                                        className={`py-2 px-1 rounded-xl font-black text-xs transition-all border text-center ${
+                                                            prepMinutes === item.mins 
                                                                 ? 'bg-amber-500 text-slate-900 border-amber-600 shadow-md font-black scale-105' 
                                                                 : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-50'
                                                         }`}
                                                     >
-                                                        {mins} min
+                                                        {item.label}
                                                     </button>
                                                 ))}
                                             </div>
@@ -3551,6 +3618,175 @@ export default function Orders() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Smart Rejection Modal (Fase 2.3) */}
+            {smartRejectModalOpen && selectedOrderForReject && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                                    <AlertTriangle className="w-5 h-5 text-amber-500" /> Rechazar Pedido
+                                </h3>
+                                <p className="text-xs text-slate-500 font-bold">
+                                    Orden #{selectedOrderForReject.id.slice(0, 8)}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setSmartRejectModalOpen(false);
+                                    setSelectedOrderForReject(null);
+                                    setSmartRejectReason(null);
+                                }}
+                                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {!smartRejectReason ? (
+                            <div className="space-y-3">
+                                <p className="text-xs font-bold text-slate-700">
+                                    ¿Por qué no puedes atender este pedido?
+                                </p>
+
+                                <button
+                                    onClick={() => setSmartRejectReason('closed')}
+                                    className="w-full p-4 rounded-2xl border-2 border-slate-200 hover:border-red-400 hover:bg-red-50/50 transition-all text-left flex items-start gap-3 group"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                        <Store className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black text-slate-900 group-hover:text-red-700">1. Negocio no abierto</p>
+                                        <p className="text-[11px] text-slate-500 font-medium">El local se encuentra cerrado o fuera de horario de cocina.</p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => setSmartRejectReason('no_stock')}
+                                    className="w-full p-4 rounded-2xl border-2 border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all text-left flex items-start gap-3 group"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black text-slate-900 group-hover:text-amber-800">2. Falta de Stock</p>
+                                        <p className="text-[11px] text-slate-500 font-medium">No cuentas con los insumos o productos solicitados.</p>
+                                    </div>
+                                </button>
+                            </div>
+                        ) : smartRejectReason === 'closed' ? (
+                            <div className="space-y-4">
+                                <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-800 leading-relaxed font-semibold">
+                                    Se cancelará el pedido y se notificará al cliente que el negocio se encuentra cerrado en este momento.
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setSmartRejectReason(null)}
+                                        className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-black text-xs hover:bg-slate-200"
+                                    >
+                                        Volver
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await updateStatus(selectedOrderForReject.id, 'rejected');
+                                                await supabase.from('messages').insert({
+                                                    order_id: selectedOrderForReject.id,
+                                                    sender_id: user?.uid,
+                                                    sender_name: 'Restaurante',
+                                                    sender_role: 'restaurant',
+                                                    text: "❌ *Pedido no aceptado:* El establecimiento se encuentra cerrado en este momento. Disculpa los inconvenientes.",
+                                                    created_at: new Date().toISOString()
+                                                });
+                                                toast.success("Pedido cancelado: Negocio no abierto");
+                                                setSmartRejectModalOpen(false);
+                                                setSelectedOrderForReject(null);
+                                                setSmartRejectReason(null);
+                                                fetchOrders();
+                                            } catch (e) {
+                                                console.error(e);
+                                                toast.error("Error al rechazar pedido");
+                                            }
+                                        }}
+                                        className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md active:scale-95"
+                                    >
+                                        Confirmar Cancelación
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-1.5">
+                                    <p className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                                        <Sparkles className="w-4 h-4 text-amber-600" /> Invita a tu cliente a adquirir otro producto
+                                    </p>
+                                    <p className="text-[11px] font-bold text-amber-800 leading-relaxed">
+                                        No cancelaremos la orden inmediatamente. Puedes ofrecerle sustitutos o alternativas directamente por el chat para no perder la venta.
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <button
+                                        onClick={async () => {
+                                            const ordId = selectedOrderForReject.id;
+                                            setSmartRejectModalOpen(false);
+                                            setSelectedOrderForReject(null);
+                                            setSmartRejectReason(null);
+                                            try {
+                                                await supabase.from('messages').insert({
+                                                    order_id: ordId,
+                                                    sender_id: user?.uid,
+                                                    sender_name: 'Restaurante',
+                                                    sender_role: 'restaurant',
+                                                    text: "⚠️ *Aviso de disponibilidad:* Algunos productos de tu orden no cuentan con stock disponible en este momento. ¿Te gustaría cambiarlos por otro producto o alternativa de nuestro menú?",
+                                                    created_at: new Date().toISOString()
+                                                });
+                                            } catch (err) {
+                                                console.warn("Message err:", err);
+                                            }
+                                            setChatOrderId(ordId);
+                                        }}
+                                        className="w-full py-3.5 rounded-2xl bg-primary hover:bg-primary/90 text-slate-900 font-black text-xs shadow-md active:scale-95 flex items-center justify-center gap-2"
+                                    >
+                                        <MessageCircle className="w-4 h-4" /> Abrir Chat para ofrecer alternativas
+                                    </button>
+
+                                    <button
+                                        onClick={async () => {
+                                            if (window.confirm("¿Seguro que deseas cancelar la orden definitivamente por falta de stock?")) {
+                                                try {
+                                                    await updateStatus(selectedOrderForReject.id, 'rejected');
+                                                    await supabase.from('messages').insert({
+                                                        order_id: selectedOrderForReject.id,
+                                                        sender_id: user?.uid,
+                                                        sender_name: 'Restaurante',
+                                                        sender_role: 'restaurant',
+                                                        text: "❌ *Pedido cancelado:* No contamos con disponibilidad de inventario para este pedido.",
+                                                        created_at: new Date().toISOString()
+                                                    });
+                                                    toast.success("Pedido cancelado por falta de stock");
+                                                    setSmartRejectModalOpen(false);
+                                                    setSelectedOrderForReject(null);
+                                                    setSmartRejectReason(null);
+                                                    fetchOrders();
+                                                } catch (e) {
+                                                    console.error(e);
+                                                    toast.error("Error al rechazar pedido");
+                                                }
+                                            }
+                                        }}
+                                        className="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 font-bold text-xs transition-colors"
+                                    >
+                                        Cancelar orden definitivamente
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

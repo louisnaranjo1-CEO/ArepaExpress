@@ -177,6 +177,8 @@ export async function postNativeNotification(options: NotificationOptions) {
                             badge: icon,
                             tag: tag || `app-notif-${Date.now()}`,
                             data,
+                            channelId: 'un_2x3_high_priority',
+                            requireInteraction: true,
                             vibrate: vibratePattern || [200, 100, 200]
                         } as any);
                         return;
