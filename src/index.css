@@ -175,3 +175,11 @@ body {
 .mt-safe {
   margin-top: env(safe-area-inset-top, 16px);
 }
+
+/* Suppress Google Maps crash containers completely */
+.gm-err-container, .gm-err-content, .gm-err-message, .gm-err-autocomplete, div[style*="z-index: 10000001"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

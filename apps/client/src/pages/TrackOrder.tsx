@@ -17,7 +17,9 @@ import RideChat from '../components/RideChat';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
+import LiveTripMap from '../components/LiveTripMap';
+
 
 const mapOptions: google.maps.MapOptions = {
     disableDefaultUI: true,
@@ -128,11 +130,14 @@ const StepProgressHeader: React.FC<{ currentStep: number }> = ({ currentStep }) 
 );
 
 export default function TrackOrder() {
-    const { isLoaded } = useJsApiLoader({
+    const { isLoaded, loadError } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: GOOGLE_MAPS_API_KEY,
         libraries: GOOGLE_MAPS_LIBRARIES
     });
+    const mapContainerRef = useRef<HTMLDivElement>(null);
+    const hasMapError = useGoogleMapsResilience(mapContainerRef, loadError);
+
 
     const { orderId } = useParams();
     const navigate = useNavigate();
@@ -2125,9 +2130,9 @@ export default function TrackOrder() {
 
         return (
             <div className="fixed inset-0 z-40 w-full h-[100dvh] max-h-[100dvh] bg-slate-100 overflow-hidden flex flex-col select-none">
-                {/* 1. Full Screen Google Map with Clean Daylight Styles */}
-                <div className="absolute inset-0 z-0 w-full h-full">
-                    {isLoaded ? (
+                {/* 1. Full Screen Map (Google Maps with Zero-Downtime LiveTripMap Fallback) */}
+                <div className="absolute inset-0 z-0 w-full h-full" ref={mapContainerRef}>
+                    {!hasMapError && isLoaded ? (
                         <GoogleMap
                             mapContainerStyle={{ width: '100%', height: '100%' }}
                             center={interpolatedPos || mapCenter}
@@ -2192,6 +2197,15 @@ export default function TrackOrder() {
                                 />
                             )}
                         </GoogleMap>
+                    ) : hasMapError ? (
+                        <LiveTripMap
+                            origin={originCoords}
+                            destination={destCoords}
+                            driverLocation={interpolatedPos || driverLocation}
+                            vehicleType={vehicleType}
+                            driverName={driverName}
+                            showControls={false}
+                        />
                     ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
                             <Loader2 className="w-8 h-8 animate-spin text-primary" />

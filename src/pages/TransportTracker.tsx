@@ -5,7 +5,8 @@ import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
 import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield, CreditCard, Sparkles } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
+
 import RideChat from '../components/RideChat';
 import InAppCall from '../components/InAppCall';
 import LiveTripMap from '../components/LiveTripMap';
@@ -104,11 +105,14 @@ export default function TransportTracker() {
     }, [request?.origin]);
 
     // Map states
-    const { isLoaded } = useJsApiLoader({
+    const { isLoaded, loadError } = useJsApiLoader({
         id: 'google-map-script',
         googleMapsApiKey: GOOGLE_MAPS_API_KEY,
         libraries: GOOGLE_MAPS_LIBRARIES
     });
+    const mapContainerRef = useRef<HTMLDivElement>(null);
+    const hasMapError = useGoogleMapsResilience(mapContainerRef, loadError);
+
     const [map, setMap] = useState<google.maps.Map | null>(null);
     const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);
     const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
@@ -868,37 +872,58 @@ export default function TransportTracker() {
                         </div>
                     </div>
                 ) : !showChat ? (
-                    <div className="w-full h-full relative">
+                    <div className="w-full h-full relative" ref={mapContainerRef}>
                         {/* Overlay to ensure back button is visible on the map */}
                         <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/20 to-transparent z-10 pointer-events-none"></div>
 
-                        <GoogleMap
-                            mapContainerStyle={{ width: '100%', height: '100%' }}
-                            center={driver?.currentLocation ? {
-                                lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
-                                lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
-                            } : (request.origin ? { lat: Number(request.origin.lat), lng: Number(request.origin.lng) } : { lat: 8.9326, lng: -67.4264 })}
-                            zoom={15}
-                            onLoad={onLoad}
-                            onUnmount={onUnmount}
-                            options={mapOptions}
-                        >
-                            {driver?.currentLocation && (
-                                <Marker
-                                    position={{
-                                        lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
-                                        lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
-                                    }}
-                                    icon={{
-                                        url: (driver.vehicleType === 'moto' || request.service_category === 'mototaxi') 
-                                            ? 'https://cdn-icons-png.flaticon.com/512/1986/1986937.png'
-                                            : 'https://cdn-icons-png.flaticon.com/512/1048/1048314.png',
-                                        scaledSize: window.google ? new window.google.maps.Size(40, 40) : undefined
-                                    }}
-                                    title={driver.fullName || 'Conductor'}
-                                />
-                            )}
-                        </GoogleMap>
+                        {(!hasMapError && isLoaded) ? (
+                            <GoogleMap
+                                mapContainerStyle={{ width: '100%', height: '100%' }}
+                                center={driver?.currentLocation ? {
+                                    lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
+                                    lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
+                                } : (request.origin ? { lat: Number(request.origin.lat), lng: Number(request.origin.lng) } : { lat: 8.9326, lng: -67.4264 })}
+                                zoom={15}
+                                onLoad={onLoad}
+                                onUnmount={onUnmount}
+                                options={mapOptions}
+                            >
+                                {driver?.currentLocation && (
+                                    <Marker
+                                        position={{
+                                            lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
+                                            lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
+                                        }}
+                                        icon={{
+                                            url: (driver.vehicleType === 'moto' || request.service_category === 'mototaxi') 
+                                                ? 'https://cdn-icons-png.flaticon.com/512/1986/1986937.png'
+                                                : 'https://cdn-icons-png.flaticon.com/512/1048/1048314.png',
+                                            scaledSize: window.google ? new window.google.maps.Size(40, 40) : undefined
+                                        }}
+                                        title={driver.fullName || 'Conductor'}
+                                    />
+                                )}
+                            </GoogleMap>
+                        ) : hasMapError ? (
+                            <LiveTripMap
+                                origin={request?.origin ? { lat: Number(request.origin.lat), lng: Number(request.origin.lng) } : null}
+                                destination={request?.destination ? { lat: Number(request.destination.lat), lng: Number(request.destination.lng) } : null}
+                                driverLocation={driver?.currentLocation ? {
+                                    lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
+                                    lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
+                                } : null}
+                                vehicleType={driver?.vehicleType || request?.service_category || 'carro'}
+                                driverName={driver?.fullName || 'Conductor'}
+                                isExpanded={isMapExpanded}
+                                onToggleExpand={() => setIsMapExpanded(prev => !prev)}
+                                showControls={true}
+                            />
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
+                                <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+                                <p className="text-xs font-bold text-slate-400">Iniciando mapa...</p>
+                            </div>
+                        )}
                     </div>
                 ) : null}
             </div>

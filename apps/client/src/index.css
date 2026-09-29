@@ -189,4 +189,13 @@ body {
 .pac-matched {
   font-weight: 800 !important;
   color: #0284c7 !important;
-}
+}
+
+/* Suppress Google Maps crash containers completely */
+.gm-err-container, .gm-err-content, .gm-err-message, .gm-err-autocomplete, div[style*="z-index: 10000001"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
