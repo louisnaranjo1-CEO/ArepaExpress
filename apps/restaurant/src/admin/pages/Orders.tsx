@@ -76,6 +76,7 @@ export default function Orders() {
     const [driverCategoryFilter, setDriverCategoryFilter] = useState<'all' | 'moto' | 'carro' | 'confort'>('all');
     const [selectedVehicleCategory, setSelectedVehicleCategory] = useState<'moto' | 'carro' | 'confort' | null>(null);
     const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
+    const [selectedOrderForDetail, setSelectedOrderForDetail] = useState<any | null>(null);
     
     // Radar UI State
     const [radarOrderId, setRadarOrderId] = useState<string | null>(null);
@@ -360,7 +361,8 @@ export default function Orders() {
                     availability,
                     current_location,
                     registered_home_address,
-                    is_comfort_eligible
+                    is_comfort_eligible,
+                    city
                 `);
 
             if (dErr) console.warn("Error fetching drivers:", dErr);
@@ -376,7 +378,7 @@ export default function Orders() {
 
                 const enriched = driversData.map(d => {
                     const prof = profileMap.get(d.id);
-                    const city = prof?.last_city || (d.registered_home_address as any)?.city || (d.registered_home_address as any)?.name || '';
+                    const city = d.city || prof?.last_city || (d.registered_home_address as any)?.city || (d.registered_home_address as any)?.name || 'Calabozo';
                     return {
                         ...d,
                         photo_url: prof?.photo_url || d.vehicle_image_url || null,
@@ -584,27 +586,70 @@ export default function Orders() {
         if (!selectedOrderForDispatch) return;
         setIsAccepting(true);
         try {
+            // Caso 1: Retiro en Tienda / Entrega Propia (Requerimiento 6)
+            if (dispatchType === 'own') {
+                const updates: any = {
+                    delivery_method: 'pickup',
+                    deliveryMethod: 'pickup',
+                    order_type: 'pickup',
+                    status: 'ready',
+                    updated_at: new Date().toISOString()
+                };
+                await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
+
+                try {
+                    await supabase.from('messages').insert({
+                        order_id: selectedOrderForDispatch.id,
+                        sender_id: user?.uid,
+                        sender_name: 'Restaurante',
+                        sender_role: 'restaurant',
+                        text: `🏪 *¡Pedido listo para retiro en tienda!* Tu orden está preparada y lista para ser retirada en nuestro local.`,
+                        created_at: new Date().toISOString()
+                    });
+                } catch (mErr) {
+                    console.warn("Message err:", mErr);
+                }
+
+                vibrateSelection();
+                toast.success("Configurado con éxito para Retiro en Tienda.");
+                setDispatchModalOpen(false);
+                setSelectedOrderForDispatch(null);
+                setSelectedDriver('');
+                setDriverSearch('');
+                setSelectedVehicleCategory(null);
+                setDriverCategoryFilter('all');
+                fetchOrders();
+                return;
+            }
+
+            // Caso 2: Driver de la Plataforma
             const driverObj = drivers.find(d => d.id === selectedDriver);
             const payout = driverObj ? getDriverPayout(selectedOrderForDispatch, driverObj.vehicle_type) : 1.50;
 
             const updates: any = {
-                status: 'delivering',
+                status: 'buscando_piloto',
                 updated_at: new Date().toISOString()
             };
 
             if (driverObj) {
+                // Asignación directa y exclusiva al conductor seleccionado (Requerimiento 6)
                 updates.driver_id = driverObj.id;
                 updates.delivery_driver_id = driverObj.id;
                 updates.driver_name = driverObj.full_name || 'Conductor';
+                updates.preferred_driver_id = driverObj.id;
+                updates.preferred_driver_name = driverObj.full_name;
+                updates.eligible_drivers = [driverObj.id];
+                updates.assigned_driver_id = driverObj.id;
                 updates.driver_payout = payout;
                 updates.dispatched_at = new Date().toISOString();
+                updates.preferred_driver_expires_at = new Date(Date.now() + 120000).toISOString();
 
-                // Enlazar transport_requests para el repartidor
+                // Enlazar transport_requests exclusivo para este repartidor
                 try {
                     await supabase.from('transport_requests').upsert({
                         order_id: selectedOrderForDispatch.id,
                         restaurant_id: rid,
-                        restaurant_name: (selectedOrderForDispatch as any).restaurantName || 'Comercio',
+                        restaurant_name: (selectedOrderForDispatch as any).restaurantName || restaurantConfig?.name || 'Comercio',
                         user_id: selectedOrderForDispatch.userId,
                         user_name: selectedOrderForDispatch.userName || 'Cliente',
                         user_phone: selectedOrderForDispatch.userPhone || '',
@@ -613,10 +658,15 @@ export default function Orders() {
                         driver_name: driverObj.full_name,
                         driver_phone: driverObj.phone,
                         driver_photo: driverObj.photo_url,
-                        vehicle_type: driverObj.vehicle_type || 'moto',
-                        status: 'in_progress',
+                        vehicle_type: driverObj.vehicle_type || selectedVehicleCategory || 'moto',
+                        status: 'searching',
                         price: payout,
                         driver_payout: payout,
+                        origin: {
+                            address: restaurantConfig?.address || restaurantConfig?.name || 'Local',
+                            lat: restaurantConfig?.location?.lat,
+                            lng: restaurantConfig?.location?.lng
+                        },
                         destination: selectedOrderForDispatch.deliveryCoords || { address: selectedOrderForDispatch.deliveryAddress },
                         created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
@@ -632,12 +682,13 @@ export default function Orders() {
                         sender_id: user?.uid,
                         sender_name: 'Restaurante',
                         sender_role: 'restaurant',
-                        text: `🛵 *¡Tu pedido va en camino!* Repartidor asignado: *${driverObj.full_name}* (${driverObj.vehicle_brand || ''} ${driverObj.vehicle_model || ''}). Sigue su ubicación en el mapa.`,
+                        text: `🛵 *¡Asignando repartidor preferido!* Se ha notificado a *${driverObj.full_name}* para la entrega de tu pedido.`,
                         created_at: new Date().toISOString()
                     });
                 } catch (mErr) {
                     console.warn("Message err:", mErr);
                 }
+                setRadarOrderId(selectedOrderForDispatch.id);
             } else {
                 updates.status = 'buscando_piloto';
                 setRadarOrderId(selectedOrderForDispatch.id);
@@ -646,7 +697,7 @@ export default function Orders() {
             await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
 
             vibrateSelection();
-            toast.success(driverObj ? `¡Despachado con ${driverObj.full_name}!` : "Despacho abierto al radar.");
+            toast.success(driverObj ? `¡Notificación enviada a ${driverObj.full_name}!` : "Despacho abierto al radar.");
 
             setDispatchModalOpen(false);
             setSelectedOrderForDispatch(null);
@@ -1107,7 +1158,7 @@ export default function Orders() {
             o.status === 'preparing' ||
             o.status === 'awaiting_delivery_driver'
         ).length,
-        delivering: orders.filter(o => o.status === 'delivering' || o.status === 'buscando_piloto' || o.status === 'conductor_asignado' || o.status === 'en_camino').length,
+        delivering: orders.filter(o => o.status === 'delivering' || o.status === 'buscando_piloto' || o.status === 'piloto_asignado' || o.status === 'conductor_asignado' || o.status === 'en_camino' || o.status === 'ready').length,
         delivered: orders.filter(o => o.status === 'delivered').length,
         rejected: orders.filter(o => o.status === 'rejected').length,
         tables: tables.length
@@ -1130,8 +1181,10 @@ export default function Orders() {
             if (activeTab === 'delivering') return (
                 o.status === 'delivering' ||
                 o.status === 'buscando_piloto' ||
+                o.status === 'piloto_asignado' ||
                 o.status === 'conductor_asignado' ||
-                o.status === 'en_camino'
+                o.status === 'en_camino' ||
+                o.status === 'ready'
             );
             if (activeTab === 'tables') return false; // Handled by renderTablesView
             return o.status === activeTab;
@@ -1231,8 +1284,76 @@ export default function Orders() {
             </div>
         );
     };
-    const renderOrderCard = (order: any) => (
-        <div key={order.id} className="bg-white rounded-2xl sm:rounded-[32px] p-3.5 sm:p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
+    const renderOrderCard = (order: any) => {
+        // Rediseño simplificado para pedidos en pestaña "Entregados" (Requerimiento 5)
+        if (order.status === 'delivered') {
+            const totalItemsCount = (order.items || []).reduce((acc: number, item: any) => acc + (item.quantity || 1), 0);
+            const itemsText = totalItemsCount === 1 ? '1 ítem' : `${totalItemsCount} productos`;
+            const timeStr = order.createdAt?.toDate 
+                ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                : (order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '');
+
+            return (
+                <div 
+                    key={order.id} 
+                    onClick={() => setSelectedOrderForDetail(order)}
+                    className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-5 border border-slate-100 shadow-xs hover:shadow-md hover:border-slate-200 transition-all cursor-pointer group relative overflow-hidden"
+                >
+                    {order.paymentStatus === 'sold' && (
+                        <div className="absolute top-0 right-0 p-3 sm:p-4">
+                            <span className="bg-green-100 text-green-700 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">Venta Exitosa</span>
+                        </div>
+                    )}
+                    {order.paymentStatus === 'not_sold' && (
+                        <div className="absolute top-0 right-0 p-3 sm:p-4">
+                            <span className="bg-red-100 text-red-600 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">No Vendido</span>
+                        </div>
+                    )}
+
+                    <div className="flex justify-between items-start">
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 mb-1">
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">#{order.id.slice(-6).toUpperCase()}</span>
+                                <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                    {order.source === 'waiter' ? 'Mesero' : 'App Delivery'}
+                                </span>
+                                <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                    <CheckCircle className="w-3 h-3" /> Entregado
+                                </span>
+                            </div>
+                            <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-primary transition-colors">
+                                {order.userName || 'Usuario de Deliexpress'}
+                            </h3>
+                            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500 font-bold">
+                                {order.clientDNI && (
+                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg text-[11px] font-bold">
+                                        CI: {order.clientDNI}
+                                    </span>
+                                )}
+                                <span className="flex items-center gap-1 text-slate-400">
+                                    <Clock className="w-3.5 h-3.5" />
+                                    {timeStr}
+                                </span>
+                                <span className="bg-amber-50 text-amber-800 border border-amber-200/60 px-2 py-0.5 rounded-lg text-[11px] font-black">
+                                    🛍️ {itemsText}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                            <p className="text-xl sm:text-2xl font-black text-slate-900">${order.total.toFixed(2)}</p>
+                            <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Total Cobrado</p>
+                            <span className="text-[10px] font-black text-primary group-hover:underline mt-2 inline-flex items-center gap-1">
+                                Ver detalle <ChevronRight className="w-3 h-3" />
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        return (
+            <div key={order.id} className="bg-white rounded-2xl sm:rounded-[32px] p-3.5 sm:p-6 border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden">
             {order.paymentStatus === 'sold' && (
                 <div className="absolute top-0 right-0 p-3 sm:p-4">
                     <span className="bg-green-100 text-green-700 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">Venta Exitosa</span>
@@ -1315,15 +1436,23 @@ export default function Orders() {
 
             <div className="flex items-start justify-between gap-3 p-4 bg-slate-50 rounded-2xl mb-8">
                 <div className="flex items-start gap-3">
-                    <MapPin className="w-5 h-5 text-slate-900 shrink-0 mt-0.5" />
+                    {order.delivery_method === 'pickup' || order.order_type === 'pickup' || order.deliveryMethod === 'pickup' ? (
+                        <Store className="w-5 h-5 text-primary shrink-0 mt-0.5" />
+                    ) : (
+                        <MapPin className="w-5 h-5 text-slate-900 shrink-0 mt-0.5" />
+                    )}
                     <div>
-                        <p className="text-sm font-bold text-slate-700 leading-relaxed italic">{order.deliveryAddress || 'Sin dirección especificada'}</p>
+                        <p className="text-sm font-bold text-slate-700 leading-relaxed italic">
+                            {order.delivery_method === 'pickup' || order.order_type === 'pickup' || order.deliveryMethod === 'pickup'
+                                ? '🏪 Retiro en Tienda / Entrega Propia'
+                                : (order.deliveryAddress || 'Sin dirección especificada')}
+                        </p>
                         {order.userPhone && (
                             <p className="text-xs font-bold text-slate-500 mt-1">📞 Contacto: {order.userPhone}</p>
                         )}
                     </div>
                 </div>
-                {order.deliveryCoords?.lat && (
+                {order.deliveryCoords?.lat && order.status !== 'delivering' && order.status !== 'en_camino' && order.status !== 'ready' && order.status !== 'delivered' && (
                     <a
                         href={`https://www.google.com/maps?q=${order.deliveryCoords.lat},${order.deliveryCoords.lng}`}
                         target="_blank"
@@ -1553,21 +1682,68 @@ export default function Orders() {
                 )}
 
                 {order.status === 'delivering' && (
-                    <div className="flex w-full gap-2">
-                        <button
-                            onClick={() => updateStatus(order.id, 'delivered')}
-                            className="flex-1 bg-green-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-green-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all"
-                        >
-                            Confirmar Entrega
-                        </button>
+                    <div className="flex flex-col w-full gap-2.5">
+                        <div className="w-full bg-amber-50/90 border border-amber-200/80 p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                                    <Bike className="w-5 h-5 animate-pulse" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-xs font-black text-slate-900 truncate">
+                                        Pedido en tránsito {order.driverName || (order as any).driver_name || (order as any).assigned_driver_name ? `con ${order.driverName || (order as any).driver_name || (order as any).assigned_driver_name}` : 'con repartidor'}
+                                    </p>
+                                    <p className="text-[10px] font-bold text-slate-500">
+                                        Entrega a cargo del conductor • Monitoreo activo
+                                    </p>
+                                </div>
+                            </div>
+                            <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span> En Camino
+                            </span>
+                        </div>
                         <button
                             onClick={() => setChatOrderId(order.id)}
-                            className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
-                            title="Abrir Chat"
+                            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 py-3 rounded-2xl font-black transition-all flex items-center justify-center gap-2 border border-slate-200 shadow-sm text-xs"
+                            title="Abrir Chat del Pedido"
                         >
-                            <MessageCircle className="w-5 h-5 text-slate-700" />
-                            <span>Chat</span>
+                            <MessageCircle className="w-4 h-4 text-slate-700" />
+                            <span>Abrir Chat con Cliente / Conductor</span>
                         </button>
+                    </div>
+                )}
+
+                {order.status === 'ready' && (
+                    <div className="flex flex-col w-full gap-2.5">
+                        <div className="w-full bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl flex items-center justify-between">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-700 flex items-center justify-center shrink-0">
+                                    <Store className="w-5 h-5" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-xs font-black text-slate-900 truncate">Listo para Retiro en Tienda</p>
+                                    <p className="text-[10px] font-bold text-slate-500">Cliente o personal propio retira en el local</p>
+                                </div>
+                            </div>
+                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shrink-0">
+                                Listo
+                            </span>
+                        </div>
+                        <div className="flex w-full gap-2">
+                            <button
+                                onClick={() => updateStatus(order.id, 'delivered')}
+                                className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-2xl font-black shadow-lg shadow-emerald-600/20 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-xs"
+                            >
+                                <CheckCircle className="w-4 h-4" /> Confirmar Entrega en Local
+                            </button>
+                            <button
+                                onClick={() => setChatOrderId(order.id)}
+                                className="px-4 bg-slate-100 text-slate-700 py-3.5 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
+                                title="Abrir Chat"
+                            >
+                                <MessageCircle className="w-4 h-4 text-slate-700" />
+                                <span className="text-xs">Chat</span>
+                            </button>
+                        </div>
                     </div>
                 )}
                 {order.status === 'delivered' && !order.paymentStatus && (
@@ -1617,6 +1793,7 @@ export default function Orders() {
             </div>
         </div>
     );
+};
 
     if (loading) {
         return (
@@ -2071,233 +2248,248 @@ export default function Orders() {
                             </button>
                         </div>
 
-                        {/* ⚠️ AVISO: Gifting Delivery — El Negocio Paga al Driver */}
-                        <div className="mb-4 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 shrink-0">
-                            <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
-                                <DollarSign className="w-4 h-4" />
-                            </div>
-                            <div>
-                                <p className="text-xs font-black text-amber-900">Opción: Obsequiar el Delivery al Cliente</p>
-                                <p className="text-[11px] font-bold text-amber-700 mt-0.5 leading-relaxed">
-                                    Al asignar un repartidor de la plataforma, <strong>el negocio asume el pago del transporte</strong>. El monto calculado será tu deuda con el driver y debe ser cancelado directamente a él. El cliente no paga el flete.
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Free delivery badge if shop covers delivery */}
-                        {((selectedOrderForDispatch as any).freeDelivery || restaurantConfig?.free_delivery) && (
-                            <div className="mb-4 p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/20 border border-amber-300 rounded-2xl flex items-center gap-3 shrink-0">
-                                <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
-                                <div className="text-xs text-amber-900">
-                                    <span className="font-black">¡Envío Gratis Activado!</span> La tienda asume el flete del conductor. El cliente no verá tarifas de envío.
+                        {/* Contenedor con Scroll Completo para Móviles y Escritorio */}
+                        <div className="flex-1 overflow-y-auto overscroll-contain pr-1 space-y-4 min-h-0">
+                            {/* ⚠️ AVISO: Gifting Delivery — El Negocio Paga al Driver */}
+                            <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3 shrink-0">
+                                <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5">
+                                    <DollarSign className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-black text-amber-900">Opción: Obsequiar el Delivery al Cliente</p>
+                                    <p className="text-[11px] font-bold text-amber-700 mt-0.5 leading-relaxed">
+                                        Al asignar un repartidor de la plataforma, <strong>el negocio asume el pago del transporte</strong>. El monto calculado será tu deuda con el driver y debe ser cancelado directamente a él. El cliente no paga el flete.
+                                    </p>
                                 </div>
                             </div>
-                        )}
 
-                        <div className="grid grid-cols-2 gap-3 mb-4 shrink-0">
-                            <button
-                                onClick={() => setDispatchType('own')}
-                                className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/10 text-slate-900 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
-                            >
-                                <Store className="w-5 h-5" />
-                                <span className="text-xs text-center font-black">Propio / Retiro en Tienda</span>
-                            </button>
-                            <button
-                                onClick={() => { setDispatchType('platform'); setSelectedVehicleCategory(null); setSelectedDriver(''); }}
-                                className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'platform' ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
-                            >
-                                <Users className="w-5 h-5" />
-                                <span className="text-xs text-center font-black">Driver de la Plataforma</span>
-                            </button>
-                        </div>
-
-                        {dispatchType === 'platform' ? (
-                            <div className="flex-1 overflow-y-auto space-y-3 pr-1 min-h-[220px]">
-                                {/* STEP 1: Select Vehicle Type First */}
-                                {!selectedVehicleCategory ? (
-                                    <div className="space-y-3">
-                                        <div className="text-center">
-                                            <p className="text-xs font-black text-slate-700 uppercase tracking-widest">Paso 1: Selecciona el tipo de vehículo</p>
-                                            <p className="text-[10px] text-slate-400 font-bold mt-1">Solo se mostrarán los drivers de tu ciudad disponibles con ese tipo de vehículo.</p>
-                                        </div>
-                                        {[
-                                            { id: 'moto' as const, label: '🛵 Moto Taxi', desc: 'Rápido y económico para distancias cortas', color: 'border-amber-400 bg-amber-50 text-amber-900' },
-                                            { id: 'carro' as const, label: '🚗 Carro Económico', desc: 'Ideal para mayor capacidad de carga', color: 'border-blue-400 bg-blue-50 text-blue-900' },
-                                            { id: 'confort' as const, label: '✨ Carro Confort', desc: 'Servicio premium y mayor espacio', color: 'border-purple-400 bg-purple-50 text-purple-900' },
-                                        ].map(vt => (
-                                            <button
-                                                key={vt.id}
-                                                onClick={() => {
-                                                    setSelectedVehicleCategory(vt.id);
-                                                    setDriverCategoryFilter(vt.id);
-                                                    setSelectedDriver('');
-                                                }}
-                                                className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99] ${vt.color}`}
-                                            >
-                                                <div className="text-2xl">{vt.label.split(' ')[0]}</div>
-                                                <div className="flex-1">
-                                                    <p className="font-black text-sm">{vt.label.split(' ').slice(1).join(' ')}</p>
-                                                    <p className="text-[11px] font-bold opacity-70 mt-0.5">{vt.desc}</p>
-                                                </div>
-                                                <ChevronRight className="w-5 h-5 opacity-50 shrink-0" />
-                                            </button>
-                                        ))}
+                            {/* Free delivery badge if shop covers delivery */}
+                            {((selectedOrderForDispatch as any).freeDelivery || restaurantConfig?.free_delivery) && (
+                                <div className="p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/20 border border-amber-300 rounded-2xl flex items-center gap-3 shrink-0">
+                                    <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
+                                    <div className="text-xs text-amber-900">
+                                        <span className="font-black">¡Envío Gratis Activado!</span> La tienda asume el flete del conductor. El cliente no verá tarifas de envío.
                                     </div>
-                                ) : (
-                                    /* STEP 2: Show filtered drivers */
-                                    <div className="space-y-3">
-                                        {/* Back + vehicle header */}
-                                        <div className="flex items-center gap-2 shrink-0">
-                                            <button
-                                                onClick={() => { setSelectedVehicleCategory(null); setSelectedDriver(''); }}
-                                                className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-all"
-                                            >
-                                                <ArrowLeft className="w-4 h-4" />
-                                            </button>
-                                            <div className="flex-1">
-                                                <p className="text-xs font-black text-slate-900">
-                                                    {selectedVehicleCategory === 'moto' ? '🛵 Moto Taxi' : selectedVehicleCategory === 'carro' ? '🚗 Carro Económico' : '✨ Carro Confort'} — Drivers disponibles en tu ciudad
-                                                </p>
-                                                <p className="text-[10px] text-slate-400 font-bold">
-                                                    {restaurantConfig?.city || restaurantConfig?.address ? `📍 ${restaurantConfig.city || restaurantConfig.address?.split(',')[0]}` : '📍 Tu zona de operación'}
-                                                </p>
-                                            </div>
-                                        </div>
+                                </div>
+                            )}
 
-                                        {/* Driver Search Bar */}
-                                        <div className="relative shrink-0">
-                                            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                                            <input 
-                                                type="text"
-                                                placeholder="Buscar conductor por nombre..."
-                                                value={driverSearch}
-                                                onChange={(e) => setDriverSearch(e.target.value)}
-                                                className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:bg-white transition-all"
-                                            />
-                                            {driverSearch && (
-                                                <button onClick={() => setDriverSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                                                    <X className="w-3.5 h-3.5" />
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {/* Radar General Option */}
-                                        <div 
-                                            onClick={() => setSelectedDriver('')}
-                                            className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
-                                                selectedDriver === '' 
-                                                    ? 'border-blue-500 bg-blue-50/80 shadow-sm' 
-                                                    : 'border-slate-100 bg-slate-50/60 hover:bg-slate-100'
-                                            }`}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-2xl bg-blue-500 text-white flex items-center justify-center relative shadow-md shadow-blue-500/20">
-                                                    <div className="absolute inset-0 rounded-2xl bg-blue-400 animate-ping opacity-25"></div>
-                                                    <Truck className="w-5 h-5 relative z-10" />
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-black text-xs text-slate-900 flex items-center gap-1.5">
-                                                        Radar Abierto General
-                                                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[9px] font-black uppercase">Automático</span>
-                                                    </h4>
-                                                    <p className="text-[10px] text-slate-500 font-medium">Notifica a todos los {selectedVehicleCategory === 'moto' ? 'motorizados' : 'conductores'} disponibles en tu zona</p>
-                                                </div>
-                                            </div>
-                                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedDriver === '' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300'}`}>
-                                                {selectedDriver === '' && <div className="w-2 h-2 rounded-full bg-white"></div>}
-                                            </div>
-                                        </div>
-
-                                        {/* Filtered Drivers List by vehicle type & city */}
-                                        {(() => {
-                                            const restaurantCity = (restaurantConfig?.location?.city || restaurantConfig?.city || '').trim().toLowerCase();
-                                            const filteredDriversList = drivers.filter(d => {
-                                                const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
-                                                const matchesCat = 
-                                                    (selectedVehicleCategory === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
-                                                    (selectedVehicleCategory === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
-                                                    (selectedVehicleCategory === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
-                                                const drvCity = (d.city || '').trim().toLowerCase();
-                                                const matchesCity = !restaurantCity || !drvCity || drvCity.includes(restaurantCity) || restaurantCity.includes(drvCity);
-                                                return matchesSearch && matchesCat && matchesCity;
-                                            });
-
-                                            return (
-                                                <div className="space-y-2">
-                                                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                                                        Conductores Disponibles ({filteredDriversList.length}) {restaurantCity ? `· ${restaurantConfig?.location?.city || restaurantConfig?.city}` : ''}
-                                                    </div>
-
-                                                    {filteredDriversList.map(drv => {
-                                                        const payout = getDriverPayout(selectedOrderForDispatch, drv.vehicle_type);
-                                                        const isSelected = selectedDriver === drv.id;
-                                                        const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
-                                                        
-                                                        return (
-                                                            <div 
-                                                                key={drv.id}
-                                                                onClick={() => setSelectedDriver(drv.id)}
-                                                                className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
-                                                                    isSelected 
-                                                                        ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary' 
-                                                                        : 'border-slate-100 bg-white hover:border-slate-200'
-                                                                }`}
-                                                            >
-                                                                <div className="flex items-center gap-3">
-                                                                    {/* Driver Photo */}
-                                                                    <div className="relative">
-                                                                        {drv.photo_url ? (
-                                                                            <img 
-                                                                                src={drv.photo_url} 
-                                                                                alt={drv.full_name} 
-                                                                                className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-sm"
-                                                                            />
-                                                                        ) : (
-                                                                            <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-sm">
-                                                                                {drv.full_name ? drv.full_name.charAt(0).toUpperCase() : 'D'}
-                                                                            </div>
-                                                                        )}
-                                                                        <div className="absolute -bottom-1 -right-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></div>
-                                                                    </div>
-
-                                                                    <div>
-                                                                        <div className="flex items-center gap-1.5">
-                                                                            <h5 className="font-black text-xs text-slate-900">{drv.full_name || 'Conductor'}</h5>
-                                                                            <span className="flex items-center text-[10px] font-black text-amber-500">
-                                                                                ⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}
-                                                                            </span>
-                                                                        </div>
-                                                                        <p className="text-[10px] text-slate-500 font-bold">
-                                                                            {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''} {drv.vehicle_plate ? `[${drv.vehicle_plate}]` : ''} {drv.city ? `• ${drv.city}` : ''}
-                                                                        </p>
-                                                                        <p className="text-[10px] font-black text-emerald-600 mt-0.5">
-                                                                            💰 Debes pagarle: ${payout.toFixed(2)} USD
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-
-                                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300'}`}>
-                                                                    {isSelected && <div className="w-2 h-2 rounded-full bg-slate-900"></div>}
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-
-                                                    {/* Empty state */}
-                                                    {filteredDriversList.length === 0 && (
-                                                        <div className="text-center py-6 text-slate-400">
-                                                            <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                                                            <p className="text-xs font-bold">No hay conductores de este tipo disponibles en tu ciudad.</p>
-                                                            <p className="text-[10px] font-bold mt-1">Puedes usar el Radar General para notificar a toda la red.</p>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
-                                    </div>
-                                )}
+                            <div className="grid grid-cols-2 gap-3 shrink-0">
+                                <button
+                                    onClick={() => setDispatchType('own')}
+                                    className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'own' ? 'border-primary bg-primary/10 text-slate-900 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                >
+                                    <Store className="w-5 h-5" />
+                                    <span className="text-xs text-center font-black">Propio / Retiro en Tienda</span>
+                                </button>
+                                <button
+                                    onClick={() => { setDispatchType('platform'); setSelectedVehicleCategory(null); setSelectedDriver(''); }}
+                                    className={`flex flex-col items-center gap-2 p-3.5 rounded-2xl border-2 font-bold transition-all ${dispatchType === 'platform' ? 'border-blue-500 bg-blue-50 text-blue-700 shadow-sm' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
+                                >
+                                    <Users className="w-5 h-5" />
+                                    <span className="text-xs text-center font-black">Driver de la Plataforma</span>
+                                </button>
                             </div>
-                        ) : null}
+
+                            {dispatchType === 'own' && (
+                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 animate-in fade-in duration-200">
+                                    <div className="flex items-center gap-2 text-slate-800 font-black text-sm">
+                                        <Store className="w-5 h-5 text-primary" />
+                                        <span>Retiro en Tienda / Reparto Propio</span>
+                                    </div>
+                                    <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                                        El pedido se marcará como listo para retiro. Se notificará inmediatamente al cliente por el chat integrado. No se solicitarán conductores de la plataforma para esta orden.
+                                    </p>
+                                </div>
+                            )}
+
+                            {dispatchType === 'platform' && (
+                                <div className="space-y-3">
+                                    {/* STEP 1: Select Vehicle Type First */}
+                                    {!selectedVehicleCategory ? (
+                                        <div className="space-y-3">
+                                            <div className="text-center">
+                                                <p className="text-xs font-black text-slate-700 uppercase tracking-widest">Paso 1: Selecciona el tipo de vehículo</p>
+                                                <p className="text-[10px] text-slate-400 font-bold mt-1">Solo se mostrarán los drivers de tu ciudad disponibles con ese tipo de vehículo.</p>
+                                            </div>
+                                            {[
+                                                { id: 'moto' as const, label: '🛵 Moto Taxi', desc: 'Rápido y económico para distancias cortas', color: 'border-amber-400 bg-amber-50 text-amber-900' },
+                                                { id: 'carro' as const, label: '🚗 Carro Económico', desc: 'Ideal para mayor capacidad de carga', color: 'border-blue-400 bg-blue-50 text-blue-900' },
+                                                { id: 'confort' as const, label: '✨ Carro Confort', desc: 'Servicio premium y mayor espacio', color: 'border-purple-400 bg-purple-50 text-purple-900' },
+                                            ].map(vt => (
+                                                <button
+                                                    key={vt.id}
+                                                    onClick={() => {
+                                                        setSelectedVehicleCategory(vt.id);
+                                                        setDriverCategoryFilter(vt.id);
+                                                        setSelectedDriver('');
+                                                    }}
+                                                    className={`w-full p-4 rounded-2xl border-2 text-left flex items-center gap-3 transition-all hover:scale-[1.01] active:scale-[0.99] ${vt.color}`}
+                                                >
+                                                    <div className="text-2xl">{vt.label.split(' ')[0]}</div>
+                                                    <div className="flex-1">
+                                                        <p className="font-black text-sm">{vt.label.split(' ').slice(1).join(' ')}</p>
+                                                        <p className="text-[11px] font-bold opacity-70 mt-0.5">{vt.desc}</p>
+                                                    </div>
+                                                    <ChevronRight className="w-5 h-5 opacity-50 shrink-0" />
+                                                </button>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        /* STEP 2: Show filtered drivers */
+                                        <div className="space-y-3">
+                                            {/* Back + vehicle header */}
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <button
+                                                    onClick={() => { setSelectedVehicleCategory(null); setSelectedDriver(''); }}
+                                                    className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-200 transition-all"
+                                                >
+                                                    <ArrowLeft className="w-4 h-4" />
+                                                </button>
+                                                <div className="flex-1">
+                                                    <p className="text-xs font-black text-slate-900">
+                                                        {selectedVehicleCategory === 'moto' ? '🛵 Moto Taxi' : selectedVehicleCategory === 'carro' ? '🚗 Carro Económico' : '✨ Carro Confort'} — Drivers disponibles en tu ciudad
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-400 font-bold">
+                                                        {restaurantConfig?.city || restaurantConfig?.address ? `📍 ${restaurantConfig.city || restaurantConfig.address?.split(',')[0]}` : '📍 Tu zona de operación'}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Driver Search Bar */}
+                                            <div className="relative shrink-0">
+                                                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                                                <input 
+                                                    type="text"
+                                                    placeholder="Buscar conductor por nombre..."
+                                                    value={driverSearch}
+                                                    onChange={(e) => setDriverSearch(e.target.value)}
+                                                    className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 outline-none focus:border-blue-500 focus:bg-white transition-all"
+                                                />
+                                                {driverSearch && (
+                                                    <button onClick={() => setDriverSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Radar General Option */}
+                                            <div 
+                                                onClick={() => setSelectedDriver('')}
+                                                className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                                                    selectedDriver === '' 
+                                                        ? 'border-blue-500 bg-blue-50/80 shadow-sm' 
+                                                        : 'border-slate-100 bg-slate-50/60 hover:bg-slate-100'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-2xl bg-blue-500 text-white flex items-center justify-center relative shadow-md shadow-blue-500/20">
+                                                        <div className="absolute inset-0 rounded-2xl bg-blue-400 animate-ping opacity-25"></div>
+                                                        <Truck className="w-5 h-5 relative z-10" />
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="font-black text-xs text-slate-900 flex items-center gap-1.5">
+                                                            Radar Abierto General
+                                                            <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-md text-[9px] font-black uppercase">Automático</span>
+                                                        </h4>
+                                                        <p className="text-[10px] text-slate-500 font-medium">Notifica a todos los {selectedVehicleCategory === 'moto' ? 'motorizados' : 'conductores'} disponibles en tu zona</p>
+                                                    </div>
+                                                </div>
+                                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${selectedDriver === '' ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300'}`}>
+                                                    {selectedDriver === '' && <div className="w-2 h-2 rounded-full bg-white"></div>}
+                                                </div>
+                                            </div>
+
+                                            {/* Filtered Drivers List by vehicle type & city */}
+                                            {(() => {
+                                                const restaurantCity = (restaurantConfig?.location?.city || restaurantConfig?.city || '').trim().toLowerCase();
+                                                const filteredDriversList = drivers.filter(d => {
+                                                    const matchesSearch = !driverSearch || (d.full_name || '').toLowerCase().includes(driverSearch.toLowerCase());
+                                                    const matchesCat = 
+                                                        (selectedVehicleCategory === 'moto' && (d.vehicle_type === 'moto' || !d.vehicle_type)) ||
+                                                        (selectedVehicleCategory === 'carro' && (d.vehicle_type === 'carro' || d.vehicle_type === 'taxi' || d.vehicle_type === 'auto')) ||
+                                                        (selectedVehicleCategory === 'confort' && (d.vehicle_type === 'confort' || d.is_comfort_eligible));
+                                                    const drvCity = (d.city || '').trim().toLowerCase();
+                                                    const matchesCity = !restaurantCity || !drvCity || drvCity.includes(restaurantCity) || restaurantCity.includes(drvCity);
+                                                    return matchesSearch && matchesCat && matchesCity;
+                                                });
+
+                                                return (
+                                                    <div className="space-y-2">
+                                                        <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                                            Conductores Disponibles ({filteredDriversList.length}) {restaurantCity ? `· ${restaurantConfig?.location?.city || restaurantConfig?.city}` : ''}
+                                                        </div>
+
+                                                        {filteredDriversList.map(drv => {
+                                                            const payout = getDriverPayout(selectedOrderForDispatch, drv.vehicle_type);
+                                                            const isSelected = selectedDriver === drv.id;
+                                                            const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
+                                                            
+                                                            return (
+                                                                <div 
+                                                                    key={drv.id}
+                                                                    onClick={() => setSelectedDriver(drv.id)}
+                                                                    className={`p-3 rounded-2xl border-2 cursor-pointer transition-all flex items-center justify-between ${
+                                                                        isSelected 
+                                                                            ? 'border-primary bg-primary/10 shadow-sm ring-1 ring-primary' 
+                                                                            : 'border-slate-100 bg-white hover:border-slate-200'
+                                                                    }`}
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        {/* Driver Photo */}
+                                                                        <div className="relative">
+                                                                            {drv.photo_url ? (
+                                                                                <img 
+                                                                                    src={drv.photo_url} 
+                                                                                    alt={drv.full_name} 
+                                                                                    className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-sm"
+                                                                                />
+                                                                            ) : (
+                                                                                <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 font-black text-sm">
+                                                                                    {drv.full_name ? drv.full_name.charAt(0).toUpperCase() : 'D'}
+                                                                                </div>
+                                                                            )}
+                                                                            <div className="absolute -bottom-1 -right-1 bg-emerald-500 w-3 h-3 rounded-full border-2 border-white"></div>
+                                                                        </div>
+
+                                                                        <div>
+                                                                            <div className="flex items-center gap-1.5">
+                                                                                <h5 className="font-black text-xs text-slate-900">{drv.full_name || 'Conductor'}</h5>
+                                                                                <span className="flex items-center text-[10px] font-black text-amber-500">
+                                                                                    ⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}
+                                                                                </span>
+                                                                            </div>
+                                                                            <p className="text-[10px] text-slate-500 font-bold">
+                                                                                {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''} {drv.vehicle_plate ? `[${drv.vehicle_plate}]` : ''} {drv.city ? `• ${drv.city}` : ''}
+                                                                            </p>
+                                                                            <p className="text-[10px] font-black text-emerald-600 mt-0.5">
+                                                                                💰 Debes pagarle: ${payout.toFixed(2)} USD
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300'}`}>
+                                                                        {isSelected && <div className="w-2 h-2 rounded-full bg-slate-900"></div>}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+
+                                                        {/* Empty state */}
+                                                        {filteredDriversList.length === 0 && (
+                                                            <div className="text-center py-6 text-slate-400">
+                                                                <Truck className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                                                                <p className="text-xs font-bold">No hay conductores de este tipo disponibles en tu ciudad.</p>
+                                                                <p className="text-[10px] font-bold mt-1">Puedes usar el Radar General para notificar a toda la red.</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
 
                         <div className="pt-4 mt-2 border-t border-slate-100 shrink-0">
                             {dispatchType === 'platform' && selectedVehicleCategory && (
@@ -3170,6 +3362,191 @@ export default function Orders() {
                                 alt="Comprobante ampliado" 
                                 className="max-w-full max-h-[82vh] object-contain rounded-2xl shadow-inner"
                             />
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Modal Detalle de Pedido Entregado (Requerimiento 5) */}
+            <AnimatePresence>
+                {selectedOrderForDetail && (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-md sm:px-4"
+                        onClick={() => setSelectedOrderForDetail(null)}
+                    >
+                        <motion.div 
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", bounce: 0, duration: 0.35 }}
+                            className="bg-white rounded-t-[40px] sm:rounded-[36px] w-full max-w-xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Modal Header */}
+                            <div className="p-6 pb-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                            #{selectedOrderForDetail.id.slice(-6).toUpperCase()}
+                                        </span>
+                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                            <CheckCircle className="w-3 h-3" /> Entregado
+                                        </span>
+                                        {selectedOrderForDetail.paymentStatus === 'sold' && (
+                                            <span className="bg-green-100 text-green-700 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                                                Venta Exitosa
+                                            </span>
+                                        )}
+                                    </div>
+                                    <h3 className="text-xl font-black text-slate-900">
+                                        Detalle de Entrega
+                                    </h3>
+                                </div>
+                                <button 
+                                    onClick={() => setSelectedOrderForDetail(null)}
+                                    className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Modal Scrollable Content */}
+                            <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-5">
+                                {/* Cliente info */}
+                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Datos del Cliente</p>
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <h4 className="font-black text-slate-900 text-base">{selectedOrderForDetail.userName || 'Usuario'}</h4>
+                                            {selectedOrderForDetail.clientDNI && (
+                                                <p className="text-xs font-bold text-slate-600 mt-0.5">C.I.: {selectedOrderForDetail.clientDNI}</p>
+                                            )}
+                                            {selectedOrderForDetail.userPhone && (
+                                                <p className="text-xs font-bold text-slate-600">Teléfono: {selectedOrderForDetail.userPhone}</p>
+                                            )}
+                                        </div>
+                                        <span className="text-xs font-bold text-slate-500 bg-white px-3 py-1 rounded-xl border border-slate-100">
+                                            {selectedOrderForDetail.createdAt?.toDate 
+                                                ? selectedOrderForDetail.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                                                : (selectedOrderForDetail.createdAt ? new Date(selectedOrderForDetail.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                                        </span>
+                                    </div>
+                                    <div className="pt-2 border-t border-slate-200/60 flex items-center gap-2 text-xs font-bold text-slate-600">
+                                        {selectedOrderForDetail.delivery_method === 'pickup' || selectedOrderForDetail.order_type === 'pickup' ? (
+                                            <>
+                                                <Store className="w-4 h-4 text-primary shrink-0" />
+                                                <span>Retiro en Tienda / Entrega Propia</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                                                <span>{selectedOrderForDetail.deliveryAddress || 'Sin dirección registrada'}</span>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Desglose de Productos */}
+                                <div className="space-y-3">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                        Productos ({selectedOrderForDetail.items?.length || 0})
+                                    </p>
+                                    <div className="space-y-2">
+                                        {(selectedOrderForDetail.items || []).map((item: any, idx: number) => (
+                                            <div key={idx} className="flex items-center justify-between p-3.5 bg-white border border-slate-100 rounded-2xl shadow-xs">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center font-black text-xs text-slate-900">
+                                                        {item.quantity}x
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-black text-sm text-slate-800">{item.name}</p>
+                                                        {item.note && (
+                                                            <p className="text-[11px] font-bold text-amber-700 italic">Nota: {item.note}</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <p className="font-black text-sm text-slate-900">
+                                                    ${((item.price || 0) * (item.quantity || 1)).toFixed(2)}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Nota del pedido */}
+                                {(selectedOrderForDetail as any).orderNote && (
+                                    <div className="bg-amber-50 border border-amber-200/80 p-3.5 rounded-2xl text-xs">
+                                        <span className="font-black uppercase tracking-wider text-[10px] text-amber-800 block mb-1">Nota de la orden:</span>
+                                        <p className="font-bold text-amber-900">{((selectedOrderForDetail as any).orderNote)}</p>
+                                    </div>
+                                )}
+
+                                {/* Resumen Financiero */}
+                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2.5">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resumen Financiero</p>
+                                    <div className="flex justify-between text-xs font-bold text-slate-600">
+                                        <span>Método de Pago</span>
+                                        <span className="font-black text-slate-900">{selectedOrderForDetail.paymentMethod || 'No especificado'}</span>
+                                    </div>
+                                    {selectedOrderForDetail.paymentReference && (
+                                        <div className="flex justify-between text-xs font-bold text-slate-600">
+                                            <span>Referencia</span>
+                                            <span className="font-black font-mono text-slate-900">{selectedOrderForDetail.paymentReference}</span>
+                                        </div>
+                                    )}
+                                    <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center">
+                                        <span className="font-black text-sm text-slate-900">Total Liquidado</span>
+                                        <span className="text-xl font-black text-slate-900">${(selectedOrderForDetail.total || 0).toFixed(2)}</span>
+                                    </div>
+                                </div>
+
+                                {/* Comprobante de pago si existe */}
+                                {selectedOrderForDetail.paymentProofUrl && (
+                                    <div className="p-3 bg-white border border-slate-100 rounded-2xl flex items-center justify-between">
+                                        <div className="flex items-center gap-2.5">
+                                            <img 
+                                                src={selectedOrderForDetail.paymentProofUrl} 
+                                                alt="Comprobante" 
+                                                className="w-12 h-12 rounded-xl object-cover border border-slate-200"
+                                            />
+                                            <div>
+                                                <p className="text-xs font-black text-slate-900">Comprobante de Pago</p>
+                                                <p className="text-[10px] text-slate-400 font-bold">Adjuntado en la orden</p>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => setPreviewImageModal(selectedOrderForDetail.paymentProofUrl)}
+                                            className="px-3 py-1.5 rounded-xl bg-blue-50 text-blue-600 text-xs font-black hover:bg-blue-100 transition-colors flex items-center gap-1"
+                                        >
+                                            <Eye className="w-3.5 h-3.5" /> Ver
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shrink-0 flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        const ordId = selectedOrderForDetail.id;
+                                        setSelectedOrderForDetail(null);
+                                        setChatOrderId(ordId);
+                                    }}
+                                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2 border border-slate-200"
+                                >
+                                    <MessageCircle className="w-4 h-4 text-slate-700" />
+                                    <span>Chat del Pedido</span>
+                                </button>
+                                <button
+                                    onClick={() => setSelectedOrderForDetail(null)}
+                                    className="px-6 bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm hover:bg-slate-800 transition-all"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
                         </motion.div>
                     </motion.div>
                 )}

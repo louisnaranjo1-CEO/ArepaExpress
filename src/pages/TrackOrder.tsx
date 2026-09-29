@@ -221,12 +221,18 @@ export default function TrackOrder() {
             try {
                 const { data } = await supabase
                     .from('drivers')
-                    .select('id, full_name, phone, vehicle_type, vehicle_brand, vehicle_model, vehicle_plate, rating, is_active, is_online, profiles:user_id(photo_url)')
-                    .eq('is_active', true);
-                if (data) {
+                    .select('id, full_name, phone, vehicle_type, vehicle_brand, vehicle_model, vehicle_plate, vehicle_image_url, rating, is_online, city')
+                    .eq('is_online', true);
+                if (data && data.length > 0) {
+                    const ids = data.map((d: any) => d.id);
+                    const { data: profs } = await supabase
+                        .from('profiles')
+                        .select('id, photo_url')
+                        .in('id', ids);
+                    const profMap = new Map((profs || []).map((p: any) => [p.id, p.photo_url]));
                     setAvailableDrivers(data.map((d: any) => ({
                         ...d,
-                        photo_url: d.profiles?.photo_url || null
+                        photo_url: profMap.get(d.id) || d.vehicle_image_url || null
                     })));
                 }
             } catch (e) {
@@ -349,35 +355,66 @@ export default function TrackOrder() {
 
     // ── Driver GPS Tracking & Realtime Updates (Pilar 4) ────────────────────
     useEffect(() => {
-        const driverId = transportRequest?.driver_id || transportRequest?.driverId || order?.driver_id || order?.delivery_driver_id;
+        const driverId = transportRequest?.driver_id || transportRequest?.driverId || order?.driver_id || order?.delivery_driver_id || (order as any)?.assigned_driver_id;
         if (!driverId) return;
 
-        supabase.from('driver_locations').select('*').eq('driver_id', driverId).maybeSingle().then(({ data }) => {
-            if (data) {
-                const lat = Number(data.latitude ?? data.lat);
-                const lng = Number(data.longitude ?? data.lng);
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    setDriverLocation({ lat, lng });
-                }
+        const updateFromCoords = (latRaw: any, lngRaw: any) => {
+            const lat = Number(latRaw);
+            const lng = Number(lngRaw);
+            if (!isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0) {
+                setDriverLocation({ lat, lng });
+            }
+        };
+
+        // 1. Check drivers table current_location first (where driver apps stream GPS coordinates)
+        supabase.from('drivers').select('current_location, current_heading, vehicle_type').eq('id', driverId).maybeSingle().then(({ data }) => {
+            if (data?.current_location) {
+                const loc = data.current_location as any;
+                updateFromCoords(loc.latitude ?? loc.lat, loc.longitude ?? loc.lng);
+            }
+            if (data?.current_heading !== undefined && data?.current_heading !== null) {
+                setVehicleBearing(Number(data.current_heading));
             }
         });
 
+        // 2. Also check driver_locations table
+        supabase.from('driver_locations').select('*').eq('driver_id', driverId).maybeSingle().then(({ data }) => {
+            if (data) {
+                updateFromCoords(data.latitude ?? data.lat, data.longitude ?? data.lng);
+            }
+        });
+
+        // Realtime subscription on drivers table
+        const driverChangesChannel = supabase.channel(`driver_table_loc_${driverId}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'drivers', filter: `id=eq.${driverId}` },
+                (payload) => {
+                    const d = payload.new as any;
+                    if (d?.current_location) {
+                        const loc = d.current_location;
+                        updateFromCoords(loc.latitude ?? loc.lat, loc.longitude ?? loc.lng);
+                    }
+                    if (d?.current_heading !== undefined && d?.current_heading !== null) {
+                        setVehicleBearing(Number(d.current_heading));
+                    }
+                })
+            .subscribe();
+
+        // Realtime subscription on driver_locations table
         const locChannel = supabase.channel(`driver_loc_${driverId}`)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'driver_locations', filter: `driver_id=eq.${driverId}` },
                 (payload) => {
                     if (payload.new) {
                         const data = payload.new as any;
-                        const lat = Number(data.latitude ?? data.lat);
-                        const lng = Number(data.longitude ?? data.lng);
-                        if (!isNaN(lat) && !isNaN(lng)) {
-                            setDriverLocation({ lat, lng });
-                        }
+                        updateFromCoords(data.latitude ?? data.lat, data.longitude ?? data.lng);
                     }
                 })
             .subscribe();
 
-        return () => { supabase.removeChannel(locChannel); };
-    }, [transportRequest?.driver_id, transportRequest?.driverId, order?.driver_id, order?.delivery_driver_id]);
+        return () => { 
+            supabase.removeChannel(driverChangesChannel);
+            supabase.removeChannel(locChannel); 
+        };
+    }, [transportRequest?.driver_id, transportRequest?.driverId, order?.driver_id, order?.delivery_driver_id, (order as any)?.assigned_driver_id]);
 
     // ── Smooth 60fps Game-Style Vehicle Movement Interpolation (Pilar 4) ────
     useEffect(() => {
@@ -806,28 +843,123 @@ export default function TrackOrder() {
     const getVehicleSvgDataUri = (vType: string = 'moto', bearing: number = 0) => {
         const isConfort = vType === 'confort' || vType === 'ejecutivo';
         const isCarro = vType === 'carro' || vType === 'taxi';
-        const primaryColor = isConfort ? '#A855F7' : isCarro ? '#3B82F6' : '#F59E0B';
+        const primaryColor = isConfort ? '#9333EA' : isCarro ? '#2563EB' : '#F59E0B';
+
+        let vehicleGraphic = '';
+
+        if (!isConfort && !isCarro) {
+            // 🛵 3D Top-Down Mototaxi with Driver, Helmet & Delivery Box
+            vehicleGraphic = `
+                <!-- Headlight beam -->
+                <polygon points="34,20 10,-4 58,-4" fill="url(#headlightBeam)"/>
+                <!-- Front tire -->
+                <rect x="31" y="8" width="6" height="14" rx="3" fill="#1E293B"/>
+                <!-- Front fork & fender -->
+                <rect x="29" y="16" width="10" height="4" rx="2" fill="#F59E0B"/>
+                <!-- Handlebars -->
+                <line x1="20" y1="20" x2="48" y2="20" stroke="#94A3B8" stroke-width="2.5" stroke-linecap="round"/>
+                <circle cx="19" cy="20" r="2" fill="#F59E0B"/>
+                <circle cx="49" cy="20" r="2" fill="#F59E0B"/>
+                <line x1="17" y1="18" x2="20" y2="20" stroke="#64748B" stroke-width="1.5"/>
+                <line x1="51" y1="18" x2="48" y2="20" stroke="#64748B" stroke-width="1.5"/>
+                <!-- Moto Main Frame -->
+                <ellipse cx="34" cy="35" rx="6.5" ry="16" fill="#0F172A" stroke="#F59E0B" stroke-width="1.5"/>
+                <!-- Driver Shoulders & Jacket -->
+                <ellipse cx="34" cy="30" rx="9" ry="5.5" fill="#1E293B"/>
+                <!-- Driver Helmet with Visor -->
+                <circle cx="34" cy="28" r="6" fill="#F59E0B"/>
+                <path d="M 30 25 Q 34 22 38 25" stroke="#0F172A" stroke-width="3" fill="none" stroke-linecap="round"/>
+                <ellipse cx="34" cy="25" rx="3.5" ry="1.5" fill="#38BDF8"/>
+                <!-- Delivery Thermal Box -->
+                <rect x="26" y="38" width="16" height="15" rx="3" fill="#F59E0B" stroke="#B45309" stroke-width="1.5"/>
+                <rect x="29" y="42" width="10" height="7" rx="1.5" fill="#D97706"/>
+                <!-- Rear taillights -->
+                <circle cx="28" cy="54" r="1.5" fill="#EF4444"/>
+                <circle cx="40" cy="54" r="1.5" fill="#EF4444"/>
+            `;
+        } else if (isCarro) {
+            // 🚗 3D Top-Down Taxi Económico
+            vehicleGraphic = `
+                <!-- Headlight beam -->
+                <polygon points="34,16 6,-8 62,-8" fill="url(#headlightBeam)"/>
+                <!-- 4 Wheels -->
+                <rect x="18" y="14" width="4" height="9" rx="2" fill="#0F172A"/>
+                <rect x="46" y="14" width="4" height="9" rx="2" fill="#0F172A"/>
+                <rect x="18" y="42" width="4" height="9" rx="2" fill="#0F172A"/>
+                <rect x="46" y="42" width="4" height="9" rx="2" fill="#0F172A"/>
+                <!-- Side Mirrors -->
+                <rect x="17" y="24" width="3" height="4" rx="1" fill="#2563EB"/>
+                <rect x="48" y="24" width="3" height="4" rx="1" fill="#2563EB"/>
+                <!-- Car Chassis -->
+                <rect x="20" y="10" width="28" height="46" rx="8" fill="#1D4ED8" stroke="#60A5FA" stroke-width="1.5"/>
+                <!-- Hood -->
+                <path d="M 23 12 Q 34 10 45 12 L 44 21 Q 34 22 24 21 Z" fill="#2563EB"/>
+                <!-- Windshield Front -->
+                <path d="M 24 22 L 44 22 L 42 29 L 26 29 Z" fill="#0F172A"/>
+                <line x1="27" y1="24" x2="33" y2="28" stroke="#93C5FD" stroke-width="1" stroke-linecap="round" opacity="0.6"/>
+                <!-- Roof with Taxi Light -->
+                <rect x="25" y="29" width="18" height="15" rx="3" fill="#1E40AF"/>
+                <rect x="29" y="34" width="10" height="4" rx="1.5" fill="#FEF08A" stroke="#CA8A04" stroke-width="1"/>
+                <!-- Rear Window -->
+                <path d="M 25 45 L 43 45 L 44 50 L 24 50 Z" fill="#0F172A"/>
+                <!-- Headlights -->
+                <ellipse cx="23" cy="11" rx="2" ry="1.5" fill="#FEF08A"/>
+                <ellipse cx="45" cy="11" rx="2" ry="1.5" fill="#FEF08A"/>
+                <!-- Taillights -->
+                <rect x="22" y="55" width="5" height="1.5" rx="0.5" fill="#EF4444"/>
+                <rect x="41" y="55" width="5" height="1.5" rx="0.5" fill="#EF4444"/>
+            `;
+        } else {
+            // ✨ 3D Top-Down Carro Confort / Ejecutivo
+            vehicleGraphic = `
+                <!-- Headlight beam Xenon -->
+                <polygon points="34,14 4,-12 64,-12" fill="url(#xenonBeam)"/>
+                <!-- 4 Wheels -->
+                <rect x="17" y="14" width="4.5" height="10" rx="2" fill="#090D16"/>
+                <rect x="46.5" y="14" width="4.5" height="10" rx="2" fill="#090D16"/>
+                <rect x="17" y="44" width="4.5" height="10" rx="2" fill="#090D16"/>
+                <rect x="46.5" y="44" width="4.5" height="10" rx="2" fill="#090D16"/>
+                <!-- Aerodynamic Mirrors -->
+                <path d="M 18 24 L 16 26 L 18 27 Z" fill="#A855F7"/>
+                <path d="M 50 24 L 52 26 L 50 27 Z" fill="#A855F7"/>
+                <!-- Luxury Chassis -->
+                <rect x="19" y="8" width="30" height="52" rx="9" fill="#581C87" stroke="#C084FC" stroke-width="1.5"/>
+                <!-- Hood with Contours -->
+                <path d="M 22 10 Q 34 8 46 10 L 45 22 Q 34 23 23 22 Z" fill="#6B21A8"/>
+                <line x1="28" y1="12" x2="28" y2="20" stroke="#9333EA" stroke-width="1"/>
+                <line x1="40" y1="12" x2="40" y2="20" stroke="#9333EA" stroke-width="1"/>
+                <!-- Panoramic Tinted Glass Sunroof -->
+                <rect x="23" y="23" width="22" height="26" rx="4" fill="#090D16" stroke="#A855F7" stroke-width="0.8"/>
+                <line x1="25" y1="26" x2="35" y2="42" stroke="#E9D5FF" stroke-width="1.2" stroke-linecap="round" opacity="0.5"/>
+                <!-- Xenon LED Front Lightbar -->
+                <line x1="22" y1="9" x2="46" y2="9" stroke="#E0E7FF" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="23" cy="9" r="1.5" fill="#60A5FA"/>
+                <circle cx="45" cy="9" r="1.5" fill="#60A5FA"/>
+                <!-- LED Rear Lightbar -->
+                <line x1="22" y1="59" x2="46" y2="59" stroke="#EF4444" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="34" cy="59" r="1" fill="#F87171"/>
+            `;
+        }
 
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="68" height="68" viewBox="0 0 68 68">
           <defs>
             <radialGradient id="beaconGlow" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="${primaryColor}" stop-opacity="0.9"/>
-              <stop offset="60%" stop-color="${primaryColor}" stop-opacity="0.3"/>
+              <stop offset="0%" stop-color="${primaryColor}" stop-opacity="0.85"/>
+              <stop offset="60%" stop-color="${primaryColor}" stop-opacity="0.25"/>
               <stop offset="100%" stop-color="${primaryColor}" stop-opacity="0"/>
             </radialGradient>
             <linearGradient id="headlightBeam" x1="50%" y1="100%" x2="50%" y2="0%">
-              <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.8"/>
+              <stop offset="0%" stop-color="#FEF08A" stop-opacity="0.85"/>
               <stop offset="100%" stop-color="#FEF08A" stop-opacity="0"/>
             </linearGradient>
+            <linearGradient id="xenonBeam" x1="50%" y1="100%" x2="50%" y2="0%">
+              <stop offset="0%" stop-color="#BAE6FD" stop-opacity="0.9"/>
+              <stop offset="100%" stop-color="#BAE6FD" stop-opacity="0"/>
+            </linearGradient>
           </defs>
-          <circle cx="34" cy="34" r="30" fill="url(#beaconGlow)"/>
+          <circle cx="34" cy="34" r="32" fill="url(#beaconGlow)"/>
           <g transform="rotate(${bearing} 34 34)">
-            <polygon points="34,26 14,0 54,0" fill="url(#headlightBeam)"/>
-            <rect x="22" y="16" width="24" height="34" rx="9" fill="#0F172A" stroke="${primaryColor}" stroke-width="2.5"/>
-            <circle cx="34" cy="22" r="3.5" fill="#38BDF8"/>
-            <circle cx="27" cy="45" r="2.5" fill="#EF4444"/>
-            <circle cx="41" cy="45" r="2.5" fill="#EF4444"/>
-            <line x1="26" y1="30" x2="42" y2="30" stroke="${primaryColor}" stroke-width="2" stroke-linecap="round"/>
+            ${vehicleGraphic}
           </g>
         </svg>`;
         return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);

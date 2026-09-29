@@ -500,8 +500,9 @@ export default function Taxi() {
     }, []);
 
     // 2. Fetch Nearby Drivers
-    const fetchNearbyDrivers = useCallback(async (pickupCoords: { lat: number; lng: number }) => {
+    const fetchNearbyDrivers = useCallback(async (pickupCoords?: { lat: number; lng: number }) => {
         try {
+            const currentCoords = pickupCoords || userLocation || origin || { lat: 8.9242, lng: -67.4292 };
             const { data: driversData, error: dErr } = await supabase
                 .from('drivers')
                 .select('id, full_name, vehicle_type, vehicle_brand, vehicle_model, vehicle_year, vehicle_color, vehicle_plate, current_location, availability, is_online, driver_fares, rating, total_trips, is_comfort_eligible, has_ac, has_thermal_bag, documents, vehicle_image_url, registered_vehicles, active_vehicle_id, city, status');
@@ -515,13 +516,13 @@ export default function Taxi() {
 
             (driversData || []).forEach((d: any) => {
                 const loc = d.current_location;
-                let lat = pickupCoords.lat;
-                let lng = pickupCoords.lng;
+                let lat = currentCoords.lat;
+                let lng = currentCoords.lng;
                 let distKm = 3.0;
                 let hasValidLoc = false;
 
                 if (loc && typeof loc.lat === 'number' && typeof loc.lng === 'number' && !isNaN(loc.lat) && !isNaN(loc.lng)) {
-                    const distMeters = calculateDistance(pickupCoords.lat, pickupCoords.lng, loc.lat, loc.lng);
+                    const distMeters = calculateDistance(currentCoords.lat, currentCoords.lng, loc.lat, loc.lng);
                     distKm = Number((distMeters / 1000).toFixed(1));
                     lat = loc.lat;
                     lng = loc.lng;
@@ -529,9 +530,10 @@ export default function Taxi() {
                 }
 
                 if (distKm <= 35 || !hasValidLoc) {
-                    const isDriverAvailable = Boolean(d.is_online) && 
-                        (d.availability === 'active' || d.availability === 'available' || !d.availability) &&
-                        d.status !== 'suspended' && d.status !== 'inactive';
+                    const isOnline = d.is_online === true || d.is_online === 'true' || d.is_online === 1;
+                    const isDriverAvailable = isOnline && 
+                        (d.availability === 'active' || d.availability === 'available' || d.status === 'available' || !d.availability) &&
+                        d.status !== 'suspended' && d.status !== 'inactive' && d.status !== 'rejected';
 
                     const rawType = (d.vehicle_type || 'carro').toLowerCase();
                     const activeVType: 'moto' | 'carro' = rawType.includes('moto') ? 'moto' : 'carro';
@@ -567,7 +569,7 @@ export default function Taxi() {
                         driverFares: d.driver_fares || null,
                         availability: isDriverAvailable ? 'active' : 'busy',
                         isBusy: !isDriverAvailable,
-                        isOnline: Boolean(d.is_online),
+                        isOnline: isOnline,
                         isActiveVehicle: true,
                         registeredVehicles: d.registered_vehicles || []
                     });
@@ -617,7 +619,7 @@ export default function Taxi() {
                                 driverFares: d.driver_fares || null,
                                 availability: 'busy',
                                 isBusy: true,
-                                isOnline: Boolean(d.is_online),
+                                isOnline: isOnline,
                                 isActiveVehicle: false
                             });
                         }
@@ -631,7 +633,32 @@ export default function Taxi() {
         } catch (err) {
             console.error("fetchNearbyDrivers error:", err);
         }
-    }, []);
+    }, [userLocation, origin]);
+
+    // 2.1 Realtime listener & automatic sync for Drivers in Supabase
+    useEffect(() => {
+        const driversChannel = supabase
+            .channel('taxi_drivers_realtime')
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'drivers'
+            }, () => {
+                fetchNearbyDrivers();
+            })
+            .subscribe();
+
+        // Carga inmediata en montaje y sondeo periódico cada 12 segundos
+        fetchNearbyDrivers();
+        const pollInterval = setInterval(() => {
+            fetchNearbyDrivers();
+        }, 12000);
+
+        return () => {
+            supabase.removeChannel(driversChannel);
+            clearInterval(pollInterval);
+        };
+    }, [fetchNearbyDrivers]);
 
     // 3. Initialize Google Maps DOM natively (Crash-Proof for React 19)
     useEffect(() => {
@@ -1189,17 +1216,18 @@ export default function Taxi() {
         });
 
         if (matchingDrivers.length === 0) {
+            const fallbackPrice = parseFloat(calculatePrice(cat)) || 0;
             return {
                 text: 'Ocupados',
                 isBusy: true,
                 hasRange: false,
-                min: 0,
-                max: 0,
+                min: fallbackPrice,
+                max: fallbackPrice,
                 driversCount: 0
             };
         }
-        const prices = matchingDrivers.map(d => calculateDriverTripPrice(d, tripDist, cat === 'ejecutivo'));
-        const minPrice = Math.min(...prices);
+        const prices = matchingDrivers.map(d => calculateDriverTripPrice(d, tripDist, cat === 'ejecutivo')).filter(p => !isNaN(p) && p > 0);
+        const minPrice = prices.length > 0 ? Math.min(...prices) : (parseFloat(calculatePrice(cat)) || 1.5);
         return {
             text: `$${minPrice.toFixed(2)}`,
             isBusy: false,
@@ -1208,7 +1236,7 @@ export default function Taxi() {
             max: minPrice,
             driversCount: matchingDrivers.length
         };
-    }, [nearbyDrivers, routeInfo, calculateDriverTripPrice]);
+    }, [nearbyDrivers, routeInfo, calculateDriverTripPrice, calculatePrice]);
 
     // Precio más bajo disponible en la plataforma (informativo para barra minimizada)
     const getLowestPlatformPrice = useCallback(() => {
@@ -2788,7 +2816,7 @@ export default function Taxi() {
                                                 </span>
                                             </button>
 
-                                            {/* 2. Taxi Driver */}
+                                            {/* 2. Taxi Económico */}
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -2805,7 +2833,7 @@ export default function Taxi() {
                                                 <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
                                                     <Car className="w-4 h-4 text-slate-900" />
                                                 </div>
-                                                <span className="text-[11px] font-black truncate max-w-full">Taxi Driver</span>
+                                                <span className="text-[11px] font-black truncate max-w-full">Taxi Económico</span>
                                                 <span className={`text-[9px] font-bold ${selectedCategory === 'taxi_driver' ? 'text-slate-900' : 'text-emerald-600'}`}>3-5 min</span>
                                                 <span className="text-xs font-black mt-0.5 leading-tight">
                                                     {selectedDriver && selectedDriver.vehicleType === 'carro'
@@ -3078,18 +3106,14 @@ export default function Taxi() {
                             ) : (
                                 <button
                                     onClick={handleRequestTaxi}
-                                    className="w-full py-3.5 bg-[#FFB800] text-slate-950 font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                    className="w-full py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-yellow-400/20 active:scale-95 transition-all flex items-center justify-center gap-2"
                                 >
                                     <span>
                                         {mainMode === 'mandado'
                                             ? 'Solicitar Mandado • Iniciar Subasta'
-                                            : selectedCategory === 'mototaxi'
-                                            ? `Pedir Mototaxi • $${calculatePrice('moto')}`
-                                            : selectedCategory === 'carro_confort'
-                                            ? `Pedir Confort • $${calculatePrice('ejecutivo')}`
-                                            : `Pedir Taxi • $${calculatePrice('carro')}`}
+                                            : 'Pedir Taxi'}
                                     </span>
-                                    <ArrowRight className="w-4 h-4" />
+                                    <ArrowRight className="w-4 h-4 text-black" />
                                 </button>
                             )}
                         </div>
