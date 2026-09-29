@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
@@ -13,11 +13,11 @@ import { useCurrency } from '../context/CurrencyContext';
 import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
 import OrderChatWindow from '../components/chat/OrderChatWindow';
+import RideChat from '../components/RideChat';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
-import { googleMapsDarkStyles } from '../lib/weather';
 
 const mapOptions: google.maps.MapOptions = {
     disableDefaultUI: true,
@@ -26,8 +26,7 @@ const mapOptions: google.maps.MapOptions = {
     mapTypeControl: false,
     fullscreenControl: false,
     clickableIcons: false,
-    gestureHandling: 'cooperative',
-    styles: googleMapsDarkStyles
+    gestureHandling: 'greedy'
 };
 
 // ─── Geo Distance Calculator ────────────────────────────────────────────────
@@ -768,13 +767,18 @@ export default function TrackOrder() {
             const itemsSummary = (order.items || []).map((i: any) => `${i.quantity}x ${i.name}`).join(', ');
 
             // Garantizar coordenadas válidas con fallback para evitar error Invalid LatLng en app conductor
-            const fallbackOrigin = originCoordsVal || (userLocation ? userLocation : { lat: 8.9242, lng: -67.4293 });
-            const fallbackDest = destCoordsVal || (userLocation ? userLocation : { lat: fallbackOrigin.lat + 0.005, lng: fallbackOrigin.lng + 0.005 });
+            const rLat = Number(restaurant?.location?.coords?.lat ?? restaurant?.lat ?? restaurant?.latitude);
+            const rLng = Number(restaurant?.location?.coords?.lng ?? restaurant?.lng ?? restaurant?.longitude);
+            const hasRestCoords = !isNaN(rLat) && !isNaN(rLng) && rLat !== 0;
 
-            const originLat = Number(fallbackOrigin.lat) || 8.9242;
-            const originLng = Number(fallbackOrigin.lng) || -67.4293;
-            const destLat = Number(fallbackDest.lat) || (originLat + 0.005);
-            const destLng = Number(fallbackDest.lng) || (originLng + 0.005);
+            const dLat = Number(order?.deliveryCoords?.lat ?? order?.address?.coords?.lat ?? order?.address?.latitude ?? userLocation?.lat);
+            const dLng = Number(order?.deliveryCoords?.lng ?? order?.address?.coords?.lng ?? order?.address?.longitude ?? userLocation?.lng);
+            const hasDestCoords = !isNaN(dLat) && !isNaN(dLng) && dLat !== 0;
+
+            const originLat = hasRestCoords ? rLat : (userLocation?.lat || 8.9242);
+            const originLng = hasRestCoords ? rLng : (userLocation?.lng || -67.4293);
+            const destLat = hasDestCoords ? dLat : (originLat + 0.005);
+            const destLng = hasDestCoords ? dLng : (originLng + 0.005);
 
             const originData = {
                 address: restaurant?.address || restaurant?.location?.address || order.restaurantName || 'Comercio',
@@ -1035,17 +1039,51 @@ export default function TrackOrder() {
 
     const pagoMovilMethod = paymentMethods.find((m: any) => m.type === 'Pago Móvil') || null;
 
-    // Calcular distancia tienda -> cliente
-    const originCoords = restaurant?.location?.coords || (restaurant?.lat ? { lat: Number(restaurant.lat), lng: Number(restaurant.lng) } : null);
-    const destCoords = order?.deliveryCoords || order?.address?.coords || userLocation;
-    const calculatedDistance = (originCoords && destCoords)
-        ? calculateDistanceKm(originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng)
-        : Number(order?.distance || 2.5);
+    const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
 
-    const mapCenter = driverLocation
-        || destCoords
-        || originCoords
-        || { lat: 8.9326, lng: -67.4264 };
+    // Calcular distancia y coordenadas tienda -> cliente con fallbacks robustos
+    const rLat = Number(restaurant?.location?.coords?.lat ?? restaurant?.coords?.lat ?? restaurant?.lat ?? restaurant?.locations?.[0]?.coords?.lat);
+    const rLng = Number(restaurant?.location?.coords?.lng ?? restaurant?.coords?.lng ?? restaurant?.lng ?? restaurant?.locations?.[0]?.coords?.lng);
+    const hasRestCoords = !isNaN(rLat) && !isNaN(rLng) && rLat !== 0;
+
+    const dLat = Number(order?.delivery_coords?.lat ?? order?.deliveryCoords?.lat ?? order?.shipping_address?.lat ?? order?.address?.coords?.lat ?? userLocation?.lat);
+    const dLng = Number(order?.delivery_coords?.lng ?? order?.deliveryCoords?.lng ?? order?.shipping_address?.lng ?? order?.address?.coords?.lng ?? userLocation?.lng);
+    const hasDestCoords = !isNaN(dLat) && !isNaN(dLng) && dLat !== 0;
+
+    const originCoords: { lat: number; lng: number } = hasRestCoords 
+        ? { lat: rLat, lng: rLng } 
+        : (hasDestCoords ? { lat: dLat - 0.006, lng: dLng - 0.006 } : { lat: 8.9288, lng: -67.4253 });
+
+    const destCoords: { lat: number; lng: number } = hasDestCoords 
+        ? { lat: dLat, lng: dLng } 
+        : { lat: 8.9327, lng: -67.4268 };
+
+    const calculatedDistance = calculateDistanceKm(originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng) || Number(order?.distance || 2.5);
+
+    const mapCenter = (driverLocation && !isNaN(driverLocation.lat))
+        ? driverLocation
+        : destCoords;
+
+    const onMapLoad = useCallback((map: google.maps.Map) => {
+        setMapInstance(map);
+        if (window.google) {
+            const bounds = new window.google.maps.LatLngBounds();
+            bounds.extend(originCoords);
+            bounds.extend(destCoords);
+            if (driverLocation) bounds.extend(driverLocation);
+            map.fitBounds(bounds, { top: 90, bottom: 260, left: 40, right: 40 });
+        }
+    }, [originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng, driverLocation?.lat, driverLocation?.lng]);
+
+    // Re-centrar y ajustar bounds dinámicamente cuando el driver se mueve
+    useEffect(() => {
+        if (!mapInstance || !window.google) return;
+        const bounds = new window.google.maps.LatLngBounds();
+        bounds.extend(originCoords);
+        bounds.extend(destCoords);
+        if (driverLocation) bounds.extend(driverLocation);
+        mapInstance.fitBounds(bounds, { top: 90, bottom: 260, left: 40, right: 40 });
+    }, [mapInstance, driverLocation?.lat, driverLocation?.lng, directionsResult]);
 
     // ── Single Route Calculation (google-maps-optimizer) ─────────────────────
     useEffect(() => {
@@ -1067,7 +1105,7 @@ export default function TrackOrder() {
                 }
             }
         );
-    }, [isLoaded, originCoords?.lat, originCoords?.lng, destCoords?.lat, destCoords?.lng]);
+    }, [isLoaded, originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng]);
 
     // ── Helper: 3D Vehicle Marker SVG Generator with Headlight and Pulse ───
     const getVehicleSvgDataUri = (vType: string = 'moto', bearing: number = 0) => {
@@ -2076,14 +2114,15 @@ export default function TrackOrder() {
         const vehicleLabel = vehicleType === 'confort' || vehicleType === 'ejecutivo' ? 'Carro Confort' : (vehicleType === 'carro' ? 'Taxi Económico' : 'Moto Taxi');
 
         return (
-            <div className="fixed inset-0 z-40 w-full h-[100dvh] max-h-[100dvh] bg-slate-950 overflow-hidden flex flex-col select-none">
-                {/* 1. Full Screen Google Map with Dark or Custom Styles */}
+            <div className="fixed inset-0 z-40 w-full h-[100dvh] max-h-[100dvh] bg-slate-100 overflow-hidden flex flex-col select-none">
+                {/* 1. Full Screen Google Map with Clean Daylight Styles */}
                 <div className="absolute inset-0 z-0 w-full h-full">
                     {isLoaded ? (
                         <GoogleMap
                             mapContainerStyle={{ width: '100%', height: '100%' }}
                             center={interpolatedPos || mapCenter}
                             zoom={16}
+                            onLoad={onMapLoad}
                             options={{
                                 ...mapOptions,
                                 disableDefaultUI: true,
@@ -2309,7 +2348,7 @@ export default function TrackOrder() {
                 </motion.button>
             )}
 
-            {/* Chat en Pantalla Completa */}
+            {/* Chat en Pantalla Completa: Driver Chat en Paso 4, OrderChatWindow en Pasos 1-3 */}
             <AnimatePresence>
                 {showChat && (
                     <motion.div
@@ -2321,24 +2360,36 @@ export default function TrackOrder() {
                         className="fixed inset-0 z-50 bg-slate-50 flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden"
                     >
                         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-                            <OrderChatWindow
-                                orderId={orderId!}
-                                currentUserRole="client"
-                                currentUserId={user?.uid || 'guest'}
-                                currentUserName={order.userName || 'Cliente'}
-                                restaurantId={order.restaurantId || order.restaurant_id}
-                                orderInfo={order}
-                                onClose={() => setShowChat(false)}
-                                onProceedToDelivery={() => {
-                                    setForcedStep(3);
-                                    setOrder((prev: any) => ({
-                                        ...prev,
-                                        status: 'awaiting_delivery_driver',
-                                        payment_status: 'paid'
-                                    }));
-                                    setShowChat(false);
-                                }}
-                            />
+                            {currentStep === 4 && (transportRequest?.id || order?.transport_request_id) ? (
+                                <RideChat
+                                    requestId={transportRequest?.id || order?.transport_request_id}
+                                    onClose={() => setShowChat(false)}
+                                    serviceCategory="food_delivery"
+                                    requestStatus={transportRequest?.status || order?.status || 'in_progress'}
+                                    driverPhone={driver?.phone || transportRequest?.driver_phone || order?.driver_phone}
+                                    clientPhone={order?.user_phone || user?.phone}
+                                    isDriver={false}
+                                />
+                            ) : (
+                                <OrderChatWindow
+                                    orderId={orderId!}
+                                    currentUserRole="client"
+                                    currentUserId={user?.uid || 'guest'}
+                                    currentUserName={order.userName || 'Cliente'}
+                                    restaurantId={order.restaurantId || order.restaurant_id}
+                                    orderInfo={order}
+                                    onClose={() => setShowChat(false)}
+                                    onProceedToDelivery={() => {
+                                        setForcedStep(3);
+                                        setOrder((prev: any) => ({
+                                            ...prev,
+                                            status: 'awaiting_delivery_driver',
+                                            payment_status: 'paid'
+                                        }));
+                                        setShowChat(false);
+                                    }}
+                                />
+                            )}
                         </div>
                     </motion.div>
                 )}

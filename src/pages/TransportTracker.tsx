@@ -251,7 +251,7 @@ export default function TransportTracker() {
         const isQuick = Boolean(request?.notes?.includes('Transporte Rápido'));
         const isAccepted = ['accepted', 'arriving', 'in_progress'].includes(request?.status);
 
-        if (isQuick && isAccepted && !hasAutoOpenedPaymentModal.current && !request.payment_method_selected) {
+        if (isQuick && isAccepted && !hasAutoOpenedPaymentModal.current && !request.payment_method) {
             hasAutoOpenedPaymentModal.current = true;
             setSelectedPaymentMethod(
                 request.payment_method === 'cash_ves' 
@@ -262,7 +262,7 @@ export default function TransportTracker() {
             );
             setShowPaymentPickerModal(true);
         }
-    }, [request?.status, request?.notes, request?.payment_method_selected]);
+    }, [request?.status, request?.notes, request?.payment_method]);
 
     const handleSavePaymentMethod = async (method: 'pago_movil' | 'cash_ves' | 'cash_usd') => {
         if (!requestId) return;
@@ -272,7 +272,6 @@ export default function TransportTracker() {
             const { error } = await supabase.from('transport_requests').update({
                 payment_method: method,
                 cash_currency: currency,
-                payment_method_selected: true,
                 updated_at: new Date().toISOString()
             }).eq('id', requestId);
 
@@ -281,8 +280,7 @@ export default function TransportTracker() {
             setRequest((prev: any) => ({
                 ...prev,
                 payment_method: method,
-                cash_currency: currency,
-                payment_method_selected: true
+                cash_currency: currency
             }));
 
             toast.success(
@@ -874,22 +872,33 @@ export default function TransportTracker() {
                         {/* Overlay to ensure back button is visible on the map */}
                         <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/20 to-transparent z-10 pointer-events-none"></div>
 
-                        {/* Rain Animation Canvas Overlay */}
-                        <RainOverlay isActive={Boolean(weather?.isRaining)} />
-
-                        <LiveTripMap
-                            origin={request.origin}
-                            destination={request.destination}
-                            driverLocation={driver?.currentLocation ? {
-                                lat: driver.currentLocation.latitude ?? (driver.currentLocation as any).lat,
-                                lng: driver.currentLocation.longitude ?? (driver.currentLocation as any).lng
-                            } : null}
-                            vehicleType={driver?.vehicleType || request.service_category || 'carro'}
-                            driverName={(driver?.fullName || (driver as any)?.full_name || 'Conductor').split(' ')[0]}
-                            isExpanded={isMapExpanded}
-                            onToggleExpand={() => setIsMapExpanded(prev => !prev)}
-                            showControls={true}
-                        />
+                        <GoogleMap
+                            mapContainerStyle={{ width: '100%', height: '100%' }}
+                            center={driver?.currentLocation ? {
+                                lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
+                                lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
+                            } : (request.origin ? { lat: Number(request.origin.lat), lng: Number(request.origin.lng) } : { lat: 8.9326, lng: -67.4264 })}
+                            zoom={15}
+                            onLoad={onLoad}
+                            onUnmount={onUnmount}
+                            options={mapOptions}
+                        >
+                            {driver?.currentLocation && (
+                                <Marker
+                                    position={{
+                                        lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
+                                        lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
+                                    }}
+                                    icon={{
+                                        url: (driver.vehicleType === 'moto' || request.service_category === 'mototaxi') 
+                                            ? 'https://cdn-icons-png.flaticon.com/512/1986/1986937.png'
+                                            : 'https://cdn-icons-png.flaticon.com/512/1048/1048314.png',
+                                        scaledSize: window.google ? new window.google.maps.Size(40, 40) : undefined
+                                    }}
+                                    title={driver.fullName || 'Conductor'}
+                                />
+                            )}
+                        </GoogleMap>
                     </div>
                 ) : null}
             </div>

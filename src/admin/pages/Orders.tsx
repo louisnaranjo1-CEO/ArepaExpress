@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft, Info } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
@@ -46,7 +46,14 @@ interface Order {
     clientDNI?: string;
     stockConfirmed?: boolean;
     preferred_driver_id?: string | null;
+    preferred_driver_name?: string | null;
     preferred_driver_expires_at?: string | null;
+    driver_id?: string | null;
+    driver_name?: string | null;
+    driverName?: string | null;
+    delivery_driver_id?: string | null;
+    dispatched_at?: string | null;
+    updated_at?: string | null;
 }
 
 export default function Orders() {
@@ -109,6 +116,11 @@ export default function Orders() {
     const [closeTip, setCloseTip] = useState(0);
     const [missingItemsByOrder, setMissingItemsByOrder] = useState<Record<string, string[]>>({});
     const [chatOrderId, setChatOrderId] = useState<string | null>(null);
+
+    // Smart Rejection State (Fase 2.3)
+    const [smartRejectModalOpen, setSmartRejectModalOpen] = useState(false);
+    const [selectedOrderForReject, setSelectedOrderForReject] = useState<Order | null>(null);
+    const [smartRejectReason, setSmartRejectReason] = useState<'closed' | 'no_stock' | null>(null);
 
     const handleCloseSale = async () => {
         if (!selectedOrderForClose) return;
@@ -295,8 +307,35 @@ export default function Orders() {
                 orderNote: o.order_note || o.notes || '',
                 clientDNI: o.client_dni || o.user_cedula || '',
                 preferred_driver_id: o.preferred_driver_id,
-                preferred_driver_expires_at: o.preferred_driver_expires_at
+                preferred_driver_name: o.preferred_driver_name,
+                preferred_driver_expires_at: o.preferred_driver_expires_at,
+                driver_id: o.driver_id || o.delivery_driver_id,
+                driver_name: o.driver_name,
+                driverName: o.driver_name,
+                delivery_driver_id: o.delivery_driver_id,
+                dispatched_at: o.dispatched_at,
+                updated_at: o.updated_at
             }));
+
+            // 24h Auto-Close Check for delivering/delivered orders awaiting customer rating
+            const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+            const now = Date.now();
+            const expiredOrders = (data || []).filter((o: any) => {
+                if (!['delivering', 'delivered'].includes(o.status)) return false;
+                const refTime = new Date(o.dispatched_at || o.delivered_at || o.updated_at || o.created_at).getTime();
+                return (now - refTime) >= ONE_DAY_MS;
+            });
+
+            if (expiredOrders.length > 0) {
+                for (const exp of expiredOrders) {
+                    supabase.from('orders').update({
+                        status: 'completed',
+                        payment_status: exp.payment_status || 'paid',
+                        auto_closed_24h: true,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', exp.id).then(() => {});
+                }
+            }
 
             // Sound on new pending order or incoming payment proof to verify
             const hasNewActionable = items.some(o => {
@@ -622,12 +661,25 @@ export default function Orders() {
                 return;
             }
 
-            // Caso 2: Driver de la Plataforma
-            const driverObj = drivers.find(d => d.id === selectedDriver);
+            // Caso 2: Driver de la Plataforma (o seleccionado por el cliente)
+            const targetDriverId = selectedDriver || selectedOrderForDispatch.preferred_driver_id || selectedOrderForDispatch.driver_id;
+            const chosenDriverName = selectedOrderForDispatch.driver_name 
+                || (selectedOrderForDispatch as any).driverName 
+                || selectedOrderForDispatch.preferred_driver_name;
+
+            const driverObj = drivers.find(d => d.id === targetDriverId) || (targetDriverId ? {
+                id: targetDriverId,
+                full_name: chosenDriverName || 'Conductor',
+                phone: '',
+                photo_url: '',
+                vehicle_type: selectedVehicleCategory || 'moto'
+            } : null);
+
             const payout = driverObj ? getDriverPayout(selectedOrderForDispatch, driverObj.vehicle_type) : 1.50;
 
             const updates: any = {
-                status: 'buscando_piloto',
+                status: 'delivering',
+                dispatched_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
 
@@ -635,17 +687,18 @@ export default function Orders() {
                 // Asignación directa y exclusiva al conductor seleccionado (Requerimiento 6)
                 updates.driver_id = driverObj.id;
                 updates.delivery_driver_id = driverObj.id;
-                updates.driver_name = driverObj.full_name || 'Conductor';
+                updates.driver_name = driverObj.full_name || chosenDriverName || 'Conductor';
                 updates.preferred_driver_id = driverObj.id;
-                updates.preferred_driver_name = driverObj.full_name;
+                updates.preferred_driver_name = driverObj.full_name || chosenDriverName;
                 updates.eligible_drivers = [driverObj.id];
                 updates.assigned_driver_id = driverObj.id;
                 updates.driver_payout = payout;
                 updates.dispatched_at = new Date().toISOString();
                 updates.preferred_driver_expires_at = new Date(Date.now() + 120000).toISOString();
 
-                // Enlazar transport_requests exclusivo para este repartidor
+                // Enlazar transport_requests exclusivo para este repartidor con manifiesto unificado (Fase 5)
                 try {
+                    const itemsSummary = selectedOrderForDispatch.items?.map((i: any) => `${i.quantity}x ${i.name}`).join(', ') || 'Productos del comercio';
                     await supabase.from('transport_requests').upsert({
                         order_id: selectedOrderForDispatch.id,
                         restaurant_id: rid,
@@ -653,15 +706,19 @@ export default function Orders() {
                         user_id: selectedOrderForDispatch.userId,
                         user_name: selectedOrderForDispatch.userName || 'Cliente',
                         user_phone: selectedOrderForDispatch.userPhone || '',
+                        user_cedula: selectedOrderForDispatch.clientDNI || '',
                         driver_id: driverObj.id,
                         assigned_driver_id: driverObj.id,
-                        driver_name: driverObj.full_name,
+                        driver_name: driverObj.full_name || chosenDriverName,
                         driver_phone: driverObj.phone,
                         driver_photo: driverObj.photo_url,
                         vehicle_type: driverObj.vehicle_type || selectedVehicleCategory || 'moto',
-                        status: 'searching',
+                        status: 'accepted',
                         price: payout,
                         driver_payout: payout,
+                        items_summary: itemsSummary,
+                        flete_pagado_por: 'negocio',
+                        notes: `🎁 Flete pagado por el comercio. Entregar a: ${selectedOrderForDispatch.userName || 'Cliente'} (Tlf: ${selectedOrderForDispatch.userPhone || 'N/A'}). Ítems: ${itemsSummary}`,
                         origin: {
                             address: restaurantConfig?.address || restaurantConfig?.name || 'Local',
                             lat: restaurantConfig?.location?.lat,
@@ -682,13 +739,12 @@ export default function Orders() {
                         sender_id: user?.uid,
                         sender_name: 'Restaurante',
                         sender_role: 'restaurant',
-                        text: `🛵 *¡Asignando repartidor preferido!* Se ha notificado a *${driverObj.full_name}* para la entrega de tu pedido.`,
+                        text: `🛵 *¡Pedido despachado!* El repartidor *${driverObj.full_name || chosenDriverName}* ya va en camino con tu comida.`,
                         created_at: new Date().toISOString()
                     });
                 } catch (mErr) {
                     console.warn("Message err:", mErr);
                 }
-                setRadarOrderId(selectedOrderForDispatch.id);
             } else {
                 updates.status = 'buscando_piloto';
                 setRadarOrderId(selectedOrderForDispatch.id);
@@ -917,8 +973,11 @@ export default function Orders() {
         if (!selectedOrderForVerify) return;
         setIsVerifying(true);
         try {
-            const nextStatus = 'preparing';
-            const readyAt = new Date(Date.now() + prepMinutes * 60 * 1000).toISOString();
+            const isReadyNow = prepMinutes === 0;
+            const nextStatus = isReadyNow ? 'ready' : 'preparing';
+            const readyAt = isReadyNow 
+                ? new Date().toISOString() 
+                : new Date(Date.now() + prepMinutes * 60 * 1000).toISOString();
 
             await supabase.from('orders').update({ 
                 status: nextStatus,
@@ -930,12 +989,16 @@ export default function Orders() {
 
             // Anunciar en el chat el tiempo de cocina asignado
             try {
+                const msgText = isReadyNow
+                    ? `👨‍🍳 *¡Pago verificado y pedido listo de inmediato!* Ya puedes solicitar tu repartidor o buscar tu pedido por pickup.`
+                    : `👨‍🍳 *¡Pago verificado y comanda iniciada!* Tiempo estimado de preparación: *${prepMinutes} minutos*. Te avisaremos cuando esté listo para que solicites tu repartidor.`;
+
                 await supabase.from('messages').insert({
                     order_id: selectedOrderForVerify.id,
                     sender_id: user?.uid,
                     sender_name: 'Restaurante',
                     sender_role: 'restaurant',
-                    text: `👨‍🍳 *¡Pago verificado y comanda iniciada!* Tiempo estimado de preparación: *${prepMinutes} minutos*. Sigue la cuenta regresiva en vivo en tu pantalla.`,
+                    text: msgText,
                     action: 'payment_confirmed',
                     created_at: new Date().toISOString()
                 });
@@ -1634,9 +1697,54 @@ export default function Orders() {
                                 )}
                             </button>
                         )}
+                        {/* Edge Case 6.1: Pre-payment 45-min inactivity timeout */}
+                        {(() => {
+                            const orderCreatedTime = order.createdAt?.toDate ? order.createdAt.toDate().getTime() : new Date(order.createdAt).getTime();
+                            const isInactive45Min = (Date.now() - orderCreatedTime > 45 * 60 * 1000) && !order.paymentProofUrl && ['pending', 'pendiente_pago', 'awaiting_payment'].includes(order.status);
+                            if (!isInactive45Min) return null;
+                            return (
+                                <button
+                                    onClick={async () => {
+                                        if (window.confirm("¿Deseas cancelar esta orden por inactividad tras más de 45 min sin pago? Esto liberará el stock.")) {
+                                            try {
+                                                await supabase.from('orders').update({
+                                                    status: 'cancelled',
+                                                    cancellation_reason: 'inactivity_timeout',
+                                                    updated_at: new Date().toISOString()
+                                                }).eq('id', order.id);
+
+                                                await supabase.from('messages').insert({
+                                                    order_id: order.id,
+                                                    sender_id: user?.uid,
+                                                    sender_name: 'Restaurante',
+                                                    sender_role: 'restaurant',
+                                                    text: "❌ *Orden cancelada por inactividad:* Tras más de 45 minutos sin confirmación de pago, la orden ha sido cancelada para liberar el inventario.",
+                                                    created_at: new Date().toISOString()
+                                                });
+
+                                                toast.success("Orden cancelada por inactividad. Stock liberado.");
+                                                fetchOrders();
+                                            } catch (e) {
+                                                console.error(e);
+                                                toast.error("Error al cancelar orden");
+                                            }
+                                        }
+                                    }}
+                                    className="px-3 py-2 bg-red-50 text-red-700 border border-red-200 rounded-xl text-xs font-black hover:bg-red-100 transition-all flex items-center gap-1 shrink-0"
+                                    title="Liberar Stock por Inactividad (45+ min)"
+                                >
+                                    <Clock className="w-3.5 h-3.5" /> Liberar Stock (Inactividad)
+                                </button>
+                            );
+                        })()}
+
                         {order.status !== 'awaiting_payment' && !order.restaurantPaid && (
                             <button
-                                onClick={() => updateStatus(order.id, 'rejected')}
+                                onClick={() => {
+                                    setSelectedOrderForReject(order);
+                                    setSmartRejectReason(null);
+                                    setSmartRejectModalOpen(true);
+                                }}
                                 className="px-6 bg-slate-100 text-slate-500 py-4 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all"
                             >
                                 Rechazar
@@ -1659,16 +1767,26 @@ export default function Orders() {
                             </div>
                         )}
                         <div className="flex w-full gap-2">
-                            <button
-                                onClick={() => {
-                                    setSelectedOrderForDispatch(order);
-                                    setDispatchModalOpen(true);
-                                    fetchActiveDrivers();
-                                }}
-                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                                <Bike className="w-5 h-5" /> Despachar Repartidor
-                            </button>
+                            {(() => {
+                                const cardChosenDriver = order.driver_name || order.driverName || order.preferred_driver_name || (drivers.find(d => d.id === order.preferred_driver_id || d.id === order.driver_id)?.full_name);
+                                return (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedOrderForDispatch(order);
+                                            setDispatchType('platform');
+                                            if (order.preferred_driver_id || order.driver_id) {
+                                                setSelectedDriver(order.preferred_driver_id || order.driver_id!);
+                                                setSelectedVehicleCategory('moto');
+                                            }
+                                            setDispatchModalOpen(true);
+                                            fetchActiveDrivers();
+                                        }}
+                                        className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Bike className="w-5 h-5" /> {cardChosenDriver ? `Despachar a ${cardChosenDriver}` : 'Despachar Repartidor'}
+                                    </button>
+                                );
+                            })()}
                             <button
                                 onClick={() => setChatOrderId(order.id)}
                                 className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
@@ -1690,10 +1808,10 @@ export default function Orders() {
                                 </div>
                                 <div className="min-w-0">
                                     <p className="text-xs font-black text-slate-900 truncate">
-                                        Pedido en tránsito {order.driverName || (order as any).driver_name || (order as any).assigned_driver_name ? `con ${order.driverName || (order as any).driver_name || (order as any).assigned_driver_name}` : 'con repartidor'}
+                                        Pedido en tránsito con {order.driver_name || order.driverName || order.preferred_driver_name || (order as any).assigned_driver_name || 'repartidor'}
                                     </p>
-                                    <p className="text-[10px] font-bold text-slate-500">
-                                        Entrega a cargo del conductor • Monitoreo activo
+                                    <p className="text-[10px] font-bold text-amber-700">
+                                        ⏳ Esperando calificación del cliente • Se cerrará automáticamente en 24h
                                     </p>
                                 </div>
                             </div>
@@ -2302,10 +2420,85 @@ export default function Orders() {
                                 </div>
                             )}
 
-                            {dispatchType === 'platform' && (
-                                <div className="space-y-3">
-                                    {/* STEP 1: Select Vehicle Type First */}
-                                    {!selectedVehicleCategory ? (
+                            {dispatchType === 'platform' && (() => {
+                                const clientChosenDriverId = selectedOrderForDispatch.preferred_driver_id || selectedOrderForDispatch.driver_id || (selectedOrderForDispatch as any).delivery_driver_id;
+                                const clientChosenDriverName = selectedOrderForDispatch.driver_name 
+                                    || (selectedOrderForDispatch as any).driverName 
+                                    || selectedOrderForDispatch.preferred_driver_name
+                                    || (drivers.find(d => d.id === clientChosenDriverId)?.full_name);
+                                const clientChosenDriverObj = drivers.find(d => d.id === clientChosenDriverId);
+                                const hasClientChosenDriver = Boolean(clientChosenDriverId || clientChosenDriverName);
+
+                                if (hasClientChosenDriver) {
+                                    return (
+                                        <div className="space-y-4 animate-in fade-in duration-200">
+                                            <div className="p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/50 border-2 border-emerald-500/40 rounded-3xl text-center space-y-3 shadow-sm">
+                                                <div className="relative w-16 h-16 mx-auto">
+                                                    {clientChosenDriverObj?.photo_url ? (
+                                                        <img 
+                                                            src={clientChosenDriverObj.photo_url} 
+                                                            alt={clientChosenDriverName || 'Repartidor'} 
+                                                            className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-16 h-16 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-3xl shadow-md">
+                                                            🛵
+                                                        </div>
+                                                    )}
+                                                    <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-black border-2 border-white shadow-xs">
+                                                        ✓
+                                                    </span>
+                                                </div>
+
+                                                <div>
+                                                    <span className="inline-block px-3 py-1 bg-emerald-200/80 text-emerald-900 text-[10px] font-black uppercase tracking-wider rounded-full mb-1.5">
+                                                        Repartidor Seleccionado por el Cliente
+                                                    </span>
+                                                    <h4 className="text-lg font-black text-slate-900">
+                                                        {clientChosenDriverName || clientChosenDriverObj?.full_name || 'Conductor Seleccionado'}
+                                                    </h4>
+                                                    <p className="text-xs text-slate-600 font-bold mt-0.5">
+                                                        {clientChosenDriverObj?.vehicle_type === 'confort' ? '✨ Carro Confort' : (clientChosenDriverObj?.vehicle_type === 'carro' ? '🚗 Carro Económico' : '🛵 Moto Taxi')}
+                                                        {clientChosenDriverObj?.vehicle_brand ? ` • ${clientChosenDriverObj.vehicle_brand} ${clientChosenDriverObj.vehicle_model || ''}` : ''}
+                                                        {clientChosenDriverObj?.vehicle_plate ? ` [${clientChosenDriverObj.vehicle_plate}]` : ''}
+                                                    </p>
+                                                </div>
+
+                                                <div className="bg-white/90 p-3.5 rounded-2xl border border-emerald-200 flex items-center justify-between shadow-xs">
+                                                    <span className="text-xs font-bold text-slate-600">Tarifa a cancelar al conductor:</span>
+                                                    <span className="text-base font-black text-emerald-700 font-mono">
+                                                        ${getDriverPayout(selectedOrderForDispatch, clientChosenDriverObj?.vehicle_type || 'moto').toFixed(2)} USD
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-2.5">
+                                                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                                                <p className="text-[11px] font-bold text-blue-800 leading-snug">
+                                                    El cliente escogió a este repartidor para su orden. Al presionar <strong>OK • Despachar Pedido</strong>, se notificará al conductor y el pedido quedará en estado de entrega en camino en espera de la calificación del cliente.
+                                                </p>
+                                            </div>
+
+                                            <button
+                                                onClick={handleConfirmDispatch}
+                                                disabled={isAccepting}
+                                                className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-emerald-500/25 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-base"
+                                            >
+                                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                                                    <>
+                                                        <CheckCircle className="w-5 h-5" />
+                                                        <span>OK • Despachar Pedido a {clientChosenDriverName || 'Repartidor'}</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div className="space-y-3">
+                                        {/* STEP 1: Select Vehicle Type First */}
+                                        {!selectedVehicleCategory ? (
                                         <div className="space-y-3">
                                             <div className="text-center">
                                                 <p className="text-xs font-black text-slate-700 uppercase tracking-widest">Paso 1: Selecciona el tipo de vehículo</p>
@@ -2488,37 +2681,51 @@ export default function Orders() {
                                         </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
+                            );
+                        })()}
+                    </div>
 
-                        <div className="pt-4 mt-2 border-t border-slate-100 shrink-0">
-                            {dispatchType === 'platform' && selectedVehicleCategory && (
-                                <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-2xl flex items-center gap-2">
-                                    <DollarSign className="w-4 h-4 text-orange-600 shrink-0" />
-                                    <p className="text-[11px] font-black text-orange-800">
-                                        Recuerda: <span className="font-black">tú pagas al driver</span> una vez entregue el pedido. Monto estimado según la tarifa calculada.
-                                    </p>
+                        {(() => {
+                            const clientChosenDriverId = selectedOrderForDispatch.preferred_driver_id || selectedOrderForDispatch.driver_id || (selectedOrderForDispatch as any).delivery_driver_id;
+                            const clientChosenDriverName = selectedOrderForDispatch.driver_name 
+                                || (selectedOrderForDispatch as any).driverName 
+                                || selectedOrderForDispatch.preferred_driver_name
+                                || (drivers.find(d => d.id === clientChosenDriverId)?.full_name);
+                            const hasClientChosenDriver = Boolean(clientChosenDriverId || clientChosenDriverName);
+
+                            if (hasClientChosenDriver && dispatchType === 'platform') return null;
+
+                            return (
+                                <div className="pt-4 mt-2 border-t border-slate-100 shrink-0">
+                                    {dispatchType === 'platform' && selectedVehicleCategory && (
+                                        <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-2xl flex items-center gap-2">
+                                            <DollarSign className="w-4 h-4 text-orange-600 shrink-0" />
+                                            <p className="text-[11px] font-black text-orange-800">
+                                                Recuerda: <span className="font-black">tú pagas al driver</span> una vez entregue el pedido. Monto estimado según la tarifa calculada.
+                                            </p>
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={handleConfirmDispatch}
+                                        disabled={isAccepting || (dispatchType === 'platform' && !selectedVehicleCategory)}
+                                        className={`w-full py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                                            dispatchType === 'own' 
+                                                ? 'bg-slate-900 text-white shadow-slate-900/20'
+                                                : selectedDriver 
+                                                    ? 'bg-primary text-slate-900 shadow-primary/20' 
+                                                    : 'bg-blue-600 text-white shadow-blue-500/20'
+                                        }`}
+                                    >
+                                        {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                                            <>
+                                                <Truck className="w-5 h-5" /> 
+                                                {dispatchType === 'own' ? 'Confirmar Retiro / Entrega Propia' : selectedDriver ? 'Asignar Conductor y Despachar' : selectedVehicleCategory ? 'Abrir Radar y Despachar Pedido' : 'Selecciona el tipo de vehículo'}
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
-                            )}
-                            <button
-                                onClick={handleConfirmDispatch}
-                                disabled={isAccepting || (dispatchType === 'platform' && !selectedVehicleCategory)}
-                                className={`w-full py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
-                                    dispatchType === 'own' 
-                                        ? 'bg-slate-900 text-white shadow-slate-900/20'
-                                        : selectedDriver 
-                                            ? 'bg-primary text-slate-900 shadow-primary/20' 
-                                            : 'bg-blue-600 text-white shadow-blue-500/20'
-                                }`}
-                            >
-                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                                    <>
-                                        <Truck className="w-5 h-5" /> 
-                                        {dispatchType === 'own' ? 'Confirmar Retiro / Entrega Propia' : selectedDriver ? 'Asignar Conductor y Despachar' : selectedVehicleCategory ? 'Abrir Radar y Despachar Pedido' : 'Selecciona el tipo de vehículo'}
-                                    </>
-                                )}
-                            </button>
-                        </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
@@ -2659,18 +2866,23 @@ export default function Orders() {
                                             </p>
 
                                             <div className="grid grid-cols-4 gap-2">
-                                                {[15, 20, 30, 45].map((mins) => (
+                                                {[
+                                                    { mins: 0, label: 'Listo ya' },
+                                                    { mins: 15, label: '15 min' },
+                                                    { mins: 20, label: '20 min' },
+                                                    { mins: 30, label: '30 min' }
+                                                ].map((item) => (
                                                     <button
-                                                        key={mins}
+                                                        key={item.mins}
                                                         type="button"
-                                                        onClick={() => setPrepMinutes(mins)}
-                                                        className={`py-2 rounded-xl font-black text-xs transition-all border ${
-                                                            prepMinutes === mins 
+                                                        onClick={() => setPrepMinutes(item.mins)}
+                                                        className={`py-2 px-1 rounded-xl font-black text-xs transition-all border text-center ${
+                                                            prepMinutes === item.mins 
                                                                 ? 'bg-amber-500 text-slate-900 border-amber-600 shadow-md font-black scale-105' 
                                                                 : 'bg-white text-slate-700 border-amber-200 hover:bg-amber-50'
                                                         }`}
                                                     >
-                                                        {mins} min
+                                                        {item.label}
                                                     </button>
                                                 ))}
                                             </div>
@@ -3551,6 +3763,175 @@ export default function Orders() {
                     </motion.div>
                 )}
             </AnimatePresence>
+
+            {/* Smart Rejection Modal (Fase 2.3) */}
+            {smartRejectModalOpen && selectedOrderForReject && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                                    <AlertTriangle className="w-5 h-5 text-amber-500" /> Rechazar Pedido
+                                </h3>
+                                <p className="text-xs text-slate-500 font-bold">
+                                    Orden #{selectedOrderForReject.id.slice(0, 8)}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setSmartRejectModalOpen(false);
+                                    setSelectedOrderForReject(null);
+                                    setSmartRejectReason(null);
+                                }}
+                                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {!smartRejectReason ? (
+                            <div className="space-y-3">
+                                <p className="text-xs font-bold text-slate-700">
+                                    ¿Por qué no puedes atender este pedido?
+                                </p>
+
+                                <button
+                                    onClick={() => setSmartRejectReason('closed')}
+                                    className="w-full p-4 rounded-2xl border-2 border-slate-200 hover:border-red-400 hover:bg-red-50/50 transition-all text-left flex items-start gap-3 group"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                        <Store className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black text-slate-900 group-hover:text-red-700">1. Negocio no abierto</p>
+                                        <p className="text-[11px] text-slate-500 font-medium">El local se encuentra cerrado o fuera de horario de cocina.</p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => setSmartRejectReason('no_stock')}
+                                    className="w-full p-4 rounded-2xl border-2 border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all text-left flex items-start gap-3 group"
+                                >
+                                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                                        <Package className="w-5 h-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black text-slate-900 group-hover:text-amber-800">2. Falta de Stock</p>
+                                        <p className="text-[11px] text-slate-500 font-medium">No cuentas con los insumos o productos solicitados.</p>
+                                    </div>
+                                </button>
+                            </div>
+                        ) : smartRejectReason === 'closed' ? (
+                            <div className="space-y-4">
+                                <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-800 leading-relaxed font-semibold">
+                                    Se cancelará el pedido y se notificará al cliente que el negocio se encuentra cerrado en este momento.
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setSmartRejectReason(null)}
+                                        className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-black text-xs hover:bg-slate-200"
+                                    >
+                                        Volver
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await updateStatus(selectedOrderForReject.id, 'rejected');
+                                                await supabase.from('messages').insert({
+                                                    order_id: selectedOrderForReject.id,
+                                                    sender_id: user?.uid,
+                                                    sender_name: 'Restaurante',
+                                                    sender_role: 'restaurant',
+                                                    text: "❌ *Pedido no aceptado:* El establecimiento se encuentra cerrado en este momento. Disculpa los inconvenientes.",
+                                                    created_at: new Date().toISOString()
+                                                });
+                                                toast.success("Pedido cancelado: Negocio no abierto");
+                                                setSmartRejectModalOpen(false);
+                                                setSelectedOrderForReject(null);
+                                                setSmartRejectReason(null);
+                                                fetchOrders();
+                                            } catch (e) {
+                                                console.error(e);
+                                                toast.error("Error al rechazar pedido");
+                                            }
+                                        }}
+                                        className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md active:scale-95"
+                                    >
+                                        Confirmar Cancelación
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-1.5">
+                                    <p className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                                        <Sparkles className="w-4 h-4 text-amber-600" /> Invita a tu cliente a adquirir otro producto
+                                    </p>
+                                    <p className="text-[11px] font-bold text-amber-800 leading-relaxed">
+                                        No cancelaremos la orden inmediatamente. Puedes ofrecerle sustitutos o alternativas directamente por el chat para no perder la venta.
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-col gap-2">
+                                    <button
+                                        onClick={async () => {
+                                            const ordId = selectedOrderForReject.id;
+                                            setSmartRejectModalOpen(false);
+                                            setSelectedOrderForReject(null);
+                                            setSmartRejectReason(null);
+                                            try {
+                                                await supabase.from('messages').insert({
+                                                    order_id: ordId,
+                                                    sender_id: user?.uid,
+                                                    sender_name: 'Restaurante',
+                                                    sender_role: 'restaurant',
+                                                    text: "⚠️ *Aviso de disponibilidad:* Algunos productos de tu orden no cuentan con stock disponible en este momento. ¿Te gustaría cambiarlos por otro producto o alternativa de nuestro menú?",
+                                                    created_at: new Date().toISOString()
+                                                });
+                                            } catch (err) {
+                                                console.warn("Message err:", err);
+                                            }
+                                            setChatOrderId(ordId);
+                                        }}
+                                        className="w-full py-3.5 rounded-2xl bg-primary hover:bg-primary/90 text-slate-900 font-black text-xs shadow-md active:scale-95 flex items-center justify-center gap-2"
+                                    >
+                                        <MessageCircle className="w-4 h-4" /> Abrir Chat para ofrecer alternativas
+                                    </button>
+
+                                    <button
+                                        onClick={async () => {
+                                            if (window.confirm("¿Seguro que deseas cancelar la orden definitivamente por falta de stock?")) {
+                                                try {
+                                                    await updateStatus(selectedOrderForReject.id, 'rejected');
+                                                    await supabase.from('messages').insert({
+                                                        order_id: selectedOrderForReject.id,
+                                                        sender_id: user?.uid,
+                                                        sender_name: 'Restaurante',
+                                                        sender_role: 'restaurant',
+                                                        text: "❌ *Pedido cancelado:* No contamos con disponibilidad de inventario para este pedido.",
+                                                        created_at: new Date().toISOString()
+                                                    });
+                                                    toast.success("Pedido cancelado por falta de stock");
+                                                    setSmartRejectModalOpen(false);
+                                                    setSelectedOrderForReject(null);
+                                                    setSmartRejectReason(null);
+                                                    fetchOrders();
+                                                } catch (e) {
+                                                    console.error(e);
+                                                    toast.error("Error al rechazar pedido");
+                                                }
+                                            }
+                                        }}
+                                        className="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 font-bold text-xs transition-colors"
+                                    >
+                                        Cancelar orden definitivamente
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div >
     );
 }

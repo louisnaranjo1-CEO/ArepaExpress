@@ -27,6 +27,7 @@ export default function OrdersRadar() {
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [availableOrders, setAvailableOrders] = useState<any[]>([]);
     const [availableTransport, setAvailableTransport] = useState<any[]>([]);
+    const [activeOrder, setActiveOrder] = useState<any>(null);
     const [activeTransport, setActiveTransport] = useState<any>(null);
     const isFoodDeliveryTransport = Boolean(
         activeTransport && (

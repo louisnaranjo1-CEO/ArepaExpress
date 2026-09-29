@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft, Info } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
@@ -46,7 +46,14 @@ interface Order {
     clientDNI?: string;
     stockConfirmed?: boolean;
     preferred_driver_id?: string | null;
+    preferred_driver_name?: string | null;
     preferred_driver_expires_at?: string | null;
+    driver_id?: string | null;
+    driver_name?: string | null;
+    driverName?: string | null;
+    delivery_driver_id?: string | null;
+    dispatched_at?: string | null;
+    updated_at?: string | null;
 }
 
 export default function Orders() {
@@ -300,8 +307,35 @@ export default function Orders() {
                 orderNote: o.order_note || o.notes || '',
                 clientDNI: o.client_dni || o.user_cedula || '',
                 preferred_driver_id: o.preferred_driver_id,
-                preferred_driver_expires_at: o.preferred_driver_expires_at
+                preferred_driver_name: o.preferred_driver_name,
+                preferred_driver_expires_at: o.preferred_driver_expires_at,
+                driver_id: o.driver_id || o.delivery_driver_id,
+                driver_name: o.driver_name,
+                driverName: o.driver_name,
+                delivery_driver_id: o.delivery_driver_id,
+                dispatched_at: o.dispatched_at,
+                updated_at: o.updated_at
             }));
+
+            // 24h Auto-Close Check for delivering/delivered orders awaiting customer rating
+            const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+            const now = Date.now();
+            const expiredOrders = (data || []).filter((o: any) => {
+                if (!['delivering', 'delivered'].includes(o.status)) return false;
+                const refTime = new Date(o.dispatched_at || o.delivered_at || o.updated_at || o.created_at).getTime();
+                return (now - refTime) >= ONE_DAY_MS;
+            });
+
+            if (expiredOrders.length > 0) {
+                for (const exp of expiredOrders) {
+                    supabase.from('orders').update({
+                        status: 'completed',
+                        payment_status: exp.payment_status || 'paid',
+                        auto_closed_24h: true,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', exp.id).then(() => {});
+                }
+            }
 
             // Sound on new pending order or incoming payment proof to verify
             const hasNewActionable = items.some(o => {
@@ -627,12 +661,25 @@ export default function Orders() {
                 return;
             }
 
-            // Caso 2: Driver de la Plataforma
-            const driverObj = drivers.find(d => d.id === selectedDriver);
+            // Caso 2: Driver de la Plataforma (o seleccionado por el cliente)
+            const targetDriverId = selectedDriver || selectedOrderForDispatch.preferred_driver_id || selectedOrderForDispatch.driver_id;
+            const chosenDriverName = selectedOrderForDispatch.driver_name 
+                || (selectedOrderForDispatch as any).driverName 
+                || selectedOrderForDispatch.preferred_driver_name;
+
+            const driverObj = drivers.find(d => d.id === targetDriverId) || (targetDriverId ? {
+                id: targetDriverId,
+                full_name: chosenDriverName || 'Conductor',
+                phone: '',
+                photo_url: '',
+                vehicle_type: selectedVehicleCategory || 'moto'
+            } : null);
+
             const payout = driverObj ? getDriverPayout(selectedOrderForDispatch, driverObj.vehicle_type) : 1.50;
 
             const updates: any = {
-                status: 'buscando_piloto',
+                status: 'delivering',
+                dispatched_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             };
 
@@ -640,9 +687,9 @@ export default function Orders() {
                 // Asignación directa y exclusiva al conductor seleccionado (Requerimiento 6)
                 updates.driver_id = driverObj.id;
                 updates.delivery_driver_id = driverObj.id;
-                updates.driver_name = driverObj.full_name || 'Conductor';
+                updates.driver_name = driverObj.full_name || chosenDriverName || 'Conductor';
                 updates.preferred_driver_id = driverObj.id;
-                updates.preferred_driver_name = driverObj.full_name;
+                updates.preferred_driver_name = driverObj.full_name || chosenDriverName;
                 updates.eligible_drivers = [driverObj.id];
                 updates.assigned_driver_id = driverObj.id;
                 updates.driver_payout = payout;
@@ -662,16 +709,16 @@ export default function Orders() {
                         user_cedula: selectedOrderForDispatch.clientDNI || '',
                         driver_id: driverObj.id,
                         assigned_driver_id: driverObj.id,
-                        driver_name: driverObj.full_name,
+                        driver_name: driverObj.full_name || chosenDriverName,
                         driver_phone: driverObj.phone,
                         driver_photo: driverObj.photo_url,
                         vehicle_type: driverObj.vehicle_type || selectedVehicleCategory || 'moto',
-                        status: 'searching',
+                        status: 'accepted',
                         price: payout,
                         driver_payout: payout,
                         items_summary: itemsSummary,
                         flete_pagado_por: 'negocio',
-                        notes: `🎁 Flete pagado por el comercio (Envío Gratis). Entregar a: ${selectedOrderForDispatch.userName || 'Cliente'} (Tlf: ${selectedOrderForDispatch.userPhone || 'N/A'}). Ítems: ${itemsSummary}`,
+                        notes: `🎁 Flete pagado por el comercio. Entregar a: ${selectedOrderForDispatch.userName || 'Cliente'} (Tlf: ${selectedOrderForDispatch.userPhone || 'N/A'}). Ítems: ${itemsSummary}`,
                         origin: {
                             address: restaurantConfig?.address || restaurantConfig?.name || 'Local',
                             lat: restaurantConfig?.location?.lat,
@@ -692,13 +739,12 @@ export default function Orders() {
                         sender_id: user?.uid,
                         sender_name: 'Restaurante',
                         sender_role: 'restaurant',
-                        text: `🛵 *¡Asignando repartidor preferido!* Se ha notificado a *${driverObj.full_name}* para la entrega de tu pedido.`,
+                        text: `🛵 *¡Pedido despachado!* El repartidor *${driverObj.full_name || chosenDriverName}* ya va en camino con tu comida.`,
                         created_at: new Date().toISOString()
                     });
                 } catch (mErr) {
                     console.warn("Message err:", mErr);
                 }
-                setRadarOrderId(selectedOrderForDispatch.id);
             } else {
                 updates.status = 'buscando_piloto';
                 setRadarOrderId(selectedOrderForDispatch.id);
@@ -1721,16 +1767,26 @@ export default function Orders() {
                             </div>
                         )}
                         <div className="flex w-full gap-2">
-                            <button
-                                onClick={() => {
-                                    setSelectedOrderForDispatch(order);
-                                    setDispatchModalOpen(true);
-                                    fetchActiveDrivers();
-                                }}
-                                className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                                <Bike className="w-5 h-5" /> Despachar Repartidor
-                            </button>
+                            {(() => {
+                                const cardChosenDriver = order.driver_name || order.driverName || order.preferred_driver_name || (drivers.find(d => d.id === order.preferred_driver_id || d.id === order.driver_id)?.full_name);
+                                return (
+                                    <button
+                                        onClick={() => {
+                                            setSelectedOrderForDispatch(order);
+                                            setDispatchType('platform');
+                                            if (order.preferred_driver_id || order.driver_id) {
+                                                setSelectedDriver(order.preferred_driver_id || order.driver_id!);
+                                                setSelectedVehicleCategory('moto');
+                                            }
+                                            setDispatchModalOpen(true);
+                                            fetchActiveDrivers();
+                                        }}
+                                        className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <Bike className="w-5 h-5" /> {cardChosenDriver ? `Despachar a ${cardChosenDriver}` : 'Despachar Repartidor'}
+                                    </button>
+                                );
+                            })()}
                             <button
                                 onClick={() => setChatOrderId(order.id)}
                                 className="px-4 bg-slate-100 text-slate-700 py-4 rounded-2xl font-black hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-sm"
@@ -1752,10 +1808,10 @@ export default function Orders() {
                                 </div>
                                 <div className="min-w-0">
                                     <p className="text-xs font-black text-slate-900 truncate">
-                                        Pedido en tránsito {order.driverName || (order as any).driver_name || (order as any).assigned_driver_name ? `con ${order.driverName || (order as any).driver_name || (order as any).assigned_driver_name}` : 'con repartidor'}
+                                        Pedido en tránsito con {order.driver_name || order.driverName || order.preferred_driver_name || (order as any).assigned_driver_name || 'repartidor'}
                                     </p>
-                                    <p className="text-[10px] font-bold text-slate-500">
-                                        Entrega a cargo del conductor • Monitoreo activo
+                                    <p className="text-[10px] font-bold text-amber-700">
+                                        ⏳ Esperando calificación del cliente • Se cerrará automáticamente en 24h
                                     </p>
                                 </div>
                             </div>
@@ -2364,10 +2420,85 @@ export default function Orders() {
                                 </div>
                             )}
 
-                            {dispatchType === 'platform' && (
-                                <div className="space-y-3">
-                                    {/* STEP 1: Select Vehicle Type First */}
-                                    {!selectedVehicleCategory ? (
+                            {dispatchType === 'platform' && (() => {
+                                const clientChosenDriverId = selectedOrderForDispatch.preferred_driver_id || selectedOrderForDispatch.driver_id || (selectedOrderForDispatch as any).delivery_driver_id;
+                                const clientChosenDriverName = selectedOrderForDispatch.driver_name 
+                                    || (selectedOrderForDispatch as any).driverName 
+                                    || selectedOrderForDispatch.preferred_driver_name
+                                    || (drivers.find(d => d.id === clientChosenDriverId)?.full_name);
+                                const clientChosenDriverObj = drivers.find(d => d.id === clientChosenDriverId);
+                                const hasClientChosenDriver = Boolean(clientChosenDriverId || clientChosenDriverName);
+
+                                if (hasClientChosenDriver) {
+                                    return (
+                                        <div className="space-y-4 animate-in fade-in duration-200">
+                                            <div className="p-5 bg-gradient-to-br from-emerald-50 via-teal-50 to-emerald-100/50 border-2 border-emerald-500/40 rounded-3xl text-center space-y-3 shadow-sm">
+                                                <div className="relative w-16 h-16 mx-auto">
+                                                    {clientChosenDriverObj?.photo_url ? (
+                                                        <img 
+                                                            src={clientChosenDriverObj.photo_url} 
+                                                            alt={clientChosenDriverName || 'Repartidor'} 
+                                                            className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
+                                                        />
+                                                    ) : (
+                                                        <div className="w-16 h-16 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-3xl shadow-md">
+                                                            🛵
+                                                        </div>
+                                                    )}
+                                                    <span className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[10px] font-black border-2 border-white shadow-xs">
+                                                        ✓
+                                                    </span>
+                                                </div>
+
+                                                <div>
+                                                    <span className="inline-block px-3 py-1 bg-emerald-200/80 text-emerald-900 text-[10px] font-black uppercase tracking-wider rounded-full mb-1.5">
+                                                        Repartidor Seleccionado por el Cliente
+                                                    </span>
+                                                    <h4 className="text-lg font-black text-slate-900">
+                                                        {clientChosenDriverName || clientChosenDriverObj?.full_name || 'Conductor Seleccionado'}
+                                                    </h4>
+                                                    <p className="text-xs text-slate-600 font-bold mt-0.5">
+                                                        {clientChosenDriverObj?.vehicle_type === 'confort' ? '✨ Carro Confort' : (clientChosenDriverObj?.vehicle_type === 'carro' ? '🚗 Carro Económico' : '🛵 Moto Taxi')}
+                                                        {clientChosenDriverObj?.vehicle_brand ? ` • ${clientChosenDriverObj.vehicle_brand} ${clientChosenDriverObj.vehicle_model || ''}` : ''}
+                                                        {clientChosenDriverObj?.vehicle_plate ? ` [${clientChosenDriverObj.vehicle_plate}]` : ''}
+                                                    </p>
+                                                </div>
+
+                                                <div className="bg-white/90 p-3.5 rounded-2xl border border-emerald-200 flex items-center justify-between shadow-xs">
+                                                    <span className="text-xs font-bold text-slate-600">Tarifa a cancelar al conductor:</span>
+                                                    <span className="text-base font-black text-emerald-700 font-mono">
+                                                        ${getDriverPayout(selectedOrderForDispatch, clientChosenDriverObj?.vehicle_type || 'moto').toFixed(2)} USD
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-2.5">
+                                                <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                                                <p className="text-[11px] font-bold text-blue-800 leading-snug">
+                                                    El cliente escogió a este repartidor para su orden. Al presionar <strong>OK • Despachar Pedido</strong>, se notificará al conductor y el pedido quedará en estado de entrega en camino en espera de la calificación del cliente.
+                                                </p>
+                                            </div>
+
+                                            <button
+                                                onClick={handleConfirmDispatch}
+                                                disabled={isAccepting}
+                                                className="w-full bg-emerald-500 hover:bg-emerald-600 text-slate-950 py-4 rounded-2xl font-black shadow-lg shadow-emerald-500/25 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-base"
+                                            >
+                                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                                                    <>
+                                                        <CheckCircle className="w-5 h-5" />
+                                                        <span>OK • Despachar Pedido a {clientChosenDriverName || 'Repartidor'}</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div className="space-y-3">
+                                        {/* STEP 1: Select Vehicle Type First */}
+                                        {!selectedVehicleCategory ? (
                                         <div className="space-y-3">
                                             <div className="text-center">
                                                 <p className="text-xs font-black text-slate-700 uppercase tracking-widest">Paso 1: Selecciona el tipo de vehículo</p>
@@ -2550,37 +2681,51 @@ export default function Orders() {
                                         </div>
                                     )}
                                 </div>
-                            )}
-                        </div>
+                            );
+                        })()}
+                    </div>
 
-                        <div className="pt-4 mt-2 border-t border-slate-100 shrink-0">
-                            {dispatchType === 'platform' && selectedVehicleCategory && (
-                                <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-2xl flex items-center gap-2">
-                                    <DollarSign className="w-4 h-4 text-orange-600 shrink-0" />
-                                    <p className="text-[11px] font-black text-orange-800">
-                                        Recuerda: <span className="font-black">tú pagas al driver</span> una vez entregue el pedido. Monto estimado según la tarifa calculada.
-                                    </p>
+                        {(() => {
+                            const clientChosenDriverId = selectedOrderForDispatch.preferred_driver_id || selectedOrderForDispatch.driver_id || (selectedOrderForDispatch as any).delivery_driver_id;
+                            const clientChosenDriverName = selectedOrderForDispatch.driver_name 
+                                || (selectedOrderForDispatch as any).driverName 
+                                || selectedOrderForDispatch.preferred_driver_name
+                                || (drivers.find(d => d.id === clientChosenDriverId)?.full_name);
+                            const hasClientChosenDriver = Boolean(clientChosenDriverId || clientChosenDriverName);
+
+                            if (hasClientChosenDriver && dispatchType === 'platform') return null;
+
+                            return (
+                                <div className="pt-4 mt-2 border-t border-slate-100 shrink-0">
+                                    {dispatchType === 'platform' && selectedVehicleCategory && (
+                                        <div className="mb-3 p-3 bg-orange-50 border border-orange-200 rounded-2xl flex items-center gap-2">
+                                            <DollarSign className="w-4 h-4 text-orange-600 shrink-0" />
+                                            <p className="text-[11px] font-black text-orange-800">
+                                                Recuerda: <span className="font-black">tú pagas al driver</span> una vez entregue el pedido. Monto estimado según la tarifa calculada.
+                                            </p>
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={handleConfirmDispatch}
+                                        disabled={isAccepting || (dispatchType === 'platform' && !selectedVehicleCategory)}
+                                        className={`w-full py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
+                                            dispatchType === 'own' 
+                                                ? 'bg-slate-900 text-white shadow-slate-900/20'
+                                                : selectedDriver 
+                                                    ? 'bg-primary text-slate-900 shadow-primary/20' 
+                                                    : 'bg-blue-600 text-white shadow-blue-500/20'
+                                        }`}
+                                    >
+                                        {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
+                                            <>
+                                                <Truck className="w-5 h-5" /> 
+                                                {dispatchType === 'own' ? 'Confirmar Retiro / Entrega Propia' : selectedDriver ? 'Asignar Conductor y Despachar' : selectedVehicleCategory ? 'Abrir Radar y Despachar Pedido' : 'Selecciona el tipo de vehículo'}
+                                            </>
+                                        )}
+                                    </button>
                                 </div>
-                            )}
-                            <button
-                                onClick={handleConfirmDispatch}
-                                disabled={isAccepting || (dispatchType === 'platform' && !selectedVehicleCategory)}
-                                className={`w-full py-4 rounded-2xl font-black shadow-lg hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 ${
-                                    dispatchType === 'own' 
-                                        ? 'bg-slate-900 text-white shadow-slate-900/20'
-                                        : selectedDriver 
-                                            ? 'bg-primary text-slate-900 shadow-primary/20' 
-                                            : 'bg-blue-600 text-white shadow-blue-500/20'
-                                }`}
-                            >
-                                {isAccepting ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-                                    <>
-                                        <Truck className="w-5 h-5" /> 
-                                        {dispatchType === 'own' ? 'Confirmar Retiro / Entrega Propia' : selectedDriver ? 'Asignar Conductor y Despachar' : selectedVehicleCategory ? 'Abrir Radar y Despachar Pedido' : 'Selecciona el tipo de vehículo'}
-                                    </>
-                                )}
-                            </button>
-                        </div>
+                            );
+                        })()}
                     </div>
                 </div>
             )}
