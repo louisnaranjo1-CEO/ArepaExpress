@@ -178,9 +178,9 @@ export default function ActiveTasksWidget() {
                 let ordersQuery = supabase
                     .from('orders')
                     .select('*')
-                    .in('status', ['pending', 'pendiente_pago', 'pending_verification', 'action_required', 'awaiting_payment', 'awaiting_delivery_payment', 'verificando_pago_delivery', 'confirmed', 'preparing', 'buscando_piloto', 'delivering', 'en_camino', 'ready', 'on_way', 'in_transit', 'arrived'])
+                    .not('status', 'in', '("completed","cancelled","rejected","delivered")')
                     .order('created_at', { ascending: false })
-                    .limit(3);
+                    .limit(5);
 
                 if (authUUID && validLocalOrderUUID && authUUID !== validLocalOrderUUID) {
                     ordersQuery = ordersQuery.or(`user_id.eq.${authUUID},id.eq.${validLocalOrderUUID}`);
@@ -378,6 +378,10 @@ export default function ActiveTasksWidget() {
                     subtitle = 'El comercio está verificando tu pago...';
                     badgeStatus = 'Verificando';
                     badgeColor = 'bg-amber-300 text-slate-950 font-black';
+                } else if (['awaiting_delivery_driver', 'finding_driver'].includes(o.status)) {
+                    subtitle = '🛵 Pedido listo • Selecciona o solicita tu repartidor';
+                    badgeStatus = 'Asignar Piloto';
+                    badgeColor = 'bg-primary text-slate-950 font-black animate-pulse';
                 } else if (['awaiting_delivery_payment'].includes(o.status)) {
                     subtitle = 'Comida lista • Paga el flete para activar el radar de pilotos';
                     badgeStatus = 'Pagar Envío';
@@ -395,6 +399,10 @@ export default function ActiveTasksWidget() {
                     subtitle = '📡 Conectando con pilotos de delivery cercanos...';
                     badgeStatus = 'Buscando Piloto';
                     badgeColor = 'bg-amber-300 text-slate-950 font-black animate-pulse';
+                } else if (['ready_for_pickup'].includes(o.status) || (o.delivery_method === 'pickup' && o.status === 'ready')) {
+                    subtitle = '🏪 Tu pedido está listo para ser retirado en tienda (PickUp)';
+                    badgeStatus = 'Listo en Tienda';
+                    badgeColor = 'bg-emerald-400 text-slate-950 font-black';
                 } else if (['en_camino', 'delivering', 'on_way', 'in_transit'].includes(o.status)) {
                     subtitle = o.driver_name 
                         ? `🛵 Tu pedido va en camino con ${o.driver_name}. Toca aquí para seguirlo.`
@@ -402,7 +410,7 @@ export default function ActiveTasksWidget() {
                     badgeStatus = 'En Camino';
                     badgeColor = 'bg-primary text-slate-950 font-black animate-pulse';
                 } else if (['ready'].includes(o.status)) {
-                    subtitle = '¡Listo en el comercio! Esperando retiro del piloto';
+                    subtitle = '¡Listo en el comercio! Esperando retiro o asignación';
                     badgeStatus = 'Listo';
                     badgeColor = 'bg-emerald-300 text-slate-950 font-black';
                 } else if (['arrived'].includes(o.status)) {
@@ -411,11 +419,14 @@ export default function ActiveTasksWidget() {
                     badgeColor = 'bg-emerald-300 text-slate-950 font-black animate-pulse';
                 }
 
+                const shortId = o.id ? `#${o.id.slice(0, 6).toUpperCase()}` : '';
+                const storeTitle = o.restaurant_name || o.restaurantName || 'Pedido en Tienda';
+
                 activeList.push({
                     id: o.id,
                     type: 'order',
                     status: o.status,
-                    title: o.restaurant_name || o.restaurantName || 'Pedido en Tienda',
+                    title: `${storeTitle} · ${shortId}`,
                     subtitle,
                     badgeStatus,
                     badgeColor,

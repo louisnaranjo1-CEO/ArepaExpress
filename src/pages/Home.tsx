@@ -943,7 +943,10 @@ export default function Home() {
         )}
       </AnimatePresence>
 
-      {/* 2. Promotional Banners (FIRST directly below Header) */}
+      {/* 2. Persistent Active Tasks Widget (Prominent at top so user never loses track of active food or ride service - hidden if empty) */}
+      <ActiveTasksWidget />
+
+      {/* 3. Promotional Banners */}
       {banners.length > 0 && (
         <section className="mt-4 px-5">
           <div className="relative w-full aspect-[2/1] rounded-2xl overflow-hidden shadow-lg border border-slate-100 bg-slate-50">
@@ -996,9 +999,6 @@ export default function Home() {
           </div>
         </section>
       )}
-
-      {/* 3. Persistent Active Tasks Widget (Active rides, deliveries, and orders - hidden if empty) */}
-      <ActiveTasksWidget />
 
       {/* 4. Available Stores by User Zone/City (Matching Image 1) */}
       <AvailableStoresRow restaurants={restaurants} cityName={manualCity || locationName} />

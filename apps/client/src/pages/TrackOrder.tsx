@@ -5,7 +5,7 @@ import { DeliveryDriver } from '../lib/delivery-service';
 import {
     Navigation, Clock, CheckCircle2, Bike, Motorbike, MapPin, Phone, ArrowLeft,
     Store, Star, Wallet, X, Loader2, Upload, AlertCircle, Copy,
-    ChevronRight, Package, CreditCard, CheckCircle,
+    ChevronRight, Package, CreditCard, CheckCircle, Check, Radio,
     Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -172,6 +172,7 @@ export default function TrackOrder() {
     const [selectedVehicle, setSelectedVehicle] = useState<'moto' | 'carro' | 'ejecutivo'>('moto');
     const [isSubmittingDelivery, setIsSubmittingDelivery] = useState(false);
     const [availableDrivers, setAvailableDrivers] = useState<any[]>([]);
+    const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
     // ── Kitchen Preparation Clock State (Pilar 2) ───────────────────────────
     const [countdownSeconds, setCountdownSeconds] = useState<number>(0);
@@ -664,38 +665,95 @@ export default function TrackOrder() {
         }
     };
 
-    // Cambiar a Retiro en Local
+    // Cambiar a Retiro en Local (PickUp)
     const handleSwitchToPickup = async () => {
         if (!orderId || !order) return;
-        if (window.confirm('¿Deseas cambiar tu entrega a Retiro en Local? El costo de delivery será $0.')) {
-            try {
-                await supabase.from('orders').update({
-                    deliveryMethod: 'pickup',
-                    delivery_method: 'pickup',
-                    deliveryFee: 0,
-                    delivery_fee: 0,
-                    total: order.subtotal,
-                    status: 'preparing',
-                    updated_at: new Date().toISOString()
-                }).eq('id', orderId);
-
-                await supabase.from('messages').insert({
-                    order_id: orderId,
-                    text: '🏪 He cambiado mi pedido a RETIRO EN LOCAL (PickUp). Preparar para retirar.',
-                    sender_id: user?.uid || 'guest',
-                    sender_name: order.userName || 'Cliente',
-                    sender_role: 'client',
-                    created_at: new Date().toISOString()
-                });
-
-                toast.success('Cambiado a Retiro en Local');
-            } catch (error) {
-                toast.error('Error al actualizar método');
+        try {
+            // Cancel active transport request if any
+            if (transportRequest?.id || order.transport_request_id) {
+                const trId = transportRequest?.id || order.transport_request_id;
+                await supabase.from('transport_requests').update({
+                    status: 'cancelled',
+                    canceled_at: new Date().toISOString(),
+                    canceled_by: 'client',
+                    cancel_reason: 'Cliente cambió a retiro en local (PickUp)'
+                }).eq('id', trId);
+                setTransportRequest(null);
             }
+
+            const pickupTotal = Number(order.subtotal || order.total || 0);
+            const nextStatus = (order.status === 'buscando_piloto' || order.status === 'awaiting_delivery_driver' || order.status === 'awaiting_delivery_payment')
+                ? 'ready'
+                : (order.status || 'ready');
+
+            const { error: ordErr } = await supabase.from('orders').update({
+                delivery_method: 'pickup',
+                delivery_fee: 0,
+                total: pickupTotal,
+                status: nextStatus,
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            if (ordErr) throw ordErr;
+
+            // Actualizar estado local inmediatamente
+            setOrder((prev: any) => prev ? ({
+                ...prev,
+                delivery_method: 'pickup',
+                deliveryMethod: 'pickup',
+                delivery_fee: 0,
+                deliveryFee: 0,
+                total: pickupTotal,
+                status: nextStatus,
+                transport_request_id: null,
+                driver_id: null,
+                delivery_driver_id: null
+            }) : prev);
+
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                text: '🏪 He seleccionado RETIRO EN LOCAL (PickUp). Preparar pedido para entregar en tienda.',
+                sender_id: user?.uid || user?.id || 'guest',
+                sender_name: order.userName || 'Cliente',
+                sender_role: 'client',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success('Cambiado a Retiro en Local (PickUp)', { icon: '🏪' });
+        } catch (error: any) {
+            console.error('Error switching to pickup:', error);
+            toast.error('Error al cambiar a PickUp: ' + (error?.message || 'Intente nuevamente'));
         }
     };
 
-    // Paso 3: Confirmar y Solicitar Repartidor (Delivery nativo estilo Encomiendas)
+    // Cambiar de PickUp a Pedir Repartidor
+    const handleSwitchToDelivery = async () => {
+        if (!orderId || !order) return;
+        try {
+            const nextStatus = 'awaiting_delivery_driver';
+            const { error: ordErr } = await supabase.from('orders').update({
+                delivery_method: 'app_delivery',
+                status: nextStatus,
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            if (ordErr) throw ordErr;
+
+            setOrder((prev: any) => prev ? ({
+                ...prev,
+                delivery_method: 'app_delivery',
+                deliveryMethod: 'app_delivery',
+                status: nextStatus
+            }) : prev);
+
+            toast.success('Cambiado a Envío con Repartidor', { icon: '🛵' });
+        } catch (error: any) {
+            console.error('Error switching to delivery:', error);
+            toast.error('Error al cambiar a delivery');
+        }
+    };
+
+    // Paso 3: Confirmar y Solicitar Repartidor (Delivery nativo con matching a driver o radar general)
     const handleRequestDelivery = async () => {
         if (!order || !orderId || isSubmittingDelivery) return;
         setIsSubmittingDelivery(true);
@@ -751,46 +809,93 @@ export default function TrackOrder() {
                 vehicle_type: selectedVehicle,
                 price: deliveryFee,
                 total: deliveryFee,
-                client_total: deliveryFee,
                 driver_payout: deliveryFee * 0.8,
                 commission_amount: deliveryFee * 0.2,
                 payment_method: 'Transferencia/Pago Móvil',
                 package_description: `Entrega de pedido: ${itemsSummary}`,
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
+                updated_at: new Date().toISOString(),
+                assigned_driver_id: selectedDriverId || null,
+                preferred_driver_id: selectedDriverId || null,
+                driver_id: selectedDriverId || null
             };
 
-            // 1. Insertar solicitud de transporte
+            // 1. Insertar solicitud de transporte en Supabase
             const { error: trError } = await supabase.from('transport_requests').insert(transportData);
             if (trError) {
                 console.error("Error creating transport request:", trError);
+                throw trError;
             }
 
-            // 2. Actualizar la orden
-            await supabase.from('orders').update({
+            // 2. Actualizar la orden en Supabase
+            const orderUpdates: any = {
                 transport_request_id: transportId,
-                vehicleType: selectedVehicle,
-                vehicle_type: selectedVehicle,
-                deliveryFee: deliveryFee,
                 delivery_fee: deliveryFee,
                 status: 'buscando_piloto',
                 updated_at: new Date().toISOString()
-            }).eq('id', orderId);
+            };
+            if (selectedDriverId) {
+                orderUpdates.preferred_driver_id = selectedDriverId;
+                orderUpdates.eligible_drivers = [selectedDriverId];
+                orderUpdates.delivery_driver_id = selectedDriverId;
+            } else {
+                orderUpdates.preferred_driver_id = null;
+                orderUpdates.eligible_drivers = null;
+            }
+
+            const { error: ordError } = await supabase.from('orders').update(orderUpdates).eq('id', orderId);
+            if (ordError) {
+                console.error("Error updating order:", ordError);
+                throw ordError;
+            }
+
+            localStorage.setItem('active_transport_req_id', transportId);
+            localStorage.setItem('active_order_id', orderId);
+
+            // Actualizar estado local inmediatamente
+            setOrder((prev: any) => prev ? ({
+                ...prev,
+                transport_request_id: transportId,
+                delivery_fee: deliveryFee,
+                deliveryFee: deliveryFee,
+                vehicleType: selectedVehicle,
+                status: 'buscando_piloto',
+                ...(selectedDriverId ? {
+                    preferred_driver_id: selectedDriverId,
+                    eligible_drivers: [selectedDriverId],
+                    delivery_driver_id: selectedDriverId
+                } : {})
+            }) : prev);
+
+            setTransportRequest({
+                id: transportId,
+                ...transportData
+            });
 
             // 3. Notificar en chat
+            const selectedDriverObj = availableDrivers.find(d => d.id === selectedDriverId);
+            const driverMsg = selectedDriverObj 
+                ? ` con solicitud directa asignada a ${selectedDriverObj.full_name}`
+                : ' en radar general';
+
             await supabase.from('messages').insert({
                 order_id: orderId,
-                text: `🛵 *Delivery Solicitado:* Vehículo: ${selectedVehicle.toUpperCase()} · Tarifa: $${deliveryFee.toFixed(2)}. Buscando repartidor disponible.`,
+                text: `🛵 *Delivery Solicitado:* Vehículo: ${selectedVehicle.toUpperCase()} · Tarifa: $${deliveryFee.toFixed(2)}${driverMsg}.`,
                 sender_id: user?.uid || user?.id || 'guest',
                 sender_name: order.userName || 'Cliente',
                 sender_role: 'client',
                 created_at: new Date().toISOString()
             });
 
-            toast.success('¡Buscando repartidor para tu entrega!', { icon: '🛵' });
-        } catch (error) {
-            console.error(error);
-            toast.error('Error al solicitar repartidor');
+            toast.success(
+                selectedDriverObj
+                    ? `¡Solicitud enviada directamente a ${selectedDriverObj.full_name}!`
+                    : '¡Buscando repartidor para tu entrega!',
+                { icon: '🛵' }
+            );
+        } catch (error: any) {
+            console.error('Error requesting delivery:', error);
+            toast.error('Error al solicitar repartidor: ' + (error?.message || 'Intenta de nuevo'));
         } finally {
             setIsSubmittingDelivery(false);
         }
@@ -801,9 +906,11 @@ export default function TrackOrder() {
         try {
             await supabase.from('orders').update({
                 status: 'completed',
-                delivery_status: 'completed',
                 updated_at: new Date().toISOString()
             }).eq('id', orderId);
+
+            localStorage.removeItem('active_order_id');
+            setOrder((prev: any) => prev ? ({ ...prev, status: 'completed' }) : prev);
 
             // Asignar puntos de fidelización
             if (user?.id && !order.points_credited && !order.pointsCredited) {
@@ -861,6 +968,9 @@ export default function TrackOrder() {
             if (order.transport_request_id) {
                 await supabase.from('transport_requests').update({
                     status: 'cancelled',
+                    canceled_at: new Date().toISOString(),
+                    canceled_by: 'client',
+                    cancel_reason: 'Cliente reinició búsqueda',
                     updated_at: new Date().toISOString()
                 }).eq('id', order.transport_request_id);
             }
@@ -869,8 +979,23 @@ export default function TrackOrder() {
                 transport_request_id: null,
                 driver_id: null,
                 delivery_driver_id: null,
+                preferred_driver_id: null,
+                eligible_drivers: null,
                 updated_at: new Date().toISOString()
             }).eq('id', orderId);
+
+            setOrder((prev: any) => prev ? ({
+                ...prev,
+                status: 'ready',
+                transport_request_id: null,
+                driver_id: null,
+                delivery_driver_id: null,
+                preferred_driver_id: null,
+                eligible_drivers: null
+            }) : prev);
+            setTransportRequest(null);
+            setSelectedDriverId(null);
+            localStorage.removeItem('active_transport_req_id');
 
             await supabase.from('messages').insert({
                 order_id: orderId,
@@ -1432,6 +1557,36 @@ export default function TrackOrder() {
                     </div>
                     <StepProgressHeader currentStep={currentStep} />
                     <div className="px-4 pt-6 max-w-lg mx-auto text-center space-y-5">
+                        {/* Selector de Opción de Retiro / Envío */}
+                        <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3 text-left">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">¿Cómo deseas recibir tu comida?</p>
+                            <div className="grid grid-cols-2 gap-2.5">
+                                <div className="p-3.5 rounded-2xl border-2 border-emerald-500 bg-emerald-50 text-slate-900 flex flex-col items-center gap-2 shadow-xs">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+                                        <Store className="w-5 h-5" />
+                                    </div>
+                                    <div className="text-center">
+                                        <span className="font-black text-xs block text-emerald-900">Buscar Pick Up</span>
+                                        <span className="text-[10px] font-bold text-emerald-700">Activo ($0)</span>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={handleSwitchToDelivery}
+                                    className="p-3.5 rounded-2xl border-2 border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-white text-slate-700 flex flex-col items-center gap-2 transition-all active:scale-95"
+                                >
+                                    <div className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                                        <Motorbike className="w-5 h-5" />
+                                    </div>
+                                    <div className="text-center">
+                                        <span className="font-black text-xs block">Pedir Repartidor</span>
+                                        <span className="text-[10px] font-bold text-slate-400">A tu dirección</span>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+
                         {/* Kitchen Countdown Timer if preparing */}
                         {isKitchenPreparing && (
                             <div className="bg-gradient-to-br from-amber-500 via-amber-400 to-yellow-500 rounded-3xl p-5 text-slate-950 shadow-xl shadow-amber-500/20 text-left">
@@ -1749,40 +1904,100 @@ export default function TrackOrder() {
                             {availableDrivers.length > 0 && (
                                 <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/80 space-y-3">
                                     <div className="flex items-center justify-between">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Conductores en tu Zona</p>
-                                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Conductores en tu Zona</p>
+                                            <p className="text-[11px] font-bold text-slate-600">Elige un conductor o déjalo en radar abierto</p>
+                                        </div>
+                                        <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
                                             {availableDrivers.length} Activos
                                         </span>
                                     </div>
 
-                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                    {/* Opción 1: Radar General (Sin selección directa) */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedDriverId(null)}
+                                        className={`w-full p-3.5 rounded-2xl border-2 flex items-center justify-between text-left transition-all active:scale-[0.99] ${
+                                            selectedDriverId === null
+                                                ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs'
+                                                : 'border-slate-100 bg-slate-50 hover:bg-slate-100/70 text-slate-700'
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black ${
+                                                selectedDriverId === null ? 'bg-slate-900 text-primary' : 'bg-white border border-slate-200 text-slate-500'
+                                            }`}>
+                                                <Radio className="w-5 h-5" />
+                                            </div>
+                                            <div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="font-black text-xs text-slate-900">Radar General (Automático)</span>
+                                                    <span className="text-[9px] bg-slate-200 text-slate-800 font-black px-1.5 py-0.5 rounded-md">Recomendado</span>
+                                                </div>
+                                                <p className="text-[10px] text-slate-500 font-bold">
+                                                    Notifica a todos los repartidores cercanos. El primero en aceptar toma tu pedido.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                            selectedDriverId === null ? 'border-primary bg-primary text-slate-900' : 'border-slate-300 bg-white'
+                                        }`}>
+                                            {selectedDriverId === null && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                        </div>
+                                    </button>
+
+                                    {/* Lista de Conductores Específicos */}
+                                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                                         {availableDrivers.map((drv) => {
+                                            const isSelected = selectedDriverId === drv.id;
                                             const vType = drv.vehicle_type === 'confort' ? 'Confort' : (drv.vehicle_type === 'carro' ? 'Auto Económico' : 'Moto Taxi');
                                             return (
-                                                <div 
+                                                <button
                                                     key={drv.id}
-                                                    className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex items-center justify-between"
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setSelectedDriverId(drv.id);
+                                                        if (drv.vehicle_type === 'carro') setSelectedVehicle('carro');
+                                                        else if (drv.vehicle_type === 'confort' || drv.vehicle_type === 'ejecutivo') setSelectedVehicle('ejecutivo');
+                                                        else setSelectedVehicle('moto');
+                                                    }}
+                                                    className={`w-full p-3 rounded-2xl border-2 flex items-center justify-between text-left transition-all active:scale-[0.99] ${
+                                                        isSelected
+                                                            ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs'
+                                                            : 'border-slate-100 bg-slate-50 hover:bg-slate-100/70'
+                                                    }`}
                                                 >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center font-black text-slate-700">
+                                                    <div className="flex items-center gap-3 min-w-0">
+                                                        <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center font-black text-slate-700 shrink-0">
                                                             {drv.photo_url ? (
                                                                 <img src={drv.photo_url} alt={drv.full_name} className="w-full h-full object-cover" />
                                                             ) : (
                                                                 drv.full_name?.charAt(0) || 'D'
                                                             )}
                                                         </div>
-                                                        <div>
+                                                        <div className="min-w-0">
                                                             <div className="flex items-center gap-1.5">
-                                                                <span className="font-black text-xs text-slate-900">{drv.full_name}</span>
-                                                                <span className="text-[10px] text-amber-500 font-black">⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}</span>
+                                                                <span className="font-black text-xs text-slate-900 truncate">{drv.full_name}</span>
+                                                                <span className="text-[10px] text-amber-500 font-black shrink-0">⭐ {drv.rating ? Number(drv.rating).toFixed(1) : '5.0'}</span>
                                                             </div>
-                                                            <p className="text-[10px] text-slate-500 font-bold">
+                                                            <p className="text-[10px] text-slate-500 font-bold truncate">
                                                                 {vType} • {drv.vehicle_brand || ''} {drv.vehicle_model || ''}
                                                             </p>
                                                         </div>
                                                     </div>
-                                                    <span className="text-xs font-black text-emerald-600">Disponible</span>
-                                                </div>
+                                                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                                                            isSelected ? 'bg-primary text-slate-950 font-black' : 'bg-emerald-50 text-emerald-600'
+                                                        }`}>
+                                                            {isSelected ? 'Elegido' : 'Disponible'}
+                                                        </span>
+                                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                                                            isSelected ? 'border-primary bg-primary text-slate-900' : 'border-slate-300 bg-white'
+                                                        }`}>
+                                                            {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                                        </div>
+                                                    </div>
+                                                </button>
                                             );
                                         })}
                                     </div>
@@ -1797,6 +2012,8 @@ export default function TrackOrder() {
                             >
                                 {isSubmittingDelivery ? (
                                     <><Loader2 className="w-5 h-5 animate-spin text-primary" /> Solicitando repartidor...</>
+                                ) : selectedDriverId ? (
+                                    <><Motorbike className="w-5 h-5 text-primary" /> Solicitar a {availableDrivers.find(d => d.id === selectedDriverId)?.full_name || 'Conductor'}</>
                                 ) : (
                                     <><Motorbike className="w-5 h-5 text-primary" /> Confirmar y Solicitar Repartidor</>
                                 )}
