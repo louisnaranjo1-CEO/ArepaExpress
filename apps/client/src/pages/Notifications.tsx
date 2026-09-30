@@ -17,7 +17,7 @@ export default function Notifications() {
             const { data, error } = await supabase
                 .from('notifications')
                 .select('*')
-                .or(`user_id.eq.${user.id},userId.eq.${user.id}`)
+                .eq('user_id', user.id)
                 .order('created_at', { ascending: false });
 
             if (error) throw error;
@@ -78,7 +78,7 @@ export default function Notifications() {
         if (!confirm("¿Estás seguro de que quieres eliminar todas las notificaciones?")) return;
 
         try {
-            await supabase.from('notifications').delete().or(`user_id.eq.${user.id},userId.eq.${user.id}`);
+            await supabase.from('notifications').delete().eq('user_id', user.id);
             setNotifications([]);
             toast.success("Notificaciones eliminadas");
         } catch (error) {

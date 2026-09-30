@@ -49,7 +49,7 @@ export default function LiquidationsManager() {
     const fetchDriversAndEarnings = async () => {
         try {
             const { data: driversData } = await supabase.from('drivers').select('*');
-            const { data: ordersData } = await supabase.from('orders').select('*').eq('status', 'completed');
+            const { data: ordersData } = await supabase.from('orders').select('*').in('status', ['completed', 'delivered']);
             const { data: transportData } = await supabase.from('transport_requests').select('*').eq('status', 'completed');
 
             const processedDrivers = (driversData || []).map((driver: any) => {
@@ -62,7 +62,7 @@ export default function LiquidationsManager() {
                     !t.driver_paid && !t.driverPaid
                 );
 
-                const deliverySum = driverOrders.reduce((sum: number, o: any) => sum + (o.delivery_fee || o.deliveryFee || 0), 0);
+                const deliverySum = driverOrders.reduce((sum: number, o: any) => sum + (o.driver_payout || o.driverPayout || o.delivery_fee || o.deliveryFee || 0), 0);
                 const transportSum = driverTransports.reduce((sum: number, t: any) => sum + parseFloat(t.driver_payout || t.driverPayout || t.price || 0), 0);
 
                 return {
@@ -180,11 +180,11 @@ export default function LiquidationsManager() {
 
         try {
             for (const o of driver.unpaidOrders) {
-                await supabase.from('orders').update({ delivery_paid: true, deliveryPaid: true }).eq('id', o.id);
+                await supabase.from('orders').update({ delivery_paid: true }).eq('id', o.id);
             }
 
             for (const t of driver.unpaidTransports) {
-                await supabase.from('transport_requests').update({ driver_paid: true, driverPaid: true }).eq('id', t.id);
+                await supabase.from('transport_requests').update({ driver_paid: true }).eq('id', t.id);
             }
 
             await supabase.from('payouts_history').insert([{

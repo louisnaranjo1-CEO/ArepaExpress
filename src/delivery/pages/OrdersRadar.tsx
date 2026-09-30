@@ -477,11 +477,12 @@ export default function OrdersRadar() {
         let availableOrdersChannel: any;
 
         const fetchActiveOrder = async () => {
+            const myDriverId = user.id || (user as any).uid;
             const { data } = await supabase
                 .from('orders')
                 .select('*')
-                .eq('delivery_driver_id', user.uid)
-                .in('status', ['en_camino', 'in_transit'])
+                .eq('delivery_driver_id', myDriverId)
+                .in('status', ['en_camino', 'in_transit', 'delivering'])
                 .limit(1);
             if (data && data.length > 0) {
                 setActiveOrder(data[0]);
@@ -491,6 +492,7 @@ export default function OrdersRadar() {
         };
 
         const fetchAvailableOrders = async () => {
+            const myId = user.id || (user as any).uid;
             const { data } = await supabase
                 .from('orders')
                 .select('*')
@@ -498,9 +500,14 @@ export default function OrdersRadar() {
             
             if (data) {
                 const available = data.filter((order: any) => {
+                    // Si ya está asignada a otro piloto específico, no mostrar
+                    if (order.delivery_driver_id && order.delivery_driver_id !== myId) return false;
+                    if (order.driver_id && order.driver_id !== myId) return false;
+                    if (order.preferred_driver_id && order.preferred_driver_id !== myId) return false;
+
                     const eligible = order.eligible_drivers || order.eligibleDrivers;
                     if (!eligible || !Array.isArray(eligible) || eligible.length === 0) return true;
-                    return eligible.includes(user.uid);
+                    return eligible.includes(myId);
                 });
                 setAvailableOrders(available);
             } else {
@@ -571,11 +578,36 @@ export default function OrdersRadar() {
 
                     if (isMandado) return true;
                     if (reqType === 'food_delivery' || reqType === 'package_delivery' || reqType === 'delivery_envios') return true;
+
+                    const isComfortDriver = Boolean(
+                        driverProfile?.is_comfort_eligible ||
+                        driverProfile?.isComfortEligible ||
+                        drvVehicle === 'confort' ||
+                        drvVehicle === 'ejecutivo' ||
+                        drvVehicle === 'carro_ejecutivo' ||
+                        (drvVehicle === 'carro' && (driverProfile?.has_ac || driverProfile?.hasAc) && Number(driverProfile?.vehicle_year || driverProfile?.vehicleYear || 0) >= 2009)
+                    );
+
                     const reqVehicle = (req.vehicle_type || req.vehicleType || 'moto').toLowerCase();
-                    if (reqVehicle === drvVehicle) return true;
-                    if (drvVehicle === 'carro' && reqVehicle === 'moto') return true;
-                    if (drvVehicle === 'carro_ejecutivo' || drvVehicle === 'ejecutivo') return true;
-                    return false;
+                    const reqCat = (req.service_category || req.serviceCategory || '').toLowerCase();
+                    const isReqComfort = reqVehicle === 'ejecutivo' || reqVehicle === 'confort' || reqVehicle === 'carro_ejecutivo' || reqCat.includes('confort') || reqCat.includes('ejecutivo');
+
+                    // Solicitud Confort: Solo conductores habilitados para Confort
+                    if (isReqComfort) {
+                        return isComfortDriver;
+                    }
+
+                    // Solicitud Mototaxi: Solo conductores de moto
+                    if (reqVehicle === 'moto' || reqCat === 'mototaxi') {
+                        return drvVehicle === 'moto';
+                    }
+
+                    // Solicitud Carro Económico / Taxi: Conductores con carro (económico o confort)
+                    if (reqVehicle === 'carro' || reqCat === 'taxi_driver') {
+                        return drvVehicle === 'carro' || drvVehicle === 'carro_ejecutivo' || drvVehicle === 'ejecutivo';
+                    }
+
+                    return reqVehicle === drvVehicle;
                 });
                 setAvailableTransport(reqs);
             }
@@ -856,27 +888,77 @@ export default function OrdersRadar() {
         }
         setProcessingAction(orderId);
         try {
-            const { data, error } = await supabase
+            const myDriverId = user.id || (user as any).uid;
+
+            // 1. Verificar estado actual de la orden
+            const { data: targetOrder, error: checkErr } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('id', orderId)
+                .maybeSingle();
+
+            if (checkErr || !targetOrder) {
+                toast.error("El pedido ya no está disponible.");
+                return;
+            }
+
+            if (targetOrder.status !== 'buscando_piloto') {
+                toast.error("Este pedido ya fue tomado o procesado.");
+                return;
+            }
+
+            // Si otro conductor ya la tiene asignada, rechazar
+            if (targetOrder.delivery_driver_id && targetOrder.delivery_driver_id !== myDriverId) {
+                toast.error("El pedido ya fue tomado por otro repartidor.");
+                return;
+            }
+
+            // 2. Asignar orden al conductor
+            const { data: updatedOrders, error: updateErr } = await supabase
                 .from('orders')
                 .update({ 
                     status: 'en_camino', 
-                    delivery_driver_id: user.uid, 
+                    delivery_driver_id: myDriverId, 
+                    driver_id: myDriverId,
                     driver_assigned_at: new Date().toISOString() 
                 })
                 .eq('id', orderId)
-                .eq('status', 'buscando_piloto')
-                .is('delivery_driver_id', null)
                 .select();
                 
-            if (error || !data || data.length === 0) {
+            if (updateErr || !updatedOrders || updatedOrders.length === 0) {
                 throw new Error("ALREADY_TAKEN");
             }
+
+            // 3. Sincronizar solicitud de transporte vinculada (transport_requests)
+            const transportId = targetOrder.transport_request_id;
+            if (transportId) {
+                await supabase
+                    .from('transport_requests')
+                    .update({
+                        status: 'in_progress',
+                        driver_id: myDriverId,
+                        driver_assigned_at: new Date().toISOString()
+                    })
+                    .eq('id', transportId);
+            } else {
+                await supabase
+                    .from('transport_requests')
+                    .update({
+                        status: 'in_progress',
+                        driver_id: myDriverId,
+                        driver_assigned_at: new Date().toISOString()
+                    })
+                    .eq('order_id', orderId);
+            }
+
+            setActiveOrder(updatedOrders[0]);
+            toast.success("¡Reparto tomado con éxito! Dirígete al local a recolectar.");
         } catch (error: any) {
             console.error("Error al aceptar orden:", error);
             if (error.message === "ALREADY_TAKEN") {
                 toast.error("El pedido ya fue tomado por otro repartidor.");
             } else {
-                toast.error("Hubo un problema al aceptar el viaje.");
+                toast.error("Hubo un problema al aceptar el reparto.");
             }
         } finally {
             setProcessingAction(null);
@@ -1262,7 +1344,8 @@ export default function OrdersRadar() {
                 .from('transport_requests')
                 .update({
                     payment_status: 'disputed',
-                    disputed_at: new Date().toISOString()
+                    disputed_at: new Date().toISOString(),
+                    dispute_reason: item.dispute_reason || 'Reportado en disputa por el conductor'
                 })
                 .eq('id', item.id);
             if (error) throw error;
@@ -2026,7 +2109,7 @@ export default function OrdersRadar() {
                         <div>
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Ruta de Entrega</span>
                             <h2 className="text-2xl font-black text-slate-900 border-b border-slate-50 pb-4">
-                                {activeOrder.status === 'en_camino' ? 'Recolectar Pedido' : 'Entregar al Cliente'}
+                                {(activeOrder.status === 'en_camino' || activeOrder.status === 'delivering') ? 'Recolectar Pedido' : 'Entregar al Cliente'}
                             </h2>
                         </div>
 
@@ -2123,7 +2206,7 @@ export default function OrdersRadar() {
                         </div>
 
                         <div className="pt-2 grid gap-3">
-                            {activeOrder.status === 'en_camino' ? (
+                            {(activeOrder.status === 'en_camino' || activeOrder.status === 'delivering') ? (
                                 <button
                                     onClick={handleMarkInTransit}
                                     disabled={processingAction !== null}
@@ -3639,7 +3722,9 @@ export default function OrdersRadar() {
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <div className="flex flex-col items-end">
-                                                <div className="text-2xl font-black text-emerald-600">${(order.driverPayout || order.deliveryFee || 0).toFixed(2)}</div>
+                                                <div className="text-2xl font-black text-emerald-600">
+                                                    ${(Number(order.driver_payout ?? order.driverPayout ?? order.delivery_fee ?? order.deliveryFee ?? 0)).toFixed(2)}
+                                                </div>
                                                 <div className="text-[10px] font-black text-primary uppercase mt-0.5 tracking-wider">Ganancia</div>
                                             </div>
                                             <button
@@ -3660,7 +3745,9 @@ export default function OrdersRadar() {
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Tienda / Local:</p>
-                                                <p className="font-bold text-slate-800 leading-tight mt-0.5">{order.restaurantName}</p>
+                                                <p className="font-bold text-slate-800 leading-tight mt-0.5">
+                                                    {order.restaurant_name || order.restaurantName || order.business_name || 'Comercio Aliado'}
+                                                </p>
                                             </div>
                                         </div>
                                         <div className="flex items-start gap-4">
@@ -3669,14 +3756,16 @@ export default function OrdersRadar() {
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Entrega:</p>
-                                                <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{order.shippingAddress?.address}</p>
+                                                <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">
+                                                    {order.delivery_address || order.shipping_address?.address || order.shippingAddress?.address || 'Ubicación de entrega del cliente'}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
 
                                     <div className="pt-2 grid gap-3">
                                         <a
-                                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.shippingAddress?.address || '')}`}
+                                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.delivery_address || order.shipping_address?.address || order.shippingAddress?.address || '')}`}
                                             target="_blank"
                                             className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
                                         >

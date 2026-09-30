@@ -216,7 +216,7 @@ export default function UsersManager() {
             const { data: ordersData } = await supabase
                 .from('orders')
                 .select('*')
-                .or(`user_id.eq.${user.id},userId.eq.${user.id}`);
+                .eq('user_id', user.id);
             setUserOrders(ordersData || []);
 
             // Fetch driver data if applicable
@@ -224,7 +224,7 @@ export default function UsersManager() {
                 const { data: driverData } = await supabase
                     .from('drivers')
                     .select('*')
-                    .or(`id.eq.${user.id},user_id.eq.${user.id},userId.eq.${user.id}`)
+                    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
                     .maybeSingle();
 
                 if (driverData) {

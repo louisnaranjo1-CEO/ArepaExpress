@@ -283,7 +283,7 @@ export default function RestaurantPage() {
                 const { data: ord } = await supabase
                   .from('orders')
                   .select('id, status, total, created_at')
-                  .or(`user_id.eq.${uid},userId.eq.${uid}`)
+                  .eq('user_id', uid)
                   .eq('restaurant_id', id)
                   .not('status', 'in', '("completed","cancelled","rejected")')
                   .order('created_at', { ascending: false })

@@ -225,17 +225,18 @@ export default function Earnings() {
         const fetchEarnings = async () => {
             try {
                 // Delivery Orders
+                const driverUid = user.uid || user.id;
                 const { data: ordersData } = await supabase
                     .from('orders')
                     .select('*')
-                    .eq('delivery_driver_id', user.uid)
-                    .eq('status', 'completed');
+                    .or(`delivery_driver_id.eq.${driverUid},driver_id.eq.${driverUid}`)
+                    .in('status', ['completed', 'delivered']);
 
                 const deliveryItems: EarningsItem[] = (ordersData || []).map((data: any) => {
                     const cDate = data.created_at ? new Date(data.created_at) : new Date();
                     return {
                         id: data.id,
-                        amount: Number(data.delivery_fee || data.deliveryFee || 0) || 0,
+                        amount: Number(data.driver_payout || data.delivery_fee || data.deliveryFee || 0) || 0,
                         type: 'delivery',
                         status: data.status,
                         createdAt: {
@@ -258,7 +259,7 @@ export default function Earnings() {
                 const { data: transportData } = await supabase
                     .from('transport_requests')
                     .select('*')
-                    .eq('driver_id', user.uid)
+                    .eq('driver_id', driverUid)
                     .eq('status', 'completed');
 
                 const transportItems: EarningsItem[] = (transportData || []).map((data: any) => {

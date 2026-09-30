@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Gift, Coins, Share2, Ticket, ChevronRight, Award, Copy, CheckCircle, Globe, Map as MapIcon, Home, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { db } from '../lib/firebase';
-import { collection, getDocs, query, where, orderBy, doc, getDoc } from 'firebase/firestore';
+import { supabase } from '../lib/supabase';
 
 export default function Rewards() {
     const { user, userData } = useAuth();
@@ -18,7 +17,43 @@ export default function Rewards() {
     const [showBannerModal, setShowBannerModal] = useState(false);
 
     const userPoints = userData?.points || 0;
-    const referralCode = userData?.referralCode || user?.uid?.substring(0, 6).toUpperCase() || 'INVITADELI';
+    const referralCode = (userData as any)?.referralCode || user?.id?.substring(0, 6).toUpperCase() || 'INVITADELI';
+    const userState = localStorage.getItem('userState') || (userData as any)?.state || '';
+    const userCity = localStorage.getItem('userCity') || (userData as any)?.city || '';
+
+    const isItemInUserZone = (item: any) => {
+        const scope = item.scope || 'national';
+        if (scope === 'national') return true;
+        if (!userState && !userCity) return true;
+
+        if (scope === 'regional') {
+            const targetState = (item.target_state || item.targetState || item.location_name || item.locationName || '').toLowerCase().trim();
+            if (!targetState) return true;
+            return userState.toLowerCase().includes(targetState) || targetState.includes(userState.toLowerCase());
+        }
+
+        if (scope === 'local') {
+            const targetCity = (item.target_city || item.targetCity || '').toLowerCase().trim();
+            const targetState = (item.target_state || item.targetState || '').toLowerCase().trim();
+            const locName = (item.location_name || item.locationName || '').toLowerCase().trim();
+
+            if (targetCity && userCity) {
+                if (userCity.toLowerCase().includes(targetCity) || targetCity.includes(userCity.toLowerCase())) {
+                    return true;
+                }
+            }
+            if (locName && userCity && locName.includes(userCity.toLowerCase())) {
+                return true;
+            }
+            if (targetState && userState && !targetCity) {
+                return userState.toLowerCase().includes(targetState) || targetState.includes(userState.toLowerCase());
+            }
+            return false;
+        }
+
+        return true;
+    };
+
     const [shareConfig, setShareConfig] = useState({
         message: '¡Usa Deliexpress y obtén recompensas!',
         url: window.location.origin
@@ -28,26 +63,41 @@ export default function Rewards() {
         const fetchData = async () => {
             try {
                 // Fetch active contests
-                const contestsSnap = await getDocs(query(collection(db, 'referral_contests'), where('isActive', '==', true)));
-                setContests(contestsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                const { data: contestsData } = await supabase
+                    .from('referral_contests')
+                    .select('*')
+                    .eq('is_active', true);
+                setContests(contestsData || []);
 
                 // Fetch active raffles
-                const rafflesSnap = await getDocs(query(collection(db, 'raffles'), where('isActive', '==', true)));
-                setRaffles(rafflesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                const { data: rafflesData } = await supabase
+                    .from('raffles')
+                    .select('*')
+                    .eq('is_active', true);
+                setRaffles(rafflesData || []);
 
                 // Fetch share config
-                const configSnap = await getDoc(doc(db, 'system_configs', 'fidelization'));
-                if (configSnap.exists()) {
-                    const data = configSnap.data();
+                const { data: configData } = await supabase
+                    .from('system_configs')
+                    .select('*')
+                    .eq('id', 'fidelization')
+                    .maybeSingle();
+
+                if (configData) {
                     setShareConfig(prev => ({
-                        message: data.shareMessage || prev.message,
-                        url: data.shareUrl || prev.url
+                        message: configData.shareMessage || prev.message,
+                        url: configData.shareUrl || prev.url
                     }));
                 }
 
                 // Fetch global banners
-                const bannersSnap = await getDocs(query(collection(db, 'banners'), where('type', '==', 'fidelization'), where('isActive', '==', true)));
-                setGlobalBanners(bannersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                const { data: bannersData } = await supabase
+                    .from('banners')
+                    .select('*')
+                    .eq('type', 'fidelization')
+                    .eq('is_active', true);
+
+                setGlobalBanners(bannersData || []);
             } catch (error) {
                 console.error("Error fetching rewards data:", error);
             } finally {
@@ -109,7 +159,7 @@ export default function Rewards() {
                         <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6" /></svg>
                     </button>
                     <h1 className="text-xl font-black text-white">Fidelización</h1>
-                    <div className="w-10"></div> {/* Spacer */}
+                    <div className="w-10"></div>
                 </div>
 
                 <div className="relative z-10 flex flex-col items-center text-center">
@@ -207,46 +257,91 @@ export default function Rewards() {
                             </div>
                         )}
 
-                        {!loading && contests.length === 0 && raffles.length === 0 && (
+                        {!loading && contests.filter(isItemInUserZone).length === 0 && raffles.filter(isItemInUserZone).length === 0 && (
                             <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No hay sorteos activos en este momento</p>
+                                <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No hay sorteos ni concursos activos en tu zona</p>
                             </div>
                         )}
 
                         {/* Contests */}
-                        {contests.map((contest) => (
+                        {contests.filter(isItemInUserZone).map((contest) => (
                             <div key={contest.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
                                 <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
-                                <h4 className="font-black text-xl mb-1 relative z-10 drop-shadow-sm">{contest.title}</h4>
-                                <p className="text-sm text-white/90 font-medium mb-4 relative z-10 leading-snug">{contest.prize}</p>
-                                <div className="flex items-center justify-between relative z-10">
-                                    <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-                                        Meta: {contest.targetCount} {contest.type === 'referral_count' ? 'amigos' : 'veces'}
+                                <div className="flex items-center gap-2 mb-2">
+                                    {contest.scope === 'national' ? <Globe className="w-4 h-4 text-white/90" /> :
+                                        contest.scope === 'regional' ? <MapIcon className="w-4 h-4 text-white/90" /> : <Home className="w-4 h-4 text-white/90" />}
+                                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/90">
+                                        {contest.location_name || contest.locationName || (contest.scope === 'national' ? 'Nacional' : contest.scope)}
                                     </span>
+                                </div>
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1 relative z-10">
+                                        <h4 className="font-black text-xl mb-1 drop-shadow-sm">{contest.title}</h4>
+                                        <p className="text-sm text-white/90 font-medium mb-3 leading-snug">Premio: {contest.prize}</p>
+                                    </div>
+                                    {(contest.prize_image_url || contest.prizeImageUrl) && (
+                                        <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-white/30 bg-black/10 relative z-10 shadow-md">
+                                            <img src={contest.prize_image_url || contest.prizeImageUrl} alt={contest.prize} className="w-full h-full object-cover" />
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between gap-2 relative z-10 mt-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                                            Meta: {contest.target_count || contest.targetCount} {contest.type === 'referral_count' ? 'amigos' : 'veces'}
+                                        </span>
+                                        {contest.points_cost || contest.pointsCost ? (
+                                            <span className="text-[10px] font-black uppercase tracking-widest bg-amber-400 text-slate-950 px-2.5 py-1 rounded-full font-bold">
+                                                {contest.points_cost || contest.pointsCost} Pts
+                                            </span>
+                                        ) : null}
+                                    </div>
                                     <ChevronRight className="w-5 h-5 opacity-50" />
                                 </div>
                             </div>
                         ))}
 
                         {/* Raffles */}
-                        {raffles.map((raffle) => (
-                            <div key={raffle.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    {raffle.scope === 'national' ? <Globe className="w-4 h-4" /> :
-                                        raffle.scope === 'regional' ? <MapIcon className="w-4 h-4" /> : <Home className="w-4 h-4" />}
-                                    <span className="text-[9px] font-black uppercase tracking-[0.2em]">{raffle.scope}</span>
+                        {raffles.filter(isItemInUserZone).map((raffle) => {
+                            const prizeImg = raffle.prizes?.[0]?.imageUrl || raffle.banner_url || raffle.bannerUrl;
+                            const pointsCost = raffle.points_cost !== undefined ? raffle.points_cost : raffle.pointsCost;
+                            return (
+                                <div key={raffle.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        {raffle.scope === 'national' ? <Globe className="w-4 h-4 text-white/90" /> :
+                                            raffle.scope === 'regional' ? <MapIcon className="w-4 h-4 text-white/90" /> : <Home className="w-4 h-4 text-white/90" />}
+                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/90">
+                                            {raffle.location_name || raffle.locationName || (raffle.scope === 'national' ? 'Nacional' : raffle.scope)}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="flex-1 relative z-10">
+                                            <h4 className="font-black text-xl mb-1 drop-shadow-sm">{raffle.title}</h4>
+                                            <p className="text-sm text-white/90 font-medium mb-3 leading-snug">Premio: {raffle.prize}</p>
+                                        </div>
+                                        {prizeImg && (
+                                            <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-white/30 bg-black/10 relative z-10 shadow-md">
+                                                <img src={prizeImg} alt={raffle.prize} className="w-full h-full object-cover" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <div className="flex flex-wrap items-center justify-between gap-2 relative z-10 mt-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
+                                                Sorteo: {raffle.draw_date || raffle.drawDate}
+                                            </span>
+                                            {pointsCost ? (
+                                                <span className="text-[10px] font-black uppercase tracking-widest bg-amber-400 text-slate-950 px-2.5 py-1 rounded-full font-bold">
+                                                    {pointsCost} Pts / ticket
+                                                </span>
+                                            ) : null}
+                                        </div>
+                                        <ChevronRight className="w-5 h-5 opacity-50" />
+                                    </div>
                                 </div>
-                                <h4 className="font-black text-xl mb-1 relative z-10 drop-shadow-sm">{raffle.title}</h4>
-                                <p className="text-sm text-white/90 font-medium mb-4 relative z-10 leading-snug">Premio: {raffle.prize}</p>
-                                <div className="flex items-center justify-between relative z-10">
-                                    <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-                                        Sorteo: {raffle.drawDate}
-                                    </span>
-                                    <ChevronRight className="w-5 h-5 opacity-50" />
-                                </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -283,7 +378,7 @@ export default function Rewards() {
                                         {activeBanner.prizes.map((prize: any) => (
                                             <div key={prize.id} className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group flex flex-col">
                                                 <div className="w-full aspect-square rounded-2xl overflow-hidden shadow-inner bg-slate-50 mb-4 group-hover:scale-[1.02] transition-transform">
-                                                    <img src={prize.imageUrl} alt={prize.title} className="w-full h-full object-cover" />
+                                                    <img src={prize.image_url || prize.imageUrl} alt={prize.title} className="w-full h-full object-cover" />
                                                 </div>
                                                 <div className="flex-1 flex flex-col justify-between">
                                                     <h4 className="font-black text-slate-800 text-base leading-tight mb-2">{prize.title}</h4>

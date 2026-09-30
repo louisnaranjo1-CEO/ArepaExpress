@@ -713,6 +713,8 @@ export default function Orders() {
                         driver_phone: driverObj.phone,
                         driver_photo: driverObj.photo_url,
                         vehicle_type: driverObj.vehicle_type || selectedVehicleCategory || 'moto',
+                        type: 'food_delivery',
+                        service_category: 'food_delivery',
                         status: 'accepted',
                         price: payout,
                         driver_payout: payout,
@@ -1709,6 +1711,7 @@ export default function Orders() {
                                             try {
                                                 await supabase.from('orders').update({
                                                     status: 'cancelled',
+                                                    rejection_reason: 'inactivity_timeout',
                                                     cancellation_reason: 'inactivity_timeout',
                                                     updated_at: new Date().toISOString()
                                                 }).eq('id', order.id);

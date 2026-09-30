@@ -27,7 +27,7 @@ export default function DeliveryManagement() {
                 const { data, error } = await supabase
                     .from('orders')
                     .select('*')
-                    .eq('status', 'completed')
+                    .in('status', ['completed', 'delivered'])
                     .order('created_at', { ascending: false })
                     .limit(100);
                 if (!error && data) {
@@ -479,7 +479,7 @@ _Enviado desde Deliexpress App_`,
                 .from('orders')
                 .select('*')
                 .eq('delivery_driver_id', driver.id)
-                .eq('status', 'completed');
+                .in('status', ['completed', 'delivered']);
 
             const pending = (snapshot || []).filter(doc => !doc.delivery_paid && !doc.deliveryPaid);
 
@@ -500,9 +500,9 @@ _Enviado desde Deliexpress App_`,
         try {
             await supabase
                 .from('orders')
-                .update({ delivery_paid: true, deliveryPaid: true })
+                .update({ delivery_paid: true })
                 .eq('delivery_driver_id', selectedDriverFinance.id)
-                .eq('status', 'completed');
+                .in('status', ['completed', 'delivered']);
 
             alert('¡Pago registrado con éxito! El historial del piloto ha sido actualizado.');
             setSelectedDriverFinance(null);

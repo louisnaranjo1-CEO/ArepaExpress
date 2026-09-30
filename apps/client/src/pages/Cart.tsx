@@ -13,7 +13,7 @@ import DualPrice from '../components/DualPrice';
 import LocationRequiredModal from '../components/LocationRequiredModal';
 import { calculateDynamicFare } from '../lib/pricing';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, getGoogleMapsLastError } from '../lib/mapsConfig';
 import { googleMapsDarkStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -1351,6 +1351,27 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   }}
                 />
               </GoogleMap>
+            ) : loadError ? (
+              <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-6 text-center text-white">
+                <div className="w-16 h-16 rounded-3xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
+                  <MapPin className="w-8 h-8" />
+                </div>
+                <h3 className="text-base font-black mb-1">
+                  {getGoogleMapsLastError()?.message || "Error al cargar Google Maps"}
+                </h3>
+                {getGoogleMapsLastError()?.action && (
+                  <p className="text-xs text-slate-400 max-w-xs mb-4 leading-relaxed">
+                    {getGoogleMapsLastError()?.action}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-2 bg-primary text-slate-950 rounded-xl text-xs font-black cursor-pointer hover:bg-yellow-400"
+                >
+                  Reintentar
+                </button>
+              </div>
             ) : (
               <div className="w-full h-full bg-slate-900 flex flex-col items-center justify-center p-6 text-center text-white">
                 <div className="w-16 h-16 rounded-3xl bg-primary/20 text-primary flex items-center justify-center mb-4">

@@ -706,8 +706,7 @@ export default function Home() {
       supabase
         .from('global_categories')
         .update({
-          click_count: (category.clickCount || 0) + 1,
-          clickCount: (category.clickCount || 0) + 1
+          click_count: (category.clickCount || 0) + 1
         })
         .eq('id', category.id)
         .then(() => {})

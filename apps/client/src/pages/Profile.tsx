@@ -675,7 +675,6 @@ export default function Profile() {
             localStorage.setItem('notifications_enabled', 'false');
             await supabase.from('profiles').update({
                 notifications_enabled: false,
-                notificationsEnabled: false,
                 updated_at: new Date().toISOString()
             }).eq('id', uid);
             setUserData((prev: any) => ({
@@ -1974,7 +1973,6 @@ export default function Profile() {
                                                     try {
                                                         localStorage.setItem('biometric_lock_enabled', 'false');
                                                         await supabase.from('profiles').update({
-                                                            biometricLockEnabled: false,
                                                             biometric_lock_enabled: false,
                                                             updated_at: new Date().toISOString()
                                                         }).eq('id', uid);
@@ -2004,9 +2002,7 @@ export default function Profile() {
                                             if (biometricData) {
                                                 localStorage.setItem('biometric_lock_enabled', 'true');
                                                 await supabase.from('profiles').update({
-                                                    biometricLockEnabled: true,
                                                     biometric_lock_enabled: true,
-                                                    biometricCredentialId: biometricData.id,
                                                     biometric_credential_id: biometricData.id,
                                                     updated_at: new Date().toISOString()
                                                 }).eq('id', uid);
@@ -2070,7 +2066,6 @@ export default function Profile() {
                                                     try {
                                                         await supabase.from('profiles').update({
                                                             location_permissions_allowed: false,
-                                                            locationPermissionsAllowed: false,
                                                             updated_at: new Date().toISOString()
                                                         }).eq('id', uid);
                                                         setUserData((prev: any) => ({ ...prev, location_permissions_allowed: false, locationPermissionsAllowed: false }));
@@ -2138,7 +2133,6 @@ export default function Profile() {
                                             if (granted) {
                                                 const payload: any = {
                                                     location_permissions_allowed: true,
-                                                    locationPermissionsAllowed: true,
                                                     updated_at: new Date().toISOString()
                                                 };
                                                 if (userCoords) {

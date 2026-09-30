@@ -42,7 +42,7 @@ import { vibrate } from '../utils/haptics';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { useCurrency } from '../context/CurrencyContext';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience, getGoogleMapsLastError } from '../lib/mapsConfig';
 import { calculateDynamicFare, FareCalculationResult } from '../lib/pricing';
 import SpeedFleetAnimation from '../components/SpeedFleetAnimation';
 import {
@@ -149,6 +149,7 @@ export default function Taxi() {
 
     // Native Map DOM reference
     const mapDivRef = useRef<HTMLDivElement | null>(null);
+    const hasMapError = useGoogleMapsResilience(mapDivRef, loadError);
     const mapInstanceRef = useRef<google.maps.Map | null>(null);
     const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
@@ -675,10 +676,10 @@ export default function Taxi() {
                 maxZoom: 19,
                 restriction: {
                     latLngBounds: {
-                        north: 9.3500,
-                        south: 8.6000,
-                        east: -67.0500,
-                        west: -67.8500
+                        north: 13.0000,
+                        south: 0.5000,
+                        east: -59.5000,
+                        west: -73.5000
                     },
                     strictBounds: false
                 },
@@ -2017,12 +2018,32 @@ export default function Taxi() {
                 intensity={weather?.precipitationMm && weather.precipitationMm > 1 ? 'heavy' : 'moderate'}
             />
 
-            {!isLoaded && (
+            {(loadError || hasMapError) ? (
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/95 text-white p-6 text-center select-none">
+                    <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
+                        <MapPin className="w-7 h-7" />
+                    </div>
+                    <h3 className="text-base font-black text-white mb-2">
+                        {getGoogleMapsLastError()?.message || "No se pudo conectar con Google Maps"}
+                    </h3>
+                    {getGoogleMapsLastError()?.action && (
+                        <p className="text-xs text-slate-400 max-w-sm mb-5 leading-relaxed">
+                            {getGoogleMapsLastError()?.action}
+                        </p>
+                    )}
+                    <button
+                        onClick={() => window.location.reload()}
+                        className="px-5 py-2.5 bg-primary text-slate-950 font-black text-xs rounded-xl hover:bg-yellow-400 active:scale-95 transition-all cursor-pointer shadow-lg"
+                    >
+                        Reintentar carga
+                    </button>
+                </div>
+            ) : !isLoaded ? (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100/90 backdrop-blur-sm">
                     <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
                     <p className="text-xs font-black uppercase tracking-widest text-slate-600">Iniciando Google Maps...</p>
                 </div>
-            )}
+            ) : null}
 
             {/* 0. PANTALLA INICIAL DE SELECCIÓN DE SERVICIO (Un 2x3 Movilidad) */}
             {/* 0. PANTALLA INICIAL DE SELECCIÓN DE SERVICIO (Un 2x3 Movilidad) */}

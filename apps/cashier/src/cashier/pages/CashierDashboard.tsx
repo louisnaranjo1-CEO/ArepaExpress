@@ -347,7 +347,7 @@ export default function CashierDashboard() {
                 try {
                     const { data, error } = await supabase
                         .from('profiles')
-                        .select('loyalty_points, points')
+                        .select('points')
                         .eq('id', selectedOrder.userId)
                         .maybeSingle();
 

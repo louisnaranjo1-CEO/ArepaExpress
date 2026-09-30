@@ -57,7 +57,10 @@ export default function CashierLogin() {
             // Update last login
             await supabase
                 .from('cashiers')
-                .update({ last_active_at: new Date().toISOString() })
+                .update({ 
+                    last_active_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString() 
+                })
                 .eq('id', cashier.id);
 
             localStorage.setItem('cashierData', JSON.stringify(cashierData));

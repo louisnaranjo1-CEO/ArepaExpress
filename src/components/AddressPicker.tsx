@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import { X, MapPin, Navigation, Check, Search, Loader2 } from 'lucide-react';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
 import { googleMapsDarkStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -41,7 +41,11 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
         libraries: GOOGLE_MAPS_LIBRARIES
     });
 
+    const mapContainerRef = useRef<HTMLDivElement>(null);
+    const hasMapError = useGoogleMapsResilience(mapContainerRef, loadError);
+
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
+
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [reference, setReference] = useState(initialData?.reference || '');
     const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -241,8 +245,8 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                 )}
 
                 {/* Map Container */}
-                <div className="relative w-full h-[360px] bg-slate-100">
-                    {isLoaded ? (
+                <div className="relative w-full h-[360px] bg-slate-100" ref={mapContainerRef}>
+                    {!hasMapError && isLoaded ? (
                         <GoogleMap
                             mapContainerStyle={containerStyle}
                             center={position}
@@ -277,7 +281,7 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                                 />
                             )}
                         </GoogleMap>
-                    ) : loadError ? (
+                    ) : (loadError || hasMapError) ? (
                         <div style={containerStyle} className="bg-slate-100 flex flex-col items-center justify-center gap-2 p-6 text-center">
                             <MapPin className="w-8 h-8 text-amber-500" />
                             <span className="text-xs font-bold text-slate-600">Verifica tu conexión para cargar el mapa</span>

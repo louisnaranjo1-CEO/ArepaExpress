@@ -50,7 +50,7 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
                 const { data, error } = await supabase
                     .from('global_prizes')
                     .select('*')
-                    .or('is_active.eq.true,isActive.eq.true');
+                    .eq('is_active', true);
 
                 if (error) throw error;
 
@@ -97,7 +97,7 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
                     .from('products')
                     .select('*')
                     .in('comercio_id', validRestIds)
-                    .or('points_price.gt.0,pointsPrice.gt.0');
+                    .gt('points_price', 0);
 
                 (rests || []).forEach((r: any) => {
                     const rProducts = (prods || [])

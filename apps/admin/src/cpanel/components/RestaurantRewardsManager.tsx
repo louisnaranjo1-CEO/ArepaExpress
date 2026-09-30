@@ -63,8 +63,8 @@ export default function RestaurantRewardsManager({ restaurantId }: RestaurantRew
             const { data: prodData } = await supabase
                 .from('products')
                 .select('*')
-                .or(`comercio_id.eq.${restaurantId},comercioId.eq.${restaurantId}`)
-                .or('points_price.gt.0,pointsPrice.gt.0');
+                .eq('comercio_id', restaurantId)
+                .gt('points_price', 0);
 
             setRewards(mappedRewards);
             setPointsProducts(prodData || []);

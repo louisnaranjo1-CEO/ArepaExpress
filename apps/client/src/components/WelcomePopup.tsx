@@ -38,7 +38,7 @@ export default function WelcomePopup({ manualState, manualCity }: WelcomePopupPr
                 const { data, error } = await supabase
                     .from('banners')
                     .select('*')
-                    .or('is_active.eq.true,isActive.eq.true')
+                    .eq('is_active', true)
                     .eq('type', 'welcome_popup');
 
                 if (error) throw error;

@@ -66,14 +66,14 @@ export default function Rewards() {
                 const { data: contestsData } = await supabase
                     .from('referral_contests')
                     .select('*')
-                    .or('is_active.eq.true,isActive.eq.true');
+                    .eq('is_active', true);
                 setContests(contestsData || []);
 
                 // Fetch active raffles
                 const { data: rafflesData } = await supabase
                     .from('raffles')
                     .select('*')
-                    .or('is_active.eq.true,isActive.eq.true');
+                    .eq('is_active', true);
                 setRaffles(rafflesData || []);
 
                 // Fetch share config
@@ -95,7 +95,7 @@ export default function Rewards() {
                     .from('banners')
                     .select('*')
                     .eq('type', 'fidelization')
-                    .or('is_active.eq.true,isActive.eq.true');
+                    .eq('is_active', true);
 
                 setGlobalBanners(bannersData || []);
             } catch (error) {
