@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DeliveryDriver } from '../../lib/delivery-service';
 import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
-import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search, CloudRain, Zap, Sparkles, Sliders, Bike, Car, ShieldCheck, Check, RefreshCw, Shield, CreditCard, Building2, Phone, Package, Percent } from 'lucide-react';
+import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search, CloudRain, Zap, Sparkles, Sliders, Bike, Car, ShieldCheck, Check, RefreshCw, Shield, CreditCard, Building2, Phone, Package, Percent, Store, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import DualPrice from '../../components/DualPrice';
@@ -132,6 +132,18 @@ _Enviado desde Deliexpress App_`,
     const [savingSettings, setSavingSettings] = useState(false);
     const [activeWhatsAppTab, setActiveWhatsAppTab] = useState<'store_delivery' | 'app_delivery'>('store_delivery');
     const [newRadarTip, setNewRadarTip] = useState('');
+
+    const insertWhatsAppVariable = (variable: string) => {
+        if (activeWhatsAppTab === 'store_delivery') {
+            const current = settings.whatsappMessageTemplate || '';
+            const spacer = current && !current.endsWith(' ') && !current.endsWith('\n') ? ' ' : '';
+            setSettings((prev: any) => ({ ...prev, whatsappMessageTemplate: current + spacer + variable }));
+        } else {
+            const current = settings.whatsappMessageTemplateAppDelivery || '';
+            const spacer = current && !current.endsWith(' ') && !current.endsWith('\n') ? ' ' : '';
+            setSettings((prev: any) => ({ ...prev, whatsappMessageTemplateAppDelivery: current + spacer + variable }));
+        }
+    };
 
     // Comisiones Fijas por Categoría Un 2x3
     const [categoryCommissions, setCategoryCommissions] = useState({
@@ -614,28 +626,30 @@ _Enviado desde Deliexpress App_`,
             </div>
 
             {/* TABS */}
-            <div className="flex bg-slate-100 p-1 rounded-2xl w-max relative z-0 overflow-x-auto hide-scrollbar">
-                {(['requests', 'active', 'verifications', 'finances', 'history'] as const).map(tab => (
-                    <button
-                        key={tab}
-                        onClick={() => setActiveTab(tab)}
-                        className={`relative px-6 py-2.5 rounded-xl font-black text-sm transition-all z-10 whitespace-nowrap ${activeTab === tab ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
-                            }`}
-                    >
-                        {activeTab === tab && (
-                            <motion.div
-                                layoutId="delivery-tab-bg"
-                                className="absolute inset-0 bg-white rounded-xl -z-10 shadow-sm"
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                            />
-                        )}
-                        {tab === 'requests' ? `Nuevas Solicitudes (${pendingDrivers.length})`
-                            : tab === 'active' ? `Pilotos Activos (${activeDrivers.length})`
-                                : tab === 'verifications' ? `Pagos Delivery (${verifyingOrders.length})`
-                                    : tab === 'finances' ? 'Finanzas y Tarifas'
-                                        : 'Auditoría de Entregas'}
-                    </button>
-                ))}
+            <div className="w-full overflow-x-auto hide-scrollbar pb-2 -mx-1 px-1 sm:mx-0 sm:px-0">
+                <div className="inline-flex min-w-full sm:min-w-0 bg-slate-100 p-1.5 rounded-2xl relative z-0 gap-1">
+                    {(['requests', 'active', 'verifications', 'finances', 'history'] as const).map(tab => (
+                        <button
+                            key={tab}
+                            onClick={() => setActiveTab(tab)}
+                            className={`relative px-4 sm:px-6 py-2.5 rounded-xl font-black text-xs sm:text-sm transition-all z-10 whitespace-nowrap shrink-0 ${activeTab === tab ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                                }`}
+                        >
+                            {activeTab === tab && (
+                                <motion.div
+                                    layoutId="delivery-tab-bg"
+                                    className="absolute inset-0 bg-white rounded-xl -z-10 shadow-sm"
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                />
+                            )}
+                            {tab === 'requests' ? `Nuevas Solicitudes (${pendingDrivers.length})`
+                                : tab === 'active' ? `Pilotos Activos (${activeDrivers.length})`
+                                    : tab === 'verifications' ? `Pagos Delivery (${verifyingOrders.length})`
+                                        : tab === 'finances' ? 'Finanzas y Tarifas'
+                                            : 'Auditoría de Entregas'}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* TAB: REQUESTS */}
@@ -1019,14 +1033,14 @@ _Enviado desde Deliexpress App_`,
 
             {/* TAB: FINANCES */}
             {activeTab === 'finances' && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4">
+                <div className="space-y-6 sm:space-y-8 animate-in fade-in slide-in-from-bottom-4">
                     {/* ========================================================= */}
                     {/* SECCIÓN 1: GESTIÓN DE COMISIONES FIJAS POR CATEGORÍA */}
                     {/* ========================================================= */}
-                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                    <div className="bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm space-y-5 sm:space-y-6">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
+                            <div className="space-y-1.5">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <span className="px-3 py-1 bg-primary/20 text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-primary/30">
                                         <Shield className="w-3.5 h-3.5 text-primary" />
                                         Tarifa Plana por Carrera
@@ -1035,7 +1049,7 @@ _Enviado desde Deliexpress App_`,
                                         Autonomía de Tarifas
                                     </span>
                                 </div>
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Comisiones de Plataforma Un 2x3</h3>
+                                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Comisiones de Plataforma Un 2x3</h3>
                                 <p className="text-xs text-slate-500 max-w-2xl font-medium leading-relaxed">
                                     Monto fijo exacto en dólares ($ USD) que se debita automáticamente del saldo y acumula a la deuda del conductor por cada servicio completado, sin importar el monto que el conductor cobre al usuario.
                                 </p>
@@ -1043,7 +1057,7 @@ _Enviado desde Deliexpress App_`,
                             <button
                                 onClick={handleSaveSettings}
                                 disabled={savingSettings}
-                                className="px-6 py-3 bg-primary text-slate-900 font-black rounded-2xl text-xs flex items-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-98 transition-all shrink-0"
+                                className="w-full sm:w-auto px-6 py-3 bg-primary text-slate-900 font-black rounded-xl sm:rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-98 transition-all shrink-0 cursor-pointer"
                             >
                                 <Check className="w-4 h-4" />
                                 {savingSettings ? 'Guardando...' : 'Guardar Comisiones'}
@@ -1051,15 +1065,15 @@ _Enviado desde Deliexpress App_`,
                         </div>
 
                         {/* 5 Categories Cards */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 sm:gap-4">
                             {/* Mototaxi */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-amber-400 transition-colors">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-amber-400 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center font-black shrink-0">
                                         <Bike className="w-5 h-5" />
                                     </div>
-                                    <div>
-                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Mototaxi</h4>
+                                    <div className="min-w-0">
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide truncate">Mototaxi</h4>
                                         <p className="text-[10px] text-slate-400 font-bold">1 Pasajero</p>
                                     </div>
                                 </div>
@@ -1073,7 +1087,7 @@ _Enviado desde Deliexpress App_`,
                                             min="0"
                                             value={categoryCommissions.mototaxi}
                                             onChange={(e) => setCategoryCommissions(prev => ({ ...prev, mototaxi: parseFloat(e.target.value) || 0 }))}
-                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2.5 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
                                         />
                                     </div>
                                     {bcvRate > 0 && (
@@ -1085,13 +1099,13 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Taxi Driver */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-indigo-400 transition-colors">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-indigo-400 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black shrink-0">
                                         <Car className="w-5 h-5" />
                                     </div>
-                                    <div>
-                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Taxi Driver</h4>
+                                    <div className="min-w-0">
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide truncate">Taxi Driver</h4>
                                         <p className="text-[10px] text-slate-400 font-bold">Carro Estándar</p>
                                     </div>
                                 </div>
@@ -1105,7 +1119,7 @@ _Enviado desde Deliexpress App_`,
                                             min="0"
                                             value={categoryCommissions.taxi}
                                             onChange={(e) => setCategoryCommissions(prev => ({ ...prev, taxi: parseFloat(e.target.value) || 0 }))}
-                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2.5 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-indigo-500/20"
                                         />
                                     </div>
                                     {bcvRate > 0 && (
@@ -1117,13 +1131,13 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Carro Confort */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-purple-400 transition-colors">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-purple-400 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-black shrink-0">
                                         <Sparkles className="w-5 h-5" />
                                     </div>
-                                    <div>
-                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Carro Confort</h4>
+                                    <div className="min-w-0">
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide truncate">Carro Confort</h4>
                                         <p className="text-[10px] text-slate-400 font-bold">A/C • Maletero</p>
                                     </div>
                                 </div>
@@ -1137,7 +1151,7 @@ _Enviado desde Deliexpress App_`,
                                             min="0"
                                             value={categoryCommissions.confort}
                                             onChange={(e) => setCategoryCommissions(prev => ({ ...prev, confort: parseFloat(e.target.value) || 0 }))}
-                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-purple-500/20"
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2.5 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-purple-500/20"
                                         />
                                     </div>
                                     {bcvRate > 0 && (
@@ -1149,13 +1163,13 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Envíos / Delivery */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-emerald-400 transition-colors">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-emerald-400 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black shrink-0">
                                         <Package className="w-5 h-5" />
                                     </div>
-                                    <div>
-                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">Envíos / Delivery</h4>
+                                    <div className="min-w-0">
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide truncate">Envíos / Delivery</h4>
                                         <p className="text-[10px] text-slate-400 font-bold">Paquetes / Pedidos</p>
                                     </div>
                                 </div>
@@ -1169,7 +1183,7 @@ _Enviado desde Deliexpress App_`,
                                             min="0"
                                             value={categoryCommissions.delivery}
                                             onChange={(e) => setCategoryCommissions(prev => ({ ...prev, delivery: parseFloat(e.target.value) || 0 }))}
-                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2.5 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20"
                                         />
                                     </div>
                                     {bcvRate > 0 && (
@@ -1181,13 +1195,13 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Muchacho e' Mandado */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-amber-500 transition-colors">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-amber-500 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-700 flex items-center justify-center font-black shrink-0">
                                         <Zap className="w-5 h-5" />
                                     </div>
-                                    <div>
-                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide">e' Mandado</h4>
+                                    <div className="min-w-0">
+                                        <h4 className="font-black text-slate-900 text-xs uppercase tracking-wide truncate">e' Mandado</h4>
                                         <p className="text-[10px] text-slate-400 font-bold">Diligencias / Bidding</p>
                                     </div>
                                 </div>
@@ -1201,7 +1215,7 @@ _Enviado desde Deliexpress App_`,
                                             min="0"
                                             value={categoryCommissions.mandao}
                                             onChange={(e) => setCategoryCommissions(prev => ({ ...prev, mandao: parseFloat(e.target.value) || 0 }))}
-                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2.5 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-amber-500/20"
                                         />
                                     </div>
                                     {bcvRate > 0 && (
@@ -1214,16 +1228,16 @@ _Enviado desde Deliexpress App_`,
                         </div>
 
                         {/* Nueva Regulación: Comisión sobre Kilómetros Excedentes y Tarifas de Referencia */}
-                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-3 border-t border-slate-100">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5 pt-3 sm:pt-4 border-t border-slate-100">
                             {/* Card: % Comisión sobre Km Excedentes */}
-                            <div className="lg:col-span-5 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent p-5 rounded-2xl border-2 border-amber-300/80 space-y-3">
+                            <div className="lg:col-span-5 bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent p-4 sm:p-5 rounded-2xl border-2 border-amber-300/80 space-y-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-md shadow-amber-500/20">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center font-black shadow-md shadow-amber-500/20 shrink-0">
                                         <Percent className="w-5 h-5" />
                                     </div>
                                     <div>
                                         <h4 className="font-black text-slate-900 text-sm">Comisión sobre Km Excedentes</h4>
-                                        <p className="text-[10px] text-amber-800 font-bold">Aplica a todas las modalidades de transporte</p>
+                                        <p className="text-[10px] text-amber-800 font-bold">Aplica a todas las modalidades</p>
                                     </div>
                                 </div>
                                 <p className="text-xs text-slate-600 leading-relaxed font-medium">
@@ -1253,9 +1267,9 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Card: Recomendaciones de Precios de Referencia para Choferes */}
-                            <div className="lg:col-span-7 bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3">
+                            <div className="lg:col-span-7 bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center font-black shrink-0">
                                         <Sparkles className="w-5 h-5" />
                                     </div>
                                     <div>
@@ -1267,7 +1281,7 @@ _Enviado desde Deliexpress App_`,
                                     Precios de referencia orientativos que se muestran en la pantalla de tarifas del conductor para guiarlos al fijar su precio por kilómetro excedente.
                                 </p>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 pt-1">
                                     {/* Turno Diurno */}
                                     <div className="p-3.5 bg-white rounded-xl border border-slate-200 space-y-2">
                                         <div className="flex items-center gap-1.5 text-amber-600 text-xs font-black">
@@ -1282,7 +1296,7 @@ _Enviado desde Deliexpress App_`,
                                                     step="0.01"
                                                     value={driverRateRecommendations.day_km_min}
                                                     onChange={e => setDriverRateRecommendations(prev => ({ ...prev, day_km_min: parseFloat(e.target.value) || 0 }))}
-                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
                                                 />
                                             </div>
                                             <div>
@@ -1292,7 +1306,7 @@ _Enviado desde Deliexpress App_`,
                                                     step="0.01"
                                                     value={driverRateRecommendations.day_km_max}
                                                     onChange={e => setDriverRateRecommendations(prev => ({ ...prev, day_km_max: parseFloat(e.target.value) || 0 }))}
-                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
                                                 />
                                             </div>
                                         </div>
@@ -1312,7 +1326,7 @@ _Enviado desde Deliexpress App_`,
                                                     step="0.01"
                                                     value={driverRateRecommendations.night_km_min}
                                                     onChange={e => setDriverRateRecommendations(prev => ({ ...prev, night_km_min: parseFloat(e.target.value) || 0 }))}
-                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
                                                 />
                                             </div>
                                             <div>
@@ -1322,7 +1336,7 @@ _Enviado desde Deliexpress App_`,
                                                     step="0.01"
                                                     value={driverRateRecommendations.night_km_max}
                                                     onChange={e => setDriverRateRecommendations(prev => ({ ...prev, night_km_max: parseFloat(e.target.value) || 0 }))}
-                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
+                                                    className="w-full bg-slate-50 border border-slate-200 px-2.5 py-2 rounded-lg text-xs font-bold text-slate-800 outline-none focus:ring-1 focus:ring-indigo-500"
                                                 />
                                             </div>
                                         </div>
@@ -1335,10 +1349,10 @@ _Enviado desde Deliexpress App_`,
                     {/* ========================================================= */}
                     {/* SECCIÓN 1.5: COMISIONES POR VENTAS EN COMERCIOS (POR CARRITO) */}
                     {/* ========================================================= */}
-                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                    <div className="bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm space-y-6">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
+                            <div className="space-y-1.5">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <span className="px-3 py-1 bg-emerald-500/10 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-emerald-500/30">
                                         <Store className="w-3.5 h-3.5 text-emerald-600" />
                                         Tiendas y Comercios
@@ -1347,18 +1361,18 @@ _Enviado desde Deliexpress App_`,
                                         Por Carrito de Compra
                                     </span>
                                 </div>
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Comisiones por Ventas en Comercios</h3>
+                                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Comisiones por Ventas en Comercios</h3>
                                 <p className="text-xs text-slate-500 max-w-2xl font-medium leading-relaxed">
                                     Esquema escalonado según el subtotal de productos en el carrito del cliente para cada negocio. Aplica independientemente por tienda.
                                 </p>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3.5 sm:gap-5">
                             {/* Tier 1: Menos de $10 */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-emerald-400 transition-colors">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-emerald-400 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center font-black shrink-0">
                                         <ShoppingBag className="w-5 h-5" />
                                     </div>
                                     <div>
@@ -1376,7 +1390,7 @@ _Enviado desde Deliexpress App_`,
                                             min="0"
                                             value={storeCommissionTiers.under10}
                                             onChange={(e) => setStoreCommissionTiers(prev => ({ ...prev, under10: parseFloat(e.target.value) || 0 }))}
-                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2.5 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-emerald-500/20"
                                         />
                                     </div>
                                     {bcvRate > 0 && (
@@ -1388,9 +1402,9 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Tier 2: De $10 a $20 */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-blue-400 transition-colors">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-blue-400 transition-colors">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 flex items-center justify-center font-black shrink-0">
                                         <ShoppingBag className="w-5 h-5" />
                                     </div>
                                     <div>
@@ -1408,7 +1422,7 @@ _Enviado desde Deliexpress App_`,
                                             min="0"
                                             value={storeCommissionTiers.from10to20}
                                             onChange={(e) => setStoreCommissionTiers(prev => ({ ...prev, from10to20: parseFloat(e.target.value) || 0 }))}
-                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2.5 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-blue-500/20"
                                         />
                                     </div>
                                     {bcvRate > 0 && (
@@ -1420,9 +1434,9 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Tier 3: Más de $20 */}
-                            <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-purple-400 transition-colors">
+                            <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200/80 space-y-3 hover:border-purple-400 transition-colors sm:col-span-2 md:col-span-1">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-black">
+                                    <div className="w-10 h-10 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center font-black shrink-0">
                                         <ShoppingBag className="w-5 h-5" />
                                     </div>
                                     <div>
@@ -1440,7 +1454,7 @@ _Enviado desde Deliexpress App_`,
                                             min="0"
                                             value={storeCommissionTiers.over20}
                                             onChange={(e) => setStoreCommissionTiers(prev => ({ ...prev, over20: parseFloat(e.target.value) || 0 }))}
-                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-purple-500/20"
+                                            className="w-full bg-white border border-slate-200 pl-7 pr-3 py-2.5 rounded-xl text-sm font-black text-slate-800 outline-none focus:ring-2 focus:ring-purple-500/20"
                                         />
                                     </div>
                                     {bcvRate > 0 && (
@@ -1456,10 +1470,10 @@ _Enviado desde Deliexpress App_`,
                     {/* ========================================================= */}
                     {/* SECCIÓN 2: DATOS OFICIALES PAGO MÓVIL RECEPTOR UN 2X3 */}
                     {/* ========================================================= */}
-                    <div className="bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                    <div className="bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm space-y-6">
                         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
+                            <div className="space-y-1.5">
+                                <div className="flex flex-wrap items-center gap-2">
                                     <span className="px-3 py-1 bg-amber-500/10 text-amber-700 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-amber-500/30">
                                         <CreditCard className="w-3.5 h-3.5 text-amber-500" />
                                         Cobro de Comisiones
@@ -1468,24 +1482,24 @@ _Enviado desde Deliexpress App_`,
                                         Visible para Pilotos
                                     </span>
                                 </div>
-                                <h3 className="text-xl font-black text-slate-900 tracking-tight">Cuenta Oficial Pago Móvil Un 2x3</h3>
+                                <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Cuenta Oficial Pago Móvil Un 2x3</h3>
                                 <p className="text-xs text-slate-500 max-w-2xl font-medium leading-relaxed">
                                     Datos bancarios oficiales donde los conductores transfieren en Bolívares (a tasa BCV) para liquidar sus comisiones adeudadas.
                                 </p>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
                             <div>
                                 <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Banco Receptor</label>
                                 <div className="relative">
-                                    <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                                    <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                                     <input
                                         type="text"
                                         value={un2x3PagoMovil.bank}
                                         onChange={(e) => setUn2x3PagoMovil(prev => ({ ...prev, bank: e.target.value }))}
                                         placeholder="Ej: Banesco (0134)"
-                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
                                     />
                                 </div>
                             </div>
@@ -1493,13 +1507,13 @@ _Enviado desde Deliexpress App_`,
                             <div>
                                 <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Teléfono Pago Móvil</label>
                                 <div className="relative">
-                                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                                    <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                                     <input
-                                        type="text"
+                                        type="tel"
                                         value={un2x3PagoMovil.phone}
                                         onChange={(e) => setUn2x3PagoMovil(prev => ({ ...prev, phone: e.target.value }))}
                                         placeholder="Ej: 04141234567"
-                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
                                     />
                                 </div>
                             </div>
@@ -1507,13 +1521,13 @@ _Enviado desde Deliexpress App_`,
                             <div>
                                 <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Cédula o RIF</label>
                                 <div className="relative">
-                                    <Shield className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                                    <Shield className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                                     <input
                                         type="text"
                                         value={un2x3PagoMovil.idf}
                                         onChange={(e) => setUn2x3PagoMovil(prev => ({ ...prev, idf: e.target.value }))}
                                         placeholder="Ej: J-50123456-7"
-                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs sm:text-sm font-mono font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
                                     />
                                 </div>
                             </div>
@@ -1521,25 +1535,25 @@ _Enviado desde Deliexpress App_`,
                             <div>
                                 <label className="text-[10px] font-black uppercase text-slate-400 block mb-1">Titular de la Cuenta</label>
                                 <div className="relative">
-                                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+                                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
                                     <input
                                         type="text"
                                         value={un2x3PagoMovil.name}
                                         onChange={(e) => setUn2x3PagoMovil(prev => ({ ...prev, name: e.target.value }))}
                                         placeholder="Ej: Un 2x3 Inversiones C.A."
-                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
+                                        className="w-full bg-slate-50 border border-slate-200 pl-9 pr-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-primary/20"
                                     />
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
                         {/* ========================================================= */}
                         {/* SECCIÓN 3: MONITOR DE CLIMA OPERATIVO (EN TIEMPO REAL) */}
                         {/* ========================================================= */}
-                        <div className="lg:col-span-2 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-6 md:p-8 rounded-[32px] text-white shadow-xl shadow-indigo-950/20 border border-indigo-900/50">
-                            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+                        <div className="lg:col-span-2 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] text-white shadow-xl shadow-indigo-950/20 border border-indigo-900/50">
+                            <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5 sm:gap-6">
                                 <div className="space-y-2">
                                     <div className="flex flex-wrap items-center gap-2">
                                         <span className="px-3 py-1 bg-sky-400/20 text-sky-300 rounded-full text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 border border-sky-400/30">
@@ -1550,7 +1564,7 @@ _Enviado desde Deliexpress App_`,
                                             Tarifas Fijas Transparentes
                                         </span>
                                     </div>
-                                    <h3 className="text-2xl font-black tracking-tight text-white">Monitor de Clima Operativo</h3>
+                                    <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white">Monitor de Clima Operativo</h3>
                                     <p className="text-xs text-slate-300 max-w-xl font-medium leading-relaxed">
                                         Visualización del clima en tiempo real para conocimiento operativo del equipo. <strong className="text-white">Ni el clima ni el tráfico alteran las tarifas ni generan recargos dinámicos</strong>, garantizando precios transparentes para clientes y conductores.
                                     </p>
@@ -1558,16 +1572,16 @@ _Enviado desde Deliexpress App_`,
 
                                 {/* Live Operational City Weather Card */}
                                 {cityWeather ? (
-                                    <div className="flex items-center gap-4 bg-white/10 px-5 py-3.5 rounded-2xl border border-white/15 text-white backdrop-blur-md shadow-lg">
-                                        <span className="text-3xl select-none">{cityWeather.conditionEmoji}</span>
-                                        <div>
-                                            <div className="font-black text-base flex items-center gap-2">
+                                    <div className="w-full sm:w-auto flex items-center gap-3.5 sm:gap-4 bg-white/10 p-3.5 sm:px-5 sm:py-3.5 rounded-2xl border border-white/15 text-white backdrop-blur-md shadow-lg">
+                                        <span className="text-3xl select-none shrink-0">{cityWeather.conditionEmoji}</span>
+                                        <div className="min-w-0">
+                                            <div className="font-black text-sm sm:text-base flex items-center gap-2 flex-wrap">
                                                 <span>{cityWeather.temperature}°C</span>
                                                 <span className="text-white/40">•</span>
-                                                <span>{cityWeather.conditionText}</span>
+                                                <span className="truncate">{cityWeather.conditionText}</span>
                                             </div>
-                                            <div className="text-xs text-slate-300 font-medium flex items-center gap-3 mt-0.5">
-                                                <span>🌧️ Prob. Lluvia: <strong className="text-sky-300">{cityWeather.rainProbability}%</strong></span>
+                                            <div className="text-[11px] sm:text-xs text-slate-300 font-medium flex flex-wrap items-center gap-2 sm:gap-3 mt-0.5">
+                                                <span>🌧️ Lluvia: <strong className="text-sky-300">{cityWeather.rainProbability}%</strong></span>
                                                 <span>💨 Viento: {cityWeather.windSpeed} km/h</span>
                                                 {cityWeather.isRaining && (
                                                     <span className="bg-blue-500/40 text-blue-200 px-2 py-0.5 rounded text-[10px] font-black animate-pulse">
@@ -1578,26 +1592,25 @@ _Enviado desde Deliexpress App_`,
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="text-xs text-slate-400 italic bg-white/5 px-4 py-3 rounded-xl border border-white/10">
+                                    <div className="text-xs text-slate-400 italic bg-white/5 px-4 py-3 rounded-xl border border-white/10 w-full sm:w-auto text-center">
                                         Cargando datos meteorológicos...
                                     </div>
                                 )}
                             </div>
                         </div>
 
-
                         {/* ========================================================= */}
                         {/* SECCIÓN 4: CONSEJOS Y ANUNCIOS PARA CONDUCTORES (RADAR) */}
                         {/* ========================================================= */}
-                        <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                        <div className="lg:col-span-2 bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm space-y-6">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center font-black">
-                                        <Sparkles className="w-6 h-6" />
+                                <div className="flex items-center gap-3 sm:gap-4">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center font-black shrink-0">
+                                        <Sparkles className="w-5 h-5 sm:w-6 sm:h-6" />
                                     </div>
                                     <div>
-                                        <div className="flex items-center gap-2">
-                                            <h3 className="text-xl font-black text-slate-900 tracking-tight">Consejos y Anuncios para Conductores (Radar)</h3>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Consejos y Anuncios (Radar)</h3>
                                             <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 rounded-full text-[10px] font-black uppercase">
                                                 En Pantalla Driver
                                             </span>
@@ -1620,31 +1633,31 @@ _Enviado desde Deliexpress App_`,
                                             ]
                                         }));
                                     }}
-                                    className="text-xs font-bold text-slate-400 hover:text-slate-600 underline"
+                                    className="text-xs font-bold text-slate-400 hover:text-slate-600 underline text-left sm:text-right"
                                 >
                                     Restablecer Predeterminados
                                 </button>
                             </div>
 
                             {/* Lista de Consejos Actuales */}
-                            <div className="space-y-3">
+                            <div className="space-y-2.5 sm:space-y-3">
                                 {(settings.driverRadarTips || []).map((tip: string, idx: number) => (
                                     <div
                                         key={idx}
-                                        className="flex items-center justify-between gap-3 bg-slate-50 border border-slate-200/80 p-3.5 rounded-2xl group hover:border-amber-300 transition-colors"
+                                        className="flex items-start sm:items-center justify-between gap-3 bg-slate-50 border border-slate-200/80 p-3 sm:p-3.5 rounded-2xl group hover:border-amber-300 transition-colors"
                                     >
-                                        <div className="flex items-start gap-3 flex-1">
+                                        <div className="flex items-start gap-2.5 sm:gap-3 flex-1 min-w-0">
                                             <span className="w-6 h-6 rounded-lg bg-amber-500/10 text-amber-700 font-black text-xs flex items-center justify-center shrink-0 mt-0.5">
                                                 {idx + 1}
                                             </span>
-                                            <p className="text-xs font-bold text-slate-700 leading-relaxed">{tip}</p>
+                                            <p className="text-xs font-bold text-slate-700 leading-relaxed break-words">{tip}</p>
                                         </div>
                                         <button
                                             onClick={() => {
                                                 const updated = (settings.driverRadarTips || []).filter((_: any, i: number) => i !== idx);
                                                 setSettings({ ...settings, driverRadarTips: updated });
                                             }}
-                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors shrink-0"
+                                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-colors shrink-0 min-w-[36px] min-h-[36px] flex items-center justify-center"
                                             title="Eliminar consejo"
                                         >
                                             <Trash2 className="w-4 h-4" />
@@ -1660,13 +1673,13 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Agregar Nuevo Consejo */}
-                            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                            <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 pt-2">
                                 <input
                                     type="text"
                                     value={newRadarTip}
                                     onChange={(e) => setNewRadarTip(e.target.value)}
                                     placeholder="Escribe un nuevo consejo o anuncio para los pilotos..."
-                                    className="flex-1 bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-amber-500/20"
+                                    className="flex-1 bg-slate-50 border border-slate-200 px-4 py-3 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-amber-500/20"
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter' && newRadarTip.trim()) {
                                             e.preventDefault();
@@ -1684,7 +1697,7 @@ _Enviado desde Deliexpress App_`,
                                         setNewRadarTip('');
                                     }}
                                     disabled={!newRadarTip.trim()}
-                                    className="px-5 py-3 bg-amber-500 text-slate-900 font-black rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 hover:scale-[1.02] active:scale-98 transition-all disabled:opacity-50 shrink-0"
+                                    className="w-full sm:w-auto px-5 py-3 bg-amber-500 text-slate-900 font-black rounded-xl sm:rounded-2xl text-xs flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 hover:scale-[1.02] active:scale-98 transition-all disabled:opacity-50 shrink-0 cursor-pointer"
                                 >
                                     <Plus className="w-4 h-4" />
                                     Agregar Consejo
@@ -1695,14 +1708,14 @@ _Enviado desde Deliexpress App_`,
                         {/* ========================================================= */}
                         {/* SECCIÓN 5: PLANTILLAS DE WHATSAPP SEGÚN CONTEXTO */}
                         {/* ========================================================= */}
-                        <div className="lg:col-span-2 bg-white p-6 md:p-8 rounded-[32px] border border-slate-200 shadow-sm space-y-6">
+                        <div className="lg:col-span-2 bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-[32px] border border-slate-200 shadow-sm space-y-6">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
-                                        <FileText className="w-6 h-6" />
+                                <div className="flex items-center gap-3 sm:gap-4">
+                                    <div className="w-10 h-10 sm:w-12 sm:h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center shrink-0">
+                                        <FileText className="w-5 h-5 sm:w-6 sm:h-6" />
                                     </div>
                                     <div>
-                                        <h3 className="text-xl font-black text-slate-900 tracking-tight">Plantillas de WhatsApp según Contexto</h3>
+                                        <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Plantillas de WhatsApp según Contexto</h3>
                                         <p className="text-xs font-medium text-slate-500">
                                             Configura los mensajes que se enviarán a la tienda según cómo se gestiona y cobra el delivery.
                                         </p>
@@ -1710,11 +1723,11 @@ _Enviado desde Deliexpress App_`,
                                 </div>
 
                                 {/* Context Selector Tabs */}
-                                <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/80 shrink-0">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 p-1.5 bg-slate-100 rounded-2xl border border-slate-200/80 w-full sm:w-auto">
                                     <button
                                         type="button"
                                         onClick={() => setActiveWhatsAppTab('store_delivery')}
-                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                        className={`px-3 py-2.5 rounded-xl text-xs font-black transition-all text-center ${
                                             activeWhatsAppTab === 'store_delivery'
                                                 ? 'bg-white text-slate-900 shadow-sm'
                                                 : 'text-slate-500 hover:text-slate-800'
@@ -1725,7 +1738,7 @@ _Enviado desde Deliexpress App_`,
                                     <button
                                         type="button"
                                         onClick={() => setActiveWhatsAppTab('app_delivery')}
-                                        className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${
+                                        className={`px-3 py-2.5 rounded-xl text-xs font-black transition-all text-center ${
                                             activeWhatsAppTab === 'app_delivery'
                                                 ? 'bg-emerald-600 text-white shadow-sm'
                                                 : 'text-slate-500 hover:text-slate-800'
@@ -1737,7 +1750,7 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             {/* Contextual Notice */}
-                            <div className={`p-4 rounded-2xl border text-xs font-medium ${
+                            <div className={`p-3.5 sm:p-4 rounded-2xl border text-xs font-medium ${
                                 activeWhatsAppTab === 'store_delivery'
                                     ? 'bg-slate-50 border-slate-200 text-slate-600'
                                     : 'bg-emerald-50/80 border-emerald-200 text-emerald-900'
@@ -1754,19 +1767,36 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             <div className="space-y-4">
-                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                                    <p className="text-xs font-bold text-slate-600 mb-2 uppercase tracking-wide">Variables Disponibles:</p>
+                                <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-100">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-xs font-bold text-slate-600 uppercase tracking-wide">Variables Disponibles:</p>
+                                        <span className="text-[10px] text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                            💡 Toca para insertar
+                                        </span>
+                                    </div>
                                     <div className="flex flex-wrap gap-2 text-[10px] font-medium text-slate-500">
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{OrderId}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{RestaurantName}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{UserName}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{Cedula}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{UserPhone}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{OrderItems}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{DeliveryFee}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{Total}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{LocationText}"}</span>
-                                        <span className="bg-white px-2 py-1 rounded border border-slate-200 font-mono">{"{OrderNotes}"}</span>
+                                        {[
+                                            "{OrderId}",
+                                            "{RestaurantName}",
+                                            "{UserName}",
+                                            "{Cedula}",
+                                            "{UserPhone}",
+                                            "{OrderItems}",
+                                            "{DeliveryFee}",
+                                            "{Total}",
+                                            "{LocationText}",
+                                            "{OrderNotes}"
+                                        ].map((v) => (
+                                            <button
+                                                key={v}
+                                                type="button"
+                                                onClick={() => insertWhatsAppVariable(v)}
+                                                className="bg-white px-2.5 py-1 rounded-lg border border-slate-200 font-mono text-[11px] font-bold text-slate-700 hover:bg-primary/20 hover:border-primary/40 active:scale-95 transition-all shadow-2xs"
+                                                title={`Insertar ${v}`}
+                                            >
+                                                {v}
+                                            </button>
+                                        ))}
                                     </div>
                                 </div>
 
@@ -1789,26 +1819,28 @@ _Enviado desde Deliexpress App_`,
                                                 setSettings({ ...settings, whatsappMessageTemplateAppDelivery: e.target.value });
                                             }
                                         }}
-                                        rows={10}
-                                        className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-primary/20 whitespace-pre-wrap leading-relaxed"
+                                        rows={9}
+                                        className="w-full bg-slate-50 border border-slate-200 p-3.5 sm:p-4 rounded-2xl text-xs sm:text-sm font-mono text-slate-800 outline-none focus:ring-2 focus:ring-primary/20 whitespace-pre-wrap leading-relaxed"
                                         placeholder="Escribe la plantilla del mensaje de WhatsApp aquí..."
                                     />
                                 </div>
                             </div>
                         </div>
 
-                        <div className="lg:col-span-2">
+                        <div className="lg:col-span-2 pt-2">
                             <button
                                 onClick={handleSaveSettings}
                                 disabled={savingSettings}
-                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/20 active:scale-[0.98] transition-all disabled:opacity-50"
+                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-xl sm:rounded-2xl shadow-lg shadow-primary/20 active:scale-[0.98] hover:scale-[1.01] transition-all disabled:opacity-50 text-sm sm:text-base flex items-center justify-center gap-2 cursor-pointer"
                             >
-                                {savingSettings ? 'Guardando...' : 'Guardar Todas las Configuraciones'}
+                                <Check className="w-5 h-5" />
+                                {savingSettings ? 'Guardando Configuraciones...' : 'Guardar Todas las Configuraciones'}
                             </button>
                         </div>
                     </div>
                 </div>
             )}
+
 
             {/* Document Review Modal */}
             <AnimatePresence>
