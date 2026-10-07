@@ -86,20 +86,12 @@ export function useGoogleMapsResilience(
             });
         }
 
-        // Safety fallback timer: if Google Maps API doesn't initialize within timeoutMs, fallback to Leaflet
-        const timer = setTimeout(() => {
-            if (typeof window !== 'undefined' && !window.google?.maps) {
-                console.warn('[GoogleMaps] Load timeout reached; activating resilient fallback.');
-                setHasError(true);
-            }
-        }, timeoutMs);
-
+        // Give Google Maps full priority as requested (do not abort prematurely to generic maps)
         return () => {
             window.removeEventListener('google_maps_error', onErrorEvent);
             if (observer) observer.disconnect();
-            clearTimeout(timer);
         };
-    }, [containerRef, loadError, timeoutMs]);
+    }, [containerRef, loadError]);
 
     return hasError;
 }

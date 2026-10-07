@@ -120,6 +120,63 @@ export default function TransportTracker() {
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [mandadoBids, setMandadoBids] = useState<any[]>([]);
     const [acceptingBidId, setAcceptingBidId] = useState<string | null>(null);
+    const [showTipsModal, setShowTipsModal] = useState(false);
+    const [cameraMode, setCameraMode] = useState<'user' | 'driver' | 'fit'>('user');
+
+    // Robust memoized coordinates for user pickup origin, destination, and driver
+    const originCoords = React.useMemo(() => {
+        if (!request?.origin) return null;
+        const lat = Number(request.origin.lat ?? request.origin.latitude ?? request.origin.coords?.lat);
+        const lng = Number(request.origin.lng ?? request.origin.longitude ?? request.origin.coords?.lng);
+        return (!isNaN(lat) && !isNaN(lng) && lat !== 0) ? { lat, lng } : null;
+    }, [request?.origin]);
+
+    const destCoords = React.useMemo(() => {
+        if (!request?.destination) return null;
+        const lat = Number(request.destination.lat ?? request.destination.latitude ?? request.destination.coords?.lat);
+        const lng = Number(request.destination.lng ?? request.destination.longitude ?? request.destination.coords?.lng);
+        return (!isNaN(lat) && !isNaN(lng) && lat !== 0) ? { lat, lng } : null;
+    }, [request?.destination]);
+
+    const driverCoords = React.useMemo(() => {
+        const loc = driver?.currentLocation;
+        if (!loc) return null;
+        const lat = Number(loc.latitude ?? (loc as any).lat);
+        const lng = Number(loc.longitude ?? (loc as any).lng);
+        return (!isNaN(lat) && !isNaN(lng) && lat !== 0) ? { lat, lng } : null;
+    }, [driver?.currentLocation]);
+
+    const handleRecenterUser = () => {
+        setCameraMode('user');
+        if (map && originCoords) {
+            map.panTo(originCoords);
+            map.setZoom(17);
+        }
+    };
+
+    const handleFocusDriver = () => {
+        setCameraMode('driver');
+        if (map && driverCoords) {
+            map.panTo(driverCoords);
+            map.setZoom(17);
+        }
+    };
+
+    const handleFitBoth = () => {
+        setCameraMode('fit');
+        if (!map || !window.google?.maps) return;
+        const bounds = new window.google.maps.LatLngBounds();
+        let count = 0;
+        if (originCoords) { bounds.extend(originCoords); count++; }
+        if (driverCoords) { bounds.extend(driverCoords); count++; }
+        if (destCoords && request?.status === 'in_progress') { bounds.extend(destCoords); count++; }
+        if (count > 1) {
+            map.fitBounds(bounds, { top: 70, bottom: 200, left: 50, right: 50 });
+        } else if (originCoords) {
+            map.panTo(originCoords);
+            map.setZoom(16);
+        }
+    };
 
     // Fetch and subscribe to bids if muchacho_mandado and searching
     useEffect(() => {
@@ -735,50 +792,91 @@ export default function TransportTracker() {
         setMap(null);
     }, []);
 
-    // Calculate route when request data is available
+    // Calculate route when request data or driver location is available
     useEffect(() => {
-        if (request && request.origin && request.destination && directionsService && map) {
+        if (!request || !directionsService || !map) return;
 
-            // Wait a tick to ensure map is ready
-            setTimeout(() => {
-                directionsService.route({
-                    origin: { lat: request.origin.lat, lng: request.origin.lng },
-                    destination: { lat: request.destination.lat, lng: request.destination.lng },
-                    travelMode: google.maps.TravelMode.DRIVING
-                }, (result, status) => {
-                    if (status === 'OK' && result) {
-                        if (!directionsRenderer) {
-                            const renderer = new google.maps.DirectionsRenderer({
-                                map: map,
-                                suppressMarkers: false,
-                                polylineOptions: {
-                                    strokeColor: '#FF5D00', // Brand Primary Orange
-                                    strokeWeight: 4
-                                }
-                            });
-                            setDirectionsRenderer(renderer);
-                            renderer.setDirections(result);
-                        } else {
-                            directionsRenderer.setDirections(result);
-                        }
+        // Determine what segment to route:
+        // If driver accepted or is arriving, route driver -> user pickup origin!
+        // If in_progress, route driver (or origin) -> destination!
+        // Otherwise, route origin -> destination!
+        let routeStart = originCoords;
+        let routeEnd = destCoords;
 
-                        const leg = result.routes[0].legs[0];
-                        if (leg) {
-                            const baseSeconds = leg.duration?.value || 0;
-                            const adjustedSeconds = Math.round(baseSeconds * 1.5);
-                            const adjustedMinutes = Math.max(1, Math.round(adjustedSeconds / 60));
-                            setRouteInfo({
-                                distance: leg.distance?.text || '',
-                                duration: `~${adjustedMinutes} min`
-                            });
-                        }
-                    }
-                });
-            }, 500);
+        if (['accepted', 'arriving'].includes(request.status) && driverCoords && originCoords) {
+            routeStart = driverCoords;
+            routeEnd = originCoords;
+        } else if (request.status === 'in_progress' && destCoords) {
+            routeStart = driverCoords || originCoords;
+            routeEnd = destCoords;
         }
-    }, [request, directionsService, map]);
 
-    if (loading || !isLoaded) {
+        if (!routeStart || !routeEnd) return;
+
+        const timer = setTimeout(() => {
+            directionsService.route({
+                origin: { lat: routeStart.lat, lng: routeStart.lng },
+                destination: { lat: routeEnd.lat, lng: routeEnd.lng },
+                travelMode: google.maps.TravelMode.DRIVING
+            }, (result, status) => {
+                if (status === 'OK' && result) {
+                    if (!directionsRenderer) {
+                        const renderer = new google.maps.DirectionsRenderer({
+                            map: map,
+                            suppressMarkers: true,
+                            polylineOptions: {
+                                strokeColor: '#FF5D00', // Brand Primary Orange
+                                strokeWeight: 5,
+                                strokeOpacity: 0.95
+                            }
+                        });
+                        setDirectionsRenderer(renderer);
+                        renderer.setDirections(result);
+                    } else {
+                        directionsRenderer.setDirections(result);
+                    }
+
+                    const leg = result.routes[0]?.legs[0];
+                    if (leg) {
+                        const baseSeconds = leg.duration?.value || 0;
+                        const adjustedSeconds = Math.round(baseSeconds * 1.2);
+                        const adjustedMinutes = Math.max(1, Math.round(adjustedSeconds / 60));
+                        setRouteInfo({
+                            distance: leg.distance?.text || '',
+                            duration: `~${adjustedMinutes} min`
+                        });
+                    }
+                }
+            });
+        }, 350);
+
+        return () => clearTimeout(timer);
+    }, [request?.status, originCoords, destCoords, driverCoords, directionsService, map]);
+
+    // Camera follow and positioning: Anchored to user or driver as selected
+    useEffect(() => {
+        if (!map || !window.google?.maps) return;
+
+        if (cameraMode === 'user' && originCoords) {
+            map.panTo(originCoords);
+        } else if (cameraMode === 'driver' && driverCoords) {
+            map.panTo(driverCoords);
+        } else if (cameraMode === 'fit') {
+            const bounds = new window.google.maps.LatLngBounds();
+            let count = 0;
+            if (originCoords) { bounds.extend(originCoords); count++; }
+            if (driverCoords) { bounds.extend(driverCoords); count++; }
+            if (destCoords && request?.status === 'in_progress') { bounds.extend(destCoords); count++; }
+            if (count > 1) {
+                map.fitBounds(bounds, { top: 70, bottom: 200, left: 50, right: 50 });
+            } else if (originCoords) {
+                map.panTo(originCoords);
+                map.setZoom(16);
+            }
+        }
+    }, [map, cameraMode, driverCoords, originCoords, destCoords, request?.status]);
+
+    if (loading) {
         return (
             <div className="flex items-center justify-center min-h-[100dvh] bg-slate-50">
                 <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
@@ -797,11 +895,14 @@ export default function TransportTracker() {
     }
 
     const getStatusInfo = () => {
+        const hasDriver = Boolean(driver || request?.driver_id || request?.assigned_driver_id || request?.driverId);
+        const driverName = driver?.fullName || (driver as any)?.full_name || request?.driver_name || 'Tu conductor';
+
         switch (request.status) {
             case 'driver_busy':
                 return {
                     title: "Conductor Ocupado",
-                    subtitle: request.rejection_reason || "El conductor seleccionado se encuentra ocupado llevando a otra persona en este momento. Por favor, selecciona otro disponible.",
+                    subtitle: request.rejection_reason || "El conductor seleccionado se encuentra ocupado. Por favor, selecciona otro disponible.",
                     color: "text-rose-600",
                     bg: "bg-rose-50",
                     icon: AlertCircle
@@ -818,17 +919,44 @@ export default function TransportTracker() {
                         icon: ShoppingBag
                     };
                 }
+                if (hasDriver) {
+                    return {
+                        title: "Conductor Seleccionado",
+                        subtitle: `${driverName} está revisando tu solicitud para iniciar el viaje`,
+                        color: "text-amber-600",
+                        bg: "bg-amber-50",
+                        icon: Clock
+                    };
+                }
                 return { title: "Buscando tu transporte...", subtitle: "Conectando con conductores cercanos en el radar...", color: "text-orange-600", bg: "bg-orange-50", icon: Clock };
             case 'accepted':
-                return { title: "Conductor en Camino", subtitle: "Tu transporte va hacia tu ubicación", color: "text-blue-500", bg: "bg-blue-50", icon: Car };
+                return { 
+                    title: "Conductor en Camino", 
+                    subtitle: `${driverName} va en camino hacia tu ubicación`, 
+                    color: "text-blue-600", 
+                    bg: "bg-blue-50", 
+                    icon: Car 
+                };
             case 'arriving':
-                return { title: "Conductor Afuera", subtitle: "El conductor ha llegado al punto de recogida", color: "text-blue-600", bg: "bg-blue-100", icon: MapPin };
+                return { 
+                    title: "¡El transporte está afuera!", 
+                    subtitle: `${driverName} ha llegado y te está esperando afuera`, 
+                    color: "text-amber-600", 
+                    bg: "bg-amber-100", 
+                    icon: MapPin 
+                };
             case 'in_progress':
-                return { title: "Viaje en Curso", subtitle: "Te diriges a tu destino", color: "text-emerald-500", bg: "bg-emerald-50", icon: Navigation };
+                return { 
+                    title: "Viaje en Curso", 
+                    subtitle: "Te diriges a tu destino con monitoreo en vivo", 
+                    color: "text-emerald-600", 
+                    bg: "bg-emerald-50", 
+                    icon: Navigation 
+                };
             case 'completed':
-                return { title: "Viaje Completado", subtitle: "Has llegado a tu destino", color: "text-slate-900", bg: "bg-slate-100", icon: CheckCircle2 };
+                return { title: "Viaje Completado", subtitle: "Has llegado a tu destino con éxito", color: "text-slate-900", bg: "bg-slate-100", icon: CheckCircle2 };
             case 'cancelled':
-                return { title: "Viaje Cancelado", subtitle: "El pago fue rechazado o el viaje cancelado", color: "text-red-500", bg: "bg-red-50", icon: XCircle };
+                return { title: "Viaje Cancelado", subtitle: request.cancellation_reason || "Esta solicitud fue cancelada", color: "text-red-500", bg: "bg-red-50", icon: XCircle };
             default:
                 return { title: "Procesando", subtitle: "Por favor espera", color: "text-slate-500", bg: "bg-slate-50", icon: Clock };
         }
@@ -874,54 +1002,159 @@ export default function TransportTracker() {
                 ) : !showChat ? (
                     <div className="w-full h-full relative" ref={mapContainerRef}>
                         {/* Overlay to ensure back button is visible on the map */}
-                        <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/20 to-transparent z-10 pointer-events-none"></div>
+                        <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/25 to-transparent z-10 pointer-events-none"></div>
 
-                        {(!hasMapError && isLoaded) ? (
+                        {/* Floating ETA Banner if driver is approaching or outside */}
+                        {['accepted', 'arriving'].includes(request.status) && (
+                            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 pointer-events-auto max-w-[90%]">
+                                <div className="bg-slate-950/90 backdrop-blur-md text-white px-3.5 py-1.5 rounded-full shadow-xl border border-amber-400/40 flex items-center gap-2 text-xs font-black animate-in fade-in slide-in-from-top-2">
+                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                                    {request.status === 'arriving' ? (
+                                        <span className="text-amber-400">¡Conductor afuera en el punto!</span>
+                                    ) : (
+                                        <span className="truncate">
+                                            Conductor en camino {routeInfo ? `• ~${routeInfo.duration} (${routeInfo.distance})` : ''}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Floating Camera Controls: Center on user / driver / fit */}
+                        <div className="absolute top-4 right-4 z-20 flex flex-col gap-1.5 pointer-events-auto">
+                            {originCoords && (
+                                <button
+                                    type="button"
+                                    onClick={handleRecenterUser}
+                                    title="Centrar en mi ubicación de partida"
+                                    className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black shadow-lg backdrop-blur-md flex items-center gap-1.5 transition-all active:scale-95 border ${
+                                        cameraMode === 'user'
+                                            ? 'bg-emerald-600 text-white border-emerald-500 ring-2 ring-emerald-300'
+                                            : 'bg-white/95 text-slate-800 border-slate-200 hover:bg-white'
+                                    }`}
+                                >
+                                    <MapPin className="w-3.5 h-3.5 text-emerald-500 fill-emerald-500" />
+                                    <span>Mi Posición</span>
+                                </button>
+                            )}
+
+                            {driverCoords && (
+                                <button
+                                    type="button"
+                                    onClick={handleFocusDriver}
+                                    title="Enfocar vehículo del conductor"
+                                    className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black shadow-lg backdrop-blur-md flex items-center gap-1.5 transition-all active:scale-95 border ${
+                                        cameraMode === 'driver'
+                                            ? 'bg-amber-500 text-slate-950 border-amber-400 ring-2 ring-amber-300'
+                                            : 'bg-white/95 text-slate-800 border-slate-200 hover:bg-white'
+                                    }`}
+                                >
+                                    <Car className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                                    <span>Chofer</span>
+                                </button>
+                            )}
+
+                            {driverCoords && originCoords && (
+                                <button
+                                    type="button"
+                                    onClick={handleFitBoth}
+                                    title="Ver recorrido completo"
+                                    className={`px-2.5 py-1.5 rounded-xl text-[10px] font-black shadow-lg backdrop-blur-md flex items-center gap-1.5 transition-all active:scale-95 border ${
+                                        cameraMode === 'fit'
+                                            ? 'bg-blue-600 text-white border-blue-500 ring-2 ring-blue-300'
+                                            : 'bg-white/95 text-slate-800 border-slate-200 hover:bg-white'
+                                    }`}
+                                >
+                                    <Navigation className="w-3.5 h-3.5 text-blue-500" />
+                                    <span>Ver Ambos</span>
+                                </button>
+                            )}
+                        </div>
+
+                        {/* EXCLUSIVE GOOGLE MAPS ENGINE */}
+                        {isLoaded ? (
                             <GoogleMap
                                 mapContainerStyle={{ width: '100%', height: '100%' }}
-                                center={driver?.currentLocation ? {
-                                    lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
-                                    lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
-                                } : (request.origin ? { lat: Number(request.origin.lat), lng: Number(request.origin.lng) } : { lat: 8.9326, lng: -67.4264 })}
-                                zoom={15}
+                                center={originCoords || driverCoords || { lat: 8.9326, lng: -67.4264 }}
+                                zoom={16}
                                 onLoad={onLoad}
                                 onUnmount={onUnmount}
                                 options={mapOptions}
                             >
-                                {driver?.currentLocation && (
+                                {/* Marker 1: Pickup / Origin Point (User Location) */}
+                                {originCoords && (
                                     <Marker
-                                        position={{
-                                            lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
-                                            lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
-                                        }}
+                                        position={originCoords}
                                         icon={{
-                                            url: (driver.vehicleType === 'moto' || request.service_category === 'mototaxi') 
-                                                ? 'https://cdn-icons-png.flaticon.com/512/1986/1986937.png'
-                                                : 'https://cdn-icons-png.flaticon.com/512/1048/1048314.png',
-                                            scaledSize: window.google ? new window.google.maps.Size(40, 40) : undefined
+                                            url: `data:image/svg+xml;utf-8,${encodeURIComponent(`
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
+                                                    <circle cx="19" cy="19" r="16" fill="#10B981" stroke="#FFFFFF" stroke-width="3.5" />
+                                                    <circle cx="19" cy="19" r="6" fill="#FFFFFF" />
+                                                </svg>
+                                            `)}`,
+                                            scaledSize: window.google ? new window.google.maps.Size(38, 38) : undefined,
+                                            anchor: window.google ? new window.google.maps.Point(19, 19) : undefined
                                         }}
-                                        title={driver.fullName || 'Conductor'}
+                                        title="Tu punto de recogida"
+                                        zIndex={100}
+                                    />
+                                )}
+
+                                {/* Marker 2: Transporter / Driver in Real Time */}
+                                {driverCoords && (
+                                    <Marker
+                                        position={driverCoords}
+                                        icon={{
+                                            url: (driver?.vehicleType === 'moto' || request.service_category === 'mototaxi')
+                                                ? `data:image/svg+xml;utf-8,${encodeURIComponent(`
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
+                                                        <circle cx="23" cy="23" r="21" fill="#0F172A" stroke="#F59E0B" stroke-width="3.5" />
+                                                        <circle cx="15" cy="28" r="4.5" fill="#F59E0B" />
+                                                        <circle cx="31" cy="28" r="4.5" fill="#F59E0B" />
+                                                        <path d="M17 25h7l4-9h5" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" fill="none" />
+                                                    </svg>
+                                                `)}`
+                                                : `data:image/svg+xml;utf-8,${encodeURIComponent(`
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
+                                                        <circle cx="23" cy="23" r="21" fill="#0F172A" stroke="#3B82F6" stroke-width="3.5" />
+                                                        <rect x="12" y="20" width="22" height="11" rx="3" fill="#FFFFFF" />
+                                                        <path d="M15 20l2.5-6h11l2.5 6" fill="#3B82F6" />
+                                                        <circle cx="17" cy="31" r="3" fill="#0F172A" />
+                                                        <circle cx="29" cy="31" r="3" fill="#0F172A" />
+                                                    </svg>
+                                                `)}`,
+                                            scaledSize: window.google ? new window.google.maps.Size(46, 46) : undefined,
+                                            anchor: window.google ? new window.google.maps.Point(23, 23) : undefined
+                                        }}
+                                        title={`${driver?.fullName || 'Conductor'} (En vivo)`}
+                                        zIndex={110}
+                                    />
+                                )}
+
+                                {/* Marker 3: Destination Point */}
+                                {destCoords && ['in_progress', 'searching', 'driver_busy'].includes(request.status) && (
+                                    <Marker
+                                        position={destCoords}
+                                        icon={{
+                                            url: `data:image/svg+xml;utf-8,${encodeURIComponent(`
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
+                                                    <circle cx="19" cy="19" r="16" fill="#EF4444" stroke="#FFFFFF" stroke-width="3.5" />
+                                                    <rect x="14" y="14" width="10" height="10" rx="2" fill="#FFFFFF" />
+                                                </svg>
+                                            `)}`,
+                                            scaledSize: window.google ? new window.google.maps.Size(38, 38) : undefined,
+                                            anchor: window.google ? new window.google.maps.Point(19, 19) : undefined
+                                        }}
+                                        title="Destino del viaje"
+                                        zIndex={90}
                                     />
                                 )}
                             </GoogleMap>
-                        ) : hasMapError ? (
-                            <LiveTripMap
-                                origin={request?.origin ? { lat: Number(request.origin.lat), lng: Number(request.origin.lng) } : null}
-                                destination={request?.destination ? { lat: Number(request.destination.lat), lng: Number(request.destination.lng) } : null}
-                                driverLocation={driver?.currentLocation ? {
-                                    lat: Number(driver.currentLocation.latitude ?? (driver.currentLocation as any).lat),
-                                    lng: Number(driver.currentLocation.longitude ?? (driver.currentLocation as any).lng)
-                                } : null}
-                                vehicleType={driver?.vehicleType || request?.service_category || 'carro'}
-                                driverName={driver?.fullName || 'Conductor'}
-                                isExpanded={isMapExpanded}
-                                onToggleExpand={() => setIsMapExpanded(prev => !prev)}
-                                showControls={true}
-                            />
                         ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
-                                <div className="w-8 h-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                                <p className="text-xs font-bold text-slate-400">Iniciando mapa...</p>
+                                <div className="w-9 h-9 rounded-full border-3 border-amber-400 border-t-transparent animate-spin" />
+                                <p className="text-xs font-black uppercase tracking-wider text-amber-400">Google Maps en Vivo...</p>
+                                <p className="text-[10px] text-slate-400">Conectando rastreo satelital</p>
                             </div>
                         )}
                     </div>
@@ -963,25 +1196,38 @@ export default function TransportTracker() {
                 </button>
 
                 {/* Status Header */}
-                <div className="flex items-center gap-3 mb-4">
-                    <div className={`w-10 h-10 ${statusInfo.bg} ${statusInfo.color} rounded-xl flex items-center justify-center shrink-0`}>
-                        <StatusIcon className="w-5 h-5" />
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <h2 className="text-lg font-black text-slate-900 leading-none">{statusInfo.title}</h2>
-                            {request.scheduled && (
-                                <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider animate-pulse border border-purple-200">
-                                    RESERVA
-                                </span>
-                            )}
+                <div className="flex items-center justify-between gap-3 mb-4">
+                    <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-11 h-11 ${statusInfo.bg} ${statusInfo.color} rounded-2xl flex items-center justify-center shrink-0 shadow-sm border border-slate-200/60`}>
+                            <StatusIcon className="w-5 h-5" />
                         </div>
-                        <p className="font-bold text-slate-500 text-xs mt-0.5">
-                            {request.scheduled && request.status === 'searching' 
-                                ? `Programado para: ${(request.scheduledAt ? (typeof request.scheduledAt.toDate === 'function' ? request.scheduledAt.toDate() : new Date(request.scheduledAt)) : null)?.toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) || 'Fecha pendiente'}`
-                                : statusInfo.subtitle}
-                        </p>
+                        <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                                <h2 className="text-base sm:text-lg font-black text-slate-900 leading-tight truncate">{statusInfo.title}</h2>
+                                {request.scheduled && (
+                                    <span className="bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider animate-pulse border border-purple-200">
+                                        RESERVA
+                                    </span>
+                                )}
+                            </div>
+                            <p className="font-bold text-slate-500 text-xs mt-0.5 leading-snug truncate">
+                                {request.scheduled && request.status === 'searching' 
+                                    ? `Programado para: ${(request.scheduledAt ? (typeof request.scheduledAt.toDate === 'function' ? request.scheduledAt.toDate() : new Date(request.scheduledAt)) : null)?.toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) || 'Fecha pendiente'}`
+                                    : statusInfo.subtitle}
+                            </p>
+                        </div>
                     </div>
+
+                    {/* Botón de Consejos y Seguridad */}
+                    <button
+                        type="button"
+                        onClick={() => setShowTipsModal(true)}
+                        className="px-3 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 active:scale-95 text-slate-950 font-black text-[11px] rounded-xl shadow-md transition-all flex items-center gap-1.5 shrink-0"
+                        title="Consejos de seguridad y uso del servicio"
+                    >
+                        <ShieldCheck className="w-4 h-4 text-slate-950" />
+                        <span>Consejos</span>
+                    </button>
                 </div>
 
                 {/* Conductor Ocupado: Mensaje y Reasignación Directa */}
@@ -1952,6 +2198,104 @@ export default function TransportTracker() {
                                     {updatingPaymentMethod ? 'Guardando...' : 'Confirmar Método de Pago'}
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Modal de Consejos de Seguridad y Confianza */}
+                {showTipsModal && (
+                    <div className="fixed inset-0 z-[120] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in pointer-events-auto">
+                        <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl border border-slate-100 p-5 space-y-4 animate-scale-in">
+                            {/* Header */}
+                            <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-xl shadow-md">
+                                        🛡️
+                                    </div>
+                                    <div>
+                                        <h3 className="text-base font-black text-slate-900 leading-tight">Consejos y Confianza</h3>
+                                        <p className="text-xs font-bold text-slate-500 mt-0.5">Cómo funciona tu viaje en Un 2x3</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => setShowTipsModal(false)}
+                                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-sm font-black transition-colors"
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            {/* List of Tips */}
+                            <div className="space-y-3 text-xs">
+                                <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200/80 flex items-start gap-3">
+                                    <div className="w-7 h-7 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 font-black text-xs shadow-xs">
+                                        1
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs">Conductores Verificados</h4>
+                                        <p className="text-slate-600 font-medium text-[11px] mt-0.5 leading-relaxed">
+                                            Cada chofer cuenta con cédula de identidad, foto real, vehículo inspeccionado y placa verificada. Viajas con total tranquilidad.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="p-3 bg-blue-50/70 rounded-2xl border border-blue-200/80 flex items-start gap-3">
+                                    <div className="w-7 h-7 rounded-xl bg-blue-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-xs">
+                                        2
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs">Rastreo en Vivo por Google Maps</h4>
+                                        <p className="text-slate-600 font-medium text-[11px] mt-0.5 leading-relaxed">
+                                            El mapa te muestra en tiempo real cómo avanza tu transporte hacia tu dirección. Puedes pulsar "Mi Posición" para ver su llegada desde tu lugar de espera.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="p-3 bg-emerald-50/70 rounded-2xl border border-emerald-200/80 flex items-start gap-3">
+                                    <div className="w-7 h-7 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-xs">
+                                        3
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs">Aviso de Llegada</h4>
+                                        <p className="text-slate-600 font-medium text-[11px] mt-0.5 leading-relaxed">
+                                            Cuando el conductor esté afuera, la pantalla te indicará: <strong>¡El transporte está afuera!</strong>. Sal al punto indicado para abordar sin demoras.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="p-3 bg-purple-50/70 rounded-2xl border border-purple-200/80 flex items-start gap-3">
+                                    <div className="w-7 h-7 rounded-xl bg-purple-500 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-xs">
+                                        4
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs">Pago Directo y Transparente</h4>
+                                        <p className="text-slate-600 font-medium text-[11px] mt-0.5 leading-relaxed">
+                                            Pagas directamente al conductor en Efectivo ($ USD o Bs a tasa oficial) o por Pago Móvil. Sin comisiones extra ni sorpresas.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+                                    <div className="w-7 h-7 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0 font-black text-xs shadow-xs">
+                                        5
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs">Comunicación Segura</h4>
+                                        <p className="text-slate-600 font-medium text-[11px] mt-0.5 leading-relaxed">
+                                            Puedes chatear o realizar llamadas de voz dentro de la aplicación con tu chofer manteniendo tu privacidad.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Close Button */}
+                            <button
+                                type="button"
+                                onClick={() => setShowTipsModal(false)}
+                                className="w-full py-3.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-xl transition-all"
+                            >
+                                Entendido, ¡confío en el servicio!
+                            </button>
                         </div>
                     </div>
                 )}

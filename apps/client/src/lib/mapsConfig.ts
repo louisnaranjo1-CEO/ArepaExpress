@@ -229,30 +229,11 @@ export function useGoogleMapsResilience(
             });
         }
 
-        // Safety fallback timer: 15s to allow script to download over mobile network
-        const timer = setTimeout(() => {
-            if (typeof window !== 'undefined' && !window.google?.maps) {
-                console.warn('[GoogleMaps] Load timeout reached (15s); activating resilient fallback.');
-                const diag = getDiagnosticForCode('TimeoutError');
-                const timeoutErr: GoogleMapsErrorInfo = {
-                    code: 'TimeoutError',
-                    message: diag.message,
-                    action: diag.action,
-                    raw: `Timeout after ${timeoutMs}ms`,
-                    timestamp: Date.now()
-                };
-                window.__gm_last_error = timeoutErr;
-                setErrorInfo(timeoutErr);
-                setHasError(true);
-            }
-        }, timeoutMs);
-
         return () => {
             window.removeEventListener('google_maps_error', onErrorEvent);
             if (observer) observer.disconnect();
-            clearTimeout(timer);
         };
-    }, [containerRef, loadError, timeoutMs]);
+    }, [containerRef, loadError]);
 
     return hasError;
 }
