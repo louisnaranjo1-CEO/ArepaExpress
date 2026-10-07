@@ -4,12 +4,11 @@ import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
 import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield, CreditCard, Sparkles } from 'lucide-react';
-import { GoogleMap, useJsApiLoader, DirectionsRenderer, Marker } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
+import { useJsApiLoader } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 
 import RideChat from '../components/RideChat';
 import InAppCall from '../components/InAppCall';
-import LiveTripMap from '../components/LiveTripMap';
 import { playChatChime, playCallAlertChime, playTripStatusChime } from '../utils/audioChimes';
 import { sendAppNotification } from '../services/nativeNotificationService';
 import { UN2X3_LOGO } from '../lib/env';
@@ -110,18 +109,20 @@ export default function TransportTracker() {
         googleMapsApiKey: GOOGLE_MAPS_API_KEY,
         libraries: GOOGLE_MAPS_LIBRARIES
     });
-    const mapContainerRef = useRef<HTMLDivElement>(null);
-    const hasMapError = useGoogleMapsResilience(mapContainerRef, loadError);
+    const mapDivRef = useRef<HTMLDivElement | null>(null);
+    const mapInstanceRef = useRef<google.maps.Map | null>(null);
+    const userMarkerRef = useRef<google.maps.Marker | null>(null);
+    const driverMarkerRef = useRef<google.maps.Marker | null>(null);
+    const destMarkerRef = useRef<google.maps.Marker | null>(null);
+    const directionsServiceRef = useRef<google.maps.DirectionsService | null>(null);
+    const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
 
-    const [map, setMap] = useState<google.maps.Map | null>(null);
-    const [directionsService, setDirectionsService] = useState<google.maps.DirectionsService | null>(null);
-    const [directionsRenderer, setDirectionsRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
     const [routeInfo, setRouteInfo] = useState<{ distance: string, duration: string } | null>(null);
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [mandadoBids, setMandadoBids] = useState<any[]>([]);
     const [acceptingBidId, setAcceptingBidId] = useState<string | null>(null);
     const [showTipsModal, setShowTipsModal] = useState(false);
-    const [cameraMode, setCameraMode] = useState<'user' | 'driver' | 'fit'>('user');
+    const [cameraMode, setCameraMode] = useState<'user' | 'driver' | 'fit'>('fit');
 
     // Robust memoized coordinates for user pickup origin, destination, and driver
     const originCoords = React.useMemo(() => {
@@ -139,15 +140,16 @@ export default function TransportTracker() {
     }, [request?.destination]);
 
     const driverCoords = React.useMemo(() => {
-        const loc = driver?.currentLocation;
+        const loc = driver?.currentLocation || (driver as any)?.current_location;
         if (!loc) return null;
-        const lat = Number(loc.latitude ?? (loc as any).lat);
-        const lng = Number(loc.longitude ?? (loc as any).lng);
+        const lat = Number(loc.latitude ?? (loc as any).lat ?? loc.coords?.lat);
+        const lng = Number(loc.longitude ?? (loc as any).lng ?? loc.coords?.lng);
         return (!isNaN(lat) && !isNaN(lng) && lat !== 0) ? { lat, lng } : null;
-    }, [driver?.currentLocation]);
+    }, [driver?.currentLocation, (driver as any)?.current_location]);
 
     const handleRecenterUser = () => {
         setCameraMode('user');
+        const map = mapInstanceRef.current;
         if (map && originCoords) {
             map.panTo(originCoords);
             map.setZoom(17);
@@ -156,6 +158,7 @@ export default function TransportTracker() {
 
     const handleFocusDriver = () => {
         setCameraMode('driver');
+        const map = mapInstanceRef.current;
         if (map && driverCoords) {
             map.panTo(driverCoords);
             map.setZoom(17);
@@ -164,6 +167,7 @@ export default function TransportTracker() {
 
     const handleFitBoth = () => {
         setCameraMode('fit');
+        const map = mapInstanceRef.current;
         if (!map || !window.google?.maps) return;
         const bounds = new window.google.maps.LatLngBounds();
         let count = 0;
@@ -171,7 +175,7 @@ export default function TransportTracker() {
         if (driverCoords) { bounds.extend(driverCoords); count++; }
         if (destCoords && request?.status === 'in_progress') { bounds.extend(destCoords); count++; }
         if (count > 1) {
-            map.fitBounds(bounds, { top: 70, bottom: 200, left: 50, right: 50 });
+            map.fitBounds(bounds, { top: 90, bottom: 220, left: 60, right: 60 });
         } else if (originCoords) {
             map.panTo(originCoords);
             map.setZoom(16);
@@ -783,23 +787,177 @@ export default function TransportTracker() {
         }
     };
 
-    const onLoad = useCallback(function callback(map: google.maps.Map) {
-        setMap(map);
-        setDirectionsService(new google.maps.DirectionsService());
-    }, []);
-
-    const onUnmount = useCallback(function callback(map: google.maps.Map) {
-        setMap(null);
-    }, []);
-
-    // Calculate route when request data or driver location is available
+    // Initialize Google Maps natively on mapDivRef
     useEffect(() => {
-        if (!request || !directionsService || !map) return;
+        if (!isLoaded || !mapDivRef.current || mapInstanceRef.current) return;
+        if (!window.google?.maps) return;
 
-        // Determine what segment to route:
-        // If driver accepted or is arriving, route driver -> user pickup origin!
-        // If in_progress, route driver (or origin) -> destination!
-        // Otherwise, route origin -> destination!
+        try {
+            const initialCenter = originCoords || driverCoords || { lat: 8.9326, lng: -67.4264 };
+            const map = new window.google.maps.Map(mapDivRef.current, {
+                center: initialCenter,
+                zoom: 16,
+                minZoom: 10,
+                maxZoom: 20,
+                disableDefaultUI: true,
+                zoomControl: false,
+                streetViewControl: false,
+                mapTypeControl: false,
+                fullscreenControl: false,
+                clickableIcons: false,
+                gestureHandling: 'greedy',
+                styles: isNightTime() ? googleMapsDarkStyles : yangoDayMapStyles
+            });
+
+            mapInstanceRef.current = map;
+            directionsServiceRef.current = new window.google.maps.DirectionsService();
+            directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+                map,
+                suppressMarkers: true,
+                polylineOptions: {
+                    strokeColor: '#FF5D00', // Brand Primary Orange
+                    strokeWeight: 5,
+                    strokeOpacity: 0.95
+                }
+            });
+
+            // Initial fit/pan
+            if (originCoords && driverCoords) {
+                const bounds = new window.google.maps.LatLngBounds();
+                bounds.extend(originCoords);
+                bounds.extend(driverCoords);
+                map.fitBounds(bounds, { top: 90, bottom: 220, left: 60, right: 60 });
+            } else if (originCoords) {
+                map.panTo(originCoords);
+                map.setZoom(16);
+            }
+        } catch (e) {
+            console.error("Error initializing Google Map in TransportTracker:", e);
+        }
+    }, [isLoaded]);
+
+    // Synchronize Native Markers on Google Maps
+    useEffect(() => {
+        const map = mapInstanceRef.current;
+        if (!map || !window.google?.maps) return;
+
+        // 1. User pickup / Origin marker (Green pin)
+        if (originCoords) {
+            const userIcon = {
+                url: `data:image/svg+xml;utf-8,${encodeURIComponent(`
+                    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
+                        <circle cx="19" cy="19" r="16" fill="#10B981" stroke="#FFFFFF" stroke-width="3.5" />
+                        <circle cx="19" cy="19" r="6" fill="#FFFFFF" />
+                    </svg>
+                `)}`,
+                scaledSize: new window.google.maps.Size(38, 38),
+                anchor: new window.google.maps.Point(19, 19)
+            };
+
+            if (!userMarkerRef.current) {
+                userMarkerRef.current = new window.google.maps.Marker({
+                    position: originCoords,
+                    map,
+                    icon: userIcon,
+                    title: "Tu punto de recogida",
+                    zIndex: 100
+                });
+            } else {
+                userMarkerRef.current.setPosition(originCoords);
+                userMarkerRef.current.setIcon(userIcon);
+            }
+        } else if (userMarkerRef.current) {
+            userMarkerRef.current.setMap(null);
+            userMarkerRef.current = null;
+        }
+
+        // 2. Driver marker in Real-time (Car or Moto with badge)
+        if (driverCoords) {
+            const isMoto = driver?.vehicleType === 'moto' || request?.service_category === 'mototaxi';
+            const driverSvg = isMoto
+                ? `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
+                    <circle cx="23" cy="23" r="21" fill="#0F172A" stroke="#F59E0B" stroke-width="3.5" />
+                    <circle cx="15" cy="28" r="4.5" fill="#F59E0B" />
+                    <circle cx="31" cy="28" r="4.5" fill="#F59E0B" />
+                    <path d="M17 25h7l4-9h5" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" fill="none" />
+                </svg>`
+                : `<svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
+                    <circle cx="23" cy="23" r="21" fill="#0F172A" stroke="#3B82F6" stroke-width="3.5" />
+                    <rect x="12" y="20" width="22" height="11" rx="3" fill="#FFFFFF" />
+                    <path d="M15 20l2.5-6h11l2.5 6" fill="#3B82F6" />
+                    <circle cx="17" cy="31" r="3" fill="#0F172A" />
+                    <circle cx="29" cy="31" r="3" fill="#0F172A" />
+                </svg>`;
+
+            const driverIcon = {
+                url: `data:image/svg+xml;utf-8,${encodeURIComponent(driverSvg)}`,
+                scaledSize: new window.google.maps.Size(46, 46),
+                anchor: new window.google.maps.Point(23, 23)
+            };
+
+            const driverTitle = `${driver?.fullName || 'Conductor'} (En vivo)`;
+
+            if (!driverMarkerRef.current) {
+                driverMarkerRef.current = new window.google.maps.Marker({
+                    position: driverCoords,
+                    map,
+                    icon: driverIcon,
+                    title: driverTitle,
+                    zIndex: 110
+                });
+            } else {
+                driverMarkerRef.current.setPosition(driverCoords);
+                driverMarkerRef.current.setIcon(driverIcon);
+                driverMarkerRef.current.setTitle(driverTitle);
+            }
+        } else if (driverMarkerRef.current) {
+            driverMarkerRef.current.setMap(null);
+            driverMarkerRef.current = null;
+        }
+
+        // 3. Destination marker (Red pin)
+        const showDest = destCoords && ['in_progress', 'searching', 'driver_busy'].includes(request?.status);
+        if (showDest && destCoords) {
+            const destIcon = {
+                url: `data:image/svg+xml;utf-8,${encodeURIComponent(`
+                    <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
+                        <circle cx="19" cy="19" r="16" fill="#EF4444" stroke="#FFFFFF" stroke-width="3.5" />
+                        <rect x="14" y="14" width="10" height="10" rx="2" fill="#FFFFFF" />
+                    </svg>
+                `)}`,
+                scaledSize: new window.google.maps.Size(38, 38),
+                anchor: new window.google.maps.Point(19, 19)
+            };
+
+            if (!destMarkerRef.current) {
+                destMarkerRef.current = new window.google.maps.Marker({
+                    position: destCoords,
+                    map,
+                    icon: destIcon,
+                    title: "Destino del viaje",
+                    zIndex: 90
+                });
+            } else {
+                destMarkerRef.current.setPosition(destCoords);
+                destMarkerRef.current.setIcon(destIcon);
+            }
+        } else if (destMarkerRef.current) {
+            destMarkerRef.current.setMap(null);
+            destMarkerRef.current = null;
+        }
+    }, [originCoords, driverCoords, destCoords, driver, request?.status, request?.service_category]);
+
+    // Calculate and draw live route polyline via DirectionsService
+    useEffect(() => {
+        const map = mapInstanceRef.current;
+        const directionsService = directionsServiceRef.current;
+        const directionsRenderer = directionsRendererRef.current;
+        if (!map || !directionsService || !directionsRenderer || !request || !window.google?.maps) return;
+
+        // Determine route segment:
+        // When driver is accepted or arriving: route driverCoords -> originCoords (pickup)!
+        // When trip is in progress: route driverCoords (or origin) -> destCoords!
+        // When searching: route originCoords -> destCoords!
         let routeStart = originCoords;
         let routeEnd = destCoords;
 
@@ -811,30 +969,21 @@ export default function TransportTracker() {
             routeEnd = destCoords;
         }
 
-        if (!routeStart || !routeEnd) return;
+        if (!routeStart || !routeEnd) {
+            try {
+                directionsRenderer.setDirections({ routes: [] } as any);
+            } catch (e) {}
+            return;
+        }
 
         const timer = setTimeout(() => {
             directionsService.route({
                 origin: { lat: routeStart.lat, lng: routeStart.lng },
                 destination: { lat: routeEnd.lat, lng: routeEnd.lng },
-                travelMode: google.maps.TravelMode.DRIVING
+                travelMode: window.google.maps.TravelMode.DRIVING
             }, (result, status) => {
                 if (status === 'OK' && result) {
-                    if (!directionsRenderer) {
-                        const renderer = new google.maps.DirectionsRenderer({
-                            map: map,
-                            suppressMarkers: true,
-                            polylineOptions: {
-                                strokeColor: '#FF5D00', // Brand Primary Orange
-                                strokeWeight: 5,
-                                strokeOpacity: 0.95
-                            }
-                        });
-                        setDirectionsRenderer(renderer);
-                        renderer.setDirections(result);
-                    } else {
-                        directionsRenderer.setDirections(result);
-                    }
+                    directionsRenderer.setDirections(result);
 
                     const leg = result.routes[0]?.legs[0];
                     if (leg) {
@@ -848,13 +997,14 @@ export default function TransportTracker() {
                     }
                 }
             });
-        }, 350);
+        }, 300);
 
         return () => clearTimeout(timer);
-    }, [request?.status, originCoords, destCoords, driverCoords, directionsService, map]);
+    }, [request?.status, originCoords, destCoords, driverCoords]);
 
     // Camera follow and positioning: Anchored to user or driver as selected
     useEffect(() => {
+        const map = mapInstanceRef.current;
         if (!map || !window.google?.maps) return;
 
         if (cameraMode === 'user' && originCoords) {
@@ -868,13 +1018,23 @@ export default function TransportTracker() {
             if (driverCoords) { bounds.extend(driverCoords); count++; }
             if (destCoords && request?.status === 'in_progress') { bounds.extend(destCoords); count++; }
             if (count > 1) {
-                map.fitBounds(bounds, { top: 70, bottom: 200, left: 50, right: 50 });
+                map.fitBounds(bounds, { top: 90, bottom: 220, left: 60, right: 60 });
             } else if (originCoords) {
                 map.panTo(originCoords);
                 map.setZoom(16);
             }
         }
-    }, [map, cameraMode, driverCoords, originCoords, destCoords, request?.status]);
+    }, [cameraMode, driverCoords, originCoords, destCoords, request?.status]);
+
+    // Cleanup markers and directions on unmount
+    useEffect(() => {
+        return () => {
+            if (userMarkerRef.current) userMarkerRef.current.setMap(null);
+            if (driverMarkerRef.current) driverMarkerRef.current.setMap(null);
+            if (destMarkerRef.current) destMarkerRef.current.setMap(null);
+            if (directionsRendererRef.current) directionsRendererRef.current.setMap(null);
+        };
+    }, []);
 
     if (loading) {
         return (
@@ -1000,7 +1160,10 @@ export default function TransportTracker() {
                         </div>
                     </div>
                 ) : !showChat ? (
-                    <div className="w-full h-full relative" ref={mapContainerRef}>
+                    <div className="w-full h-full relative">
+                        {/* EXCLUSIVE GOOGLE MAPS ENGINE (Native Canvas) */}
+                        <div ref={mapDivRef} className="absolute inset-0 w-full h-full z-0" />
+
                         {/* Overlay to ensure back button is visible on the map */}
                         <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/25 to-transparent z-10 pointer-events-none"></div>
 
@@ -1071,87 +1234,8 @@ export default function TransportTracker() {
                             )}
                         </div>
 
-                        {/* EXCLUSIVE GOOGLE MAPS ENGINE */}
-                        {isLoaded ? (
-                            <GoogleMap
-                                mapContainerStyle={{ width: '100%', height: '100%' }}
-                                center={originCoords || driverCoords || { lat: 8.9326, lng: -67.4264 }}
-                                zoom={16}
-                                onLoad={onLoad}
-                                onUnmount={onUnmount}
-                                options={mapOptions}
-                            >
-                                {/* Marker 1: Pickup / Origin Point (User Location) */}
-                                {originCoords && (
-                                    <Marker
-                                        position={originCoords}
-                                        icon={{
-                                            url: `data:image/svg+xml;utf-8,${encodeURIComponent(`
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
-                                                    <circle cx="19" cy="19" r="16" fill="#10B981" stroke="#FFFFFF" stroke-width="3.5" />
-                                                    <circle cx="19" cy="19" r="6" fill="#FFFFFF" />
-                                                </svg>
-                                            `)}`,
-                                            scaledSize: window.google ? new window.google.maps.Size(38, 38) : undefined,
-                                            anchor: window.google ? new window.google.maps.Point(19, 19) : undefined
-                                        }}
-                                        title="Tu punto de recogida"
-                                        zIndex={100}
-                                    />
-                                )}
-
-                                {/* Marker 2: Transporter / Driver in Real Time */}
-                                {driverCoords && (
-                                    <Marker
-                                        position={driverCoords}
-                                        icon={{
-                                            url: (driver?.vehicleType === 'moto' || request.service_category === 'mototaxi')
-                                                ? `data:image/svg+xml;utf-8,${encodeURIComponent(`
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
-                                                        <circle cx="23" cy="23" r="21" fill="#0F172A" stroke="#F59E0B" stroke-width="3.5" />
-                                                        <circle cx="15" cy="28" r="4.5" fill="#F59E0B" />
-                                                        <circle cx="31" cy="28" r="4.5" fill="#F59E0B" />
-                                                        <path d="M17 25h7l4-9h5" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" fill="none" />
-                                                    </svg>
-                                                `)}`
-                                                : `data:image/svg+xml;utf-8,${encodeURIComponent(`
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="46" height="46" viewBox="0 0 46 46">
-                                                        <circle cx="23" cy="23" r="21" fill="#0F172A" stroke="#3B82F6" stroke-width="3.5" />
-                                                        <rect x="12" y="20" width="22" height="11" rx="3" fill="#FFFFFF" />
-                                                        <path d="M15 20l2.5-6h11l2.5 6" fill="#3B82F6" />
-                                                        <circle cx="17" cy="31" r="3" fill="#0F172A" />
-                                                        <circle cx="29" cy="31" r="3" fill="#0F172A" />
-                                                    </svg>
-                                                `)}`,
-                                            scaledSize: window.google ? new window.google.maps.Size(46, 46) : undefined,
-                                            anchor: window.google ? new window.google.maps.Point(23, 23) : undefined
-                                        }}
-                                        title={`${driver?.fullName || 'Conductor'} (En vivo)`}
-                                        zIndex={110}
-                                    />
-                                )}
-
-                                {/* Marker 3: Destination Point */}
-                                {destCoords && ['in_progress', 'searching', 'driver_busy'].includes(request.status) && (
-                                    <Marker
-                                        position={destCoords}
-                                        icon={{
-                                            url: `data:image/svg+xml;utf-8,${encodeURIComponent(`
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="38" height="38" viewBox="0 0 38 38">
-                                                    <circle cx="19" cy="19" r="16" fill="#EF4444" stroke="#FFFFFF" stroke-width="3.5" />
-                                                    <rect x="14" y="14" width="10" height="10" rx="2" fill="#FFFFFF" />
-                                                </svg>
-                                            `)}`,
-                                            scaledSize: window.google ? new window.google.maps.Size(38, 38) : undefined,
-                                            anchor: window.google ? new window.google.maps.Point(19, 19) : undefined
-                                        }}
-                                        title="Destino del viaje"
-                                        zIndex={90}
-                                    />
-                                )}
-                            </GoogleMap>
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
+                        {!isLoaded && (
+                            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
                                 <div className="w-9 h-9 rounded-full border-3 border-amber-400 border-t-transparent animate-spin" />
                                 <p className="text-xs font-black uppercase tracking-wider text-amber-400">Google Maps en Vivo...</p>
                                 <p className="text-[10px] text-slate-400">Conectando rastreo satelital</p>
