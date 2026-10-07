@@ -60,6 +60,7 @@ import { promptEnableLocation, isLocationHardwareEnabled, openNativeLocationSett
 import RainOverlay from '../components/RainOverlay';
 import WeatherWidget from '../components/WeatherWidget';
 import MandadoRequestModal, { MandadoSubmitData } from '../components/MandadoRequestModal';
+import LiveTripMap from '../components/LiveTripMap';
 
 interface Location {
     lat: number;
@@ -690,7 +691,7 @@ export default function Taxi() {
                 fullscreenControl: false,
                 clickableIcons: false,
                 gestureHandling: 'greedy',
-                styles: googleMapsDarkStyles
+                styles: isNightTime() ? googleMapsDarkStyles : undefined
             });
 
             mapInstanceRef.current = map;
@@ -743,6 +744,14 @@ export default function Taxi() {
                     });
                 }
             });
+
+            // Auto refresh map size to prevent gray tiles in webview
+            setTimeout(() => {
+                if (window.google?.maps && mapInstanceRef.current) {
+                    window.google.maps.event.trigger(mapInstanceRef.current, 'resize');
+                    mapInstanceRef.current.setCenter(initialMapCenter);
+                }
+            }, 300);
 
             // Initial GPS acquisition with auto-pan directly to user's exact position
             locateUser(true);
@@ -2009,8 +2018,20 @@ export default function Taxi() {
 
     return (
         <div className="relative w-full h-full bg-slate-100 overflow-hidden select-none">
-            {/* 1. Full Screen Interactive Google Map */}
-            <div ref={mapDivRef} className="absolute inset-0 w-full h-full z-0" />
+            {/* 1. Full Screen Interactive Map with Zero-Downtime LiveTripMap Fallback */}
+            {hasMapError ? (
+                <div className="absolute inset-0 w-full h-full z-0">
+                    <LiveTripMap
+                        origin={origin ? { lat: origin.lat, lng: origin.lng } : null}
+                        destination={destination ? { lat: destination.lat, lng: destination.lng } : null}
+                        driverLocation={userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : null}
+                        vehicleType={vehicleType}
+                        showControls={false}
+                    />
+                </div>
+            ) : (
+                <div ref={mapDivRef} className="absolute inset-0 w-full h-full z-0 bg-slate-200" style={{ minHeight: '100%' }} />
+            )}
 
             {/* Live Weather Rain Animation Canvas Overlay */}
             <RainOverlay
@@ -2018,32 +2039,12 @@ export default function Taxi() {
                 intensity={weather?.precipitationMm && weather.precipitationMm > 1 ? 'heavy' : 'moderate'}
             />
 
-            {(loadError || hasMapError) ? (
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/95 text-white p-6 text-center select-none">
-                    <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
-                        <MapPin className="w-7 h-7" />
-                    </div>
-                    <h3 className="text-base font-black text-white mb-2">
-                        {getGoogleMapsLastError()?.message || "No se pudo conectar con Google Maps"}
-                    </h3>
-                    {getGoogleMapsLastError()?.action && (
-                        <p className="text-xs text-slate-400 max-w-sm mb-5 leading-relaxed">
-                            {getGoogleMapsLastError()?.action}
-                        </p>
-                    )}
-                    <button
-                        onClick={() => window.location.reload()}
-                        className="px-5 py-2.5 bg-primary text-slate-950 font-black text-xs rounded-xl hover:bg-yellow-400 active:scale-95 transition-all cursor-pointer shadow-lg"
-                    >
-                        Reintentar carga
-                    </button>
-                </div>
-            ) : !isLoaded ? (
+            {!isLoaded && !hasMapError && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100/90 backdrop-blur-sm">
                     <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
                     <p className="text-xs font-black uppercase tracking-widest text-slate-600">Iniciando Google Maps...</p>
                 </div>
-            ) : null}
+            )}
 
             {/* 0. PANTALLA INICIAL DE SELECCIÓN DE SERVICIO (Un 2x3 Movilidad) */}
             {/* 0. PANTALLA INICIAL DE SELECCIÓN DE SERVICIO (Un 2x3 Movilidad) */}
