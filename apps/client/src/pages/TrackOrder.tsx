@@ -2131,7 +2131,7 @@ export default function TrackOrder() {
         return (
             <div className="fixed inset-0 z-40 w-full h-[100dvh] max-h-[100dvh] bg-slate-100 overflow-hidden flex flex-col select-none">
                 {/* 1. Full Screen Map (Google Maps with Zero-Downtime LiveTripMap Fallback) */}
-                <div className="absolute inset-0 z-0 w-full h-full" ref={mapContainerRef}>
+                <div className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} ref={mapContainerRef}>
                     {!hasMapError && isLoaded ? (
                         <GoogleMap
                             mapContainerStyle={{ width: '100%', height: '100%' }}

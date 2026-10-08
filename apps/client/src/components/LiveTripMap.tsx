@@ -379,7 +379,7 @@ export default function LiveTripMap({
     return (
         <div className="relative w-full h-full overflow-hidden bg-slate-900 select-none">
             {/* Leaflet Map Div */}
-            <div ref={mapContainerRef} className="w-full h-full z-0" />
+            <div ref={mapContainerRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
 
             {/* Top Interactive Pull Handle (Tap to Toggle Half / Full Screen) */}
             {onToggleExpand && (

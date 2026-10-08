@@ -1320,10 +1320,10 @@ export default function Cart({ hideHeader = false }: CartProps) {
           </div>
 
           {/* Map Area */}
-          <div className="flex-1 w-full h-full relative">
+          <div className="flex-1 relative" style={{ minHeight: '300px' }}>
             {isMapLoaded && (gpsCoords || selectedAddress?.lat) ? (
               <GoogleMap
-                mapContainerStyle={{ width: '100%', height: '100%' }}
+                mapContainerStyle={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                 center={gpsCoords || { lat: selectedAddress?.lat || 8.9326, lng: selectedAddress?.lng || -67.4264 }}
                 zoom={17}
                 onClick={(e) => {

@@ -1162,7 +1162,7 @@ export default function TransportTracker() {
                 ) : !showChat ? (
                     <div className="w-full h-full relative">
                         {/* EXCLUSIVE GOOGLE MAPS ENGINE (Native Canvas) */}
-                        <div ref={mapDivRef} className="absolute inset-0 w-full h-full z-0" />
+                        <div ref={mapDivRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
 
                         {/* Overlay to ensure back button is visible on the map */}
                         <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/25 to-transparent z-10 pointer-events-none"></div>

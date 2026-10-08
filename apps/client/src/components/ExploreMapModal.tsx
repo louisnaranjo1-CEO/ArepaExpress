@@ -696,7 +696,7 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
           </div>
         )}
 
-        <div ref={mapContainerRef} className="w-full h-full" />
+        <div ref={mapContainerRef} className="w-full h-full absolute inset-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
       </div>
 
       {/* Floating Action Buttons (Right Side) */}

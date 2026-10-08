@@ -2258,9 +2258,9 @@ export default function Taxi() {
         <div className="relative w-full h-full bg-slate-100 overflow-hidden select-none">
             {/* 1. Full Screen Interactive Map (Google Maps with Zero-Fail Leaflet Fallback) */}
             {!hasMapError ? (
-                <div ref={mapDivRef} className="absolute inset-0 w-full h-full z-0" />
+                <div ref={mapDivRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
             ) : (
-                <div ref={leafletDivRef} className="absolute inset-0 w-full h-full z-0" />
+                <div ref={leafletDivRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
             )}
 
             {/* Live Weather Rain Animation Canvas Overlay */}

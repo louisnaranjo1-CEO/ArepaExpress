@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import { X, MapPin, Navigation, Check, Search, Loader2 } from 'lucide-react';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience, getGoogleMapsLastError } from '../lib/mapsConfig';
 import { googleMapsDarkStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -282,9 +282,25 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                             )}
                         </GoogleMap>
                     ) : (loadError || hasMapError) ? (
-                        <div style={containerStyle} className="bg-slate-100 flex flex-col items-center justify-center gap-2 p-6 text-center">
-                            <MapPin className="w-8 h-8 text-amber-500" />
-                            <span className="text-xs font-bold text-slate-600">Verifica tu conexión para cargar el mapa</span>
+                        <div style={containerStyle} className="bg-slate-900 text-white flex flex-col items-center justify-center gap-2.5 p-6 text-center">
+                            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
+                                <MapPin className="w-5 h-5 animate-pulse" />
+                            </div>
+                            <span className="text-xs font-black text-slate-100">
+                                {getGoogleMapsLastError()?.message || "No se pudo cargar el mapa interactivo"}
+                            </span>
+                            {getGoogleMapsLastError()?.action && (
+                                <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed">
+                                    {getGoogleMapsLastError()?.action}
+                                </p>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => window.location.reload()}
+                                className="mt-1 px-3.5 py-1.5 bg-white/10 hover:bg-white/15 text-white text-[11px] font-bold rounded-xl active:scale-95 transition-all cursor-pointer"
+                            >
+                                Reintentar
+                            </button>
                         </div>
                     ) : (
                         <div style={containerStyle} className="bg-slate-100 flex flex-col items-center justify-center gap-2">
