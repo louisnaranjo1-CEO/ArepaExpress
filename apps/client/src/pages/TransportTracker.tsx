@@ -5,7 +5,8 @@ import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
 import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield, CreditCard, Sparkles } from 'lucide-react';
 import { useJsApiLoader } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
+import LiveTripMap from '../components/LiveTripMap';
 
 import RideChat from '../components/RideChat';
 import InAppCall from '../components/InAppCall';
@@ -110,6 +111,7 @@ export default function TransportTracker() {
         libraries: GOOGLE_MAPS_LIBRARIES
     });
     const mapDivRef = useRef<HTMLDivElement | null>(null);
+    const hasMapError = useGoogleMapsResilience(mapDivRef, loadError, 3000);
     const mapInstanceRef = useRef<google.maps.Map | null>(null);
     const userMarkerRef = useRef<google.maps.Marker | null>(null);
     const driverMarkerRef = useRef<google.maps.Marker | null>(null);
@@ -1161,8 +1163,21 @@ export default function TransportTracker() {
                     </div>
                 ) : !showChat ? (
                     <div className="w-full h-full relative">
-                        {/* EXCLUSIVE GOOGLE MAPS ENGINE (Native Canvas) */}
-                        <div ref={mapDivRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+                        {/* Interactive Map (Google Maps with LiveTripMap Fallback) */}
+                        {!hasMapError ? (
+                            <div ref={mapDivRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+                        ) : (
+                            <div className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                                <LiveTripMap
+                                    origin={originCoords}
+                                    destination={destCoords}
+                                    driverLocation={driverCoords || (userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : null)}
+                                    vehicleType={request.vehicle_type || 'carro'}
+                                    driverName={driverName}
+                                    showControls={false}
+                                />
+                            </div>
+                        )}
 
                         {/* Overlay to ensure back button is visible on the map */}
                         <div className="absolute top-0 left-0 right-0 h-24 bg-gradient-to-b from-black/25 to-transparent z-10 pointer-events-none"></div>

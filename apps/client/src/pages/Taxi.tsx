@@ -823,11 +823,11 @@ export default function Taxi() {
             attributionControl: false
         });
 
-        // 100% Free CartoDB Voyager tiles (High performance, beautiful, crystal clear street names in Venezuela)
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        // 100% Free OpenStreetMap tiles (High performance, crystal clear street names in Venezuela, no API key required)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
-            subdomains: 'abcd',
-            attribution: '&copy; OpenStreetMap'
+            subdomains: ['a', 'b', 'c'],
+            attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
         map.on('click', async (e: L.LeafletMouseEvent) => {

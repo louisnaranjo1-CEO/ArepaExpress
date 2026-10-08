@@ -5,6 +5,8 @@ import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience, ge
 import { googleMapsDarkStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 const containerStyle = {
     width: '100%',
@@ -53,6 +55,65 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
     const [searchQuery, setSearchQuery] = useState('');
     const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
+    const leafletMapRef = useRef<L.Map | null>(null);
+    const leafletMarkerRef = useRef<L.Marker | null>(null);
+    const leafletDivRef = useRef<HTMLDivElement | null>(null);
+
+    // Leaflet fallback engine
+    useEffect(() => {
+        if (!hasMapError && isLoaded) return;
+        if (!leafletDivRef.current) return;
+
+        if (leafletMapRef.current) {
+            leafletMapRef.current.invalidateSize();
+            return;
+        }
+
+        const mapInstance = L.map(leafletDivRef.current, {
+            center: [position.lat, position.lng],
+            zoom: 16,
+            zoomControl: false,
+            attributionControl: false
+        });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            subdomains: ['a', 'b', 'c'],
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(mapInstance);
+
+        const marker = L.marker([position.lat, position.lng], {
+            draggable: true
+        }).addTo(mapInstance);
+
+        marker.on('dragend', () => {
+            const pos = marker.getLatLng();
+            setPosition({ lat: pos.lat, lng: pos.lng });
+        });
+
+        mapInstance.on('click', (e: L.LeafletMouseEvent) => {
+            marker.setLatLng(e.latlng);
+            setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
+        });
+
+        leafletMapRef.current = mapInstance;
+        leafletMarkerRef.current = marker;
+
+        setTimeout(() => mapInstance.invalidateSize(), 250);
+
+        return () => {
+            mapInstance.remove();
+            leafletMapRef.current = null;
+            leafletMarkerRef.current = null;
+        };
+    }, [hasMapError, isLoaded]);
+
+    useEffect(() => {
+        if (leafletMarkerRef.current && position) {
+            leafletMarkerRef.current.setLatLng([position.lat, position.lng]);
+        }
+    }, [position]);
+
     const onLoad = useCallback(function callback(map: google.maps.Map) {
         setMap(map);
     }, []);
@@ -98,6 +159,9 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                 map.panTo(coords);
                 map.setZoom(17);
             }
+            if (leafletMapRef.current) {
+                leafletMapRef.current.setView([coords.lat, coords.lng], 17);
+            }
         }
         setIsLocating(false);
     }, [map]);
@@ -108,11 +172,11 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
         }
     }, [handleCurrentLocation, initialData]);
 
-    const executeSearch = (customQuery?: string) => {
+    const executeSearch = async (customQuery?: string) => {
         const queryToSearch = customQuery || searchQuery;
-        if (!queryToSearch || !queryToSearch.trim() || !window.google?.maps) return;
+        if (!queryToSearch || !queryToSearch.trim()) return;
 
-        if (map && window.google.maps.places) {
+        if (map && window.google?.maps?.places) {
             const service = new window.google.maps.places.PlacesService(map);
             service.findPlaceFromQuery(
                 {
@@ -135,6 +199,26 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                     }
                 }
             );
+        } else {
+            // Free OpenStreetMap Nominatim Search Fallback
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryToSearch + ', Calabozo, Venezuela')}&limit=1`);
+                const data = await res.json();
+                if (data && data.length > 0) {
+                    const lat = parseFloat(data[0].lat);
+                    const lng = parseFloat(data[0].lon);
+                    const newPos = { lat, lng };
+                    setPosition(newPos);
+                    if (leafletMapRef.current) {
+                        leafletMapRef.current.setView([lat, lng], 17);
+                    }
+                    if (!reference) {
+                        setReference(data[0].display_name.split(',')[0]);
+                    }
+                }
+            } catch (e) {
+                console.warn("Nominatim search error in AddressPicker:", e);
+            }
         }
     };
 
@@ -182,9 +266,9 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                 </div>
 
                 {/* Places Search Bar */}
-                {isLoaded && window.google?.maps?.places && (
-                    <div className="px-5 pt-3 pb-2 bg-white">
-                        <div className="relative flex items-center">
+                <div className="px-5 pt-3 pb-2 bg-white">
+                    <div className="relative flex items-center">
+                        {isLoaded && window.google?.maps?.places ? (
                             <Autocomplete
                                 onLoad={(autocomplete) => { autocompleteRef.current = autocomplete; }}
                                 onPlaceChanged={() => {
@@ -199,6 +283,9 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                                             if (map) {
                                                 map.panTo(newPos);
                                                 map.setZoom(17);
+                                            }
+                                            if (leafletMapRef.current) {
+                                                leafletMapRef.current.setView([newPos.lat, newPos.lng], 17);
                                             }
                                             if (place.formatted_address && !reference) {
                                                 setReference(place.formatted_address);
@@ -225,7 +312,7 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                                     <button
                                         type="button"
                                         onClick={() => executeSearch()}
-                                        className="absolute left-3 text-slate-500 hover:text-slate-900"
+                                        className="absolute left-3 text-slate-500 hover:text-slate-900 cursor-pointer"
                                     >
                                         <Search className="w-4 h-4" />
                                     </button>
@@ -233,16 +320,48 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                                         <button
                                             type="button"
                                             onClick={() => setSearchQuery('')}
-                                            className="absolute right-3 text-slate-400 hover:text-slate-600 p-1"
+                                            className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
                                         >
                                             <X className="w-4 h-4" />
                                         </button>
                                     )}
                                 </div>
                             </Autocomplete>
-                        </div>
+                        ) : (
+                            <div className="relative flex items-center w-full">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar calle o zona en Calabozo..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            executeSearch();
+                                        }
+                                    }}
+                                    className="w-full bg-slate-100/80 border border-slate-200 focus:border-primary focus:bg-white p-3 pl-11 pr-10 rounded-2xl outline-none font-bold text-xs text-slate-800 transition-all shadow-inner"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => executeSearch()}
+                                    className="absolute left-3 text-slate-500 hover:text-slate-900 cursor-pointer"
+                                >
+                                    <Search className="w-4 h-4" />
+                                </button>
+                                {searchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
-                )}
+                </div>
 
                 {/* Map Container */}
                 <div className="relative w-full h-[360px] bg-slate-100" ref={mapContainerRef}>
@@ -281,32 +400,12 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                                 />
                             )}
                         </GoogleMap>
-                    ) : (loadError || hasMapError) ? (
-                        <div style={containerStyle} className="bg-slate-900 text-white flex flex-col items-center justify-center gap-2.5 p-6 text-center">
-                            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center">
-                                <MapPin className="w-5 h-5 animate-pulse" />
-                            </div>
-                            <span className="text-xs font-black text-slate-100">
-                                {getGoogleMapsLastError()?.message || "No se pudo cargar el mapa interactivo"}
-                            </span>
-                            {getGoogleMapsLastError()?.action && (
-                                <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed">
-                                    {getGoogleMapsLastError()?.action}
-                                </p>
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => window.location.reload()}
-                                className="mt-1 px-3.5 py-1.5 bg-white/10 hover:bg-white/15 text-white text-[11px] font-bold rounded-xl active:scale-95 transition-all cursor-pointer"
-                            >
-                                Reintentar
-                            </button>
-                        </div>
                     ) : (
-                        <div style={containerStyle} className="bg-slate-100 flex flex-col items-center justify-center gap-2">
-                            <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Cargando Google Maps...</span>
-                        </div>
+                        <div 
+                            ref={leafletDivRef} 
+                            style={containerStyle} 
+                            className="w-full h-full"
+                        />
                     )}
 
                     {/* Real-time locate button */}

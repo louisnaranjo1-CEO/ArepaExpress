@@ -1,15 +1,14 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { 
   X, Navigation, Store, Star, Clock, ChevronRight, MapPin, 
-  Search, ShoppingBag, Plus, Minus, Compass, CheckCircle2,
-  RefreshCw, AlertCircle
+  Search, ShoppingBag, Plus, Minus, Compass
 } from 'lucide-react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import { Restaurant } from '../lib/seed';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import { getCityCoordinates } from '../lib/venezuelaData';
 import { useNavigate } from 'react-router-dom';
-import { useJsApiLoader } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
 import { vibrate } from '../utils/haptics';
 
 interface ExploreMapModalProps {
@@ -26,31 +25,6 @@ interface ValidatedStore {
   coords: { lat: number; lng: number };
   distanceText: string;
 }
-
-// Clean map styling that dims generic POIs so custom business pins with logos stand out
-const cleanGoogleMapStyles: google.maps.MapTypeStyle[] = [
-  {
-    featureType: 'poi.business',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'poi.attraction',
-    stylers: [{ visibility: 'simplified' }]
-  },
-  {
-    featureType: 'poi.medical',
-    stylers: [{ visibility: 'simplified' }]
-  },
-  {
-    featureType: 'transit',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'road',
-    elementType: 'labels.icon',
-    stylers: [{ visibility: 'off' }]
-  }
-];
 
 // Helper to reliably extract coordinates for a store
 function extractStoreCoords(rest: Restaurant): { lat: number; lng: number } | null {
@@ -113,24 +87,13 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
 }) => {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  
-  // Custom Overlays refs
-  const storeOverlaysRef = useRef<Array<{ overlay: google.maps.OverlayView; restId: string; element: HTMLDivElement }>>([]);
-  const userOverlayRef = useRef<google.maps.OverlayView | null>(null);
+  const mapInstanceRef = useRef<L.Map | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
+  const userMarkerRef = useRef<L.Marker | null>(null);
 
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [mapReady, setMapReady] = useState(false);
-
-  // Load Google Maps API script
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: GOOGLE_MAPS_LIBRARIES
-  });
-
-  const hasMapError = useGoogleMapsResilience(mapContainerRef, loadError);
 
   // Format valid stores with coordinates
   const validatedStores = useMemo<ValidatedStore[]>(() => {
@@ -186,382 +149,117 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
     return { lat: 8.9326, lng: -67.4264 }; // Calabozo default
   }, [userLocation, cityName, validatedStores]);
 
-  // Initialize Google Map
+  // Initialize Leaflet Map
   useEffect(() => {
-    if (!isOpen || !isLoaded || !mapContainerRef.current) return;
+    if (!isOpen || !mapContainerRef.current) return;
 
     if (mapInstanceRef.current) {
-      google.maps.event.trigger(mapInstanceRef.current, 'resize');
+      mapInstanceRef.current.invalidateSize();
       return;
     }
 
     try {
-      const map = new google.maps.Map(mapContainerRef.current, {
-        center: initialCenter,
-        zoom: userLocation ? 14 : 13,
-        disableDefaultUI: true,
+      const map = L.map(mapContainerRef.current, {
+        center: [initialCenter.lat, initialCenter.lng],
+        zoom: userLocation ? 15 : 14,
         zoomControl: false,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-        gestureHandling: 'greedy',
-        clickableIcons: false,
-        styles: cleanGoogleMapStyles,
+        attributionControl: false
       });
 
-      map.addListener('click', () => {
+      // High-performance OpenStreetMap tiles (100% free, fast in Venezuela, no API key required)
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        subdomains: ['a', 'b', 'c'],
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      // Create Layer Group for Store Markers
+      const markersLayer = L.layerGroup().addTo(map);
+      markersLayerRef.current = markersLayer;
+
+      map.on('click', () => {
         setSelectedRestaurant(null);
       });
 
       mapInstanceRef.current = map;
       setMapReady(true);
+
+      // Invalidate size shortly after modal open animation completes
+      setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, 200);
+
+      setTimeout(() => {
+        if (mapInstanceRef.current) {
+          mapInstanceRef.current.invalidateSize();
+        }
+      }, 500);
     } catch (err) {
-      console.error('Error initializing Google Maps:', err);
+      console.error('Error initializing Leaflet map in ExploreMapModal:', err);
     }
 
     return () => {
-      // Cleanup overlays
-      storeOverlaysRef.current.forEach(({ overlay }) => {
-        overlay.setMap(null);
-      });
-      storeOverlaysRef.current = [];
-
-      if (userOverlayRef.current) {
-        userOverlayRef.current.setMap(null);
-        userOverlayRef.current = null;
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
       }
-
-      mapInstanceRef.current = null;
+      markersLayerRef.current = null;
+      userMarkerRef.current = null;
       setMapReady(false);
     };
-  }, [isOpen, isLoaded, initialCenter, userLocation]);
+  }, [isOpen]);
 
-  // Center / Bounds fitting on initial load
+  // Center / Bounds fitting on initial load or filtered change
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
 
-    // If there are stores in the local area, fit bounds gently
     if (filteredStores.length > 1) {
-      const bounds = new google.maps.LatLngBounds();
+      const bounds = L.latLngBounds(filteredStores.map(s => [s.coords.lat, s.coords.lng]));
       if (userLocation) {
-        bounds.extend(new google.maps.LatLng(userLocation.lat, userLocation.lng));
+        bounds.extend([userLocation.lat, userLocation.lng]);
       }
-      filteredStores.slice(0, 20).forEach(s => {
-        bounds.extend(new google.maps.LatLng(s.coords.lat, s.coords.lng));
-      });
-      map.fitBounds(bounds, 60);
-      // Avoid excessive initial zoom-in if points are very close
-      const listener = google.maps.event.addListenerOnce(map, 'idle', () => {
-        const currentZoom = map.getZoom();
-        if (currentZoom && currentZoom > 16) {
-          map.setZoom(16);
-        }
-      });
-      return () => {
-        google.maps.event.removeListener(listener);
-      };
+      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
     } else if (filteredStores.length === 1) {
-      map.panTo(filteredStores[0].coords);
+      map.panTo([filteredStores[0].coords.lat, filteredStores[0].coords.lng]);
       map.setZoom(15);
     }
   }, [mapReady, filteredStores.length]);
 
-  // Handle User Location Pin Overlay
+  // User GPS Location Pin Marker
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady || !userLocation) {
-      if (userOverlayRef.current) {
-        userOverlayRef.current.setMap(null);
-        userOverlayRef.current = null;
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove();
+        userMarkerRef.current = null;
       }
       return;
     }
 
-    // Custom Overlay Class for User Location
-    class UserLocationOverlay extends google.maps.OverlayView {
-      private position: google.maps.LatLngLiteral;
-      private container: HTMLDivElement;
+    const userIcon = L.divIcon({
+      className: 'user-gps-pin',
+      html: `
+        <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%); pointer-events: none;">
+          <div style="position: absolute; inset: -4px; border-radius: 50%; background: rgba(59, 130, 246, 0.35); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
+          <div style="width: 22px; height: 22px; border-radius: 50%; background: #2563eb; border: 3.5px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.35);"></div>
+        </div>
+      `,
+      iconSize: [36, 36],
+      iconAnchor: [18, 18]
+    });
 
-      constructor(pos: google.maps.LatLngLiteral) {
-        super();
-        this.position = pos;
-        this.container = document.createElement('div');
-        this.container.className = 'google-user-location-marker';
-        this.container.style.position = 'absolute';
-        this.container.style.transform = 'translate(-50%, -50%)';
-        this.container.style.pointerEvents = 'none';
-        this.container.style.zIndex = '50';
-
-        this.container.innerHTML = `
-          <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">
-            <div style="position: absolute; inset: -4px; border-radius: 50%; background: rgba(59, 130, 246, 0.35); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-            <div style="width: 20px; height: 20px; border-radius: 50%; background: #2563eb; border: 3px solid #ffffff; box-shadow: 0 4px 12px rgba(0,0,0,0.35);"></div>
-          </div>
-        `;
-      }
-
-      onAdd(): void {
-        const panes = this.getPanes();
-        if (panes) {
-          panes.overlayMouseTarget.appendChild(this.container);
-        }
-      }
-
-      draw(): void {
-        const projection = this.getProjection();
-        if (!projection) return;
-        const pt = projection.fromLatLngToDivPixel(new google.maps.LatLng(this.position.lat, this.position.lng));
-        if (pt) {
-          this.container.style.left = `${pt.x}px`;
-          this.container.style.top = `${pt.y}px`;
-        }
-      }
-
-      onRemove(): void {
-        if (this.container.parentNode) {
-          this.container.parentNode.removeChild(this.container);
-        }
-      }
-
-      setPosition(newPos: google.maps.LatLngLiteral) {
-        this.position = newPos;
-        this.draw();
-      }
-    }
-
-    if (userOverlayRef.current) {
-      (userOverlayRef.current as any).setPosition(userLocation);
+    if (userMarkerRef.current) {
+      userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
     } else {
-      const overlay = new UserLocationOverlay(userLocation);
-      overlay.setMap(map);
-      userOverlayRef.current = overlay;
+      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], {
+        icon: userIcon,
+        zIndexOffset: 50
+      }).addTo(map);
     }
   }, [mapReady, userLocation]);
-
-  // Handle Store Logo Markers Overlay
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !mapReady) return;
-
-    // Remove existing store overlays
-    storeOverlaysRef.current.forEach(({ overlay }) => {
-      overlay.setMap(null);
-    });
-    storeOverlaysRef.current = [];
-
-    // Custom Overlay Class for Store Pin with Logo and Address
-    class StoreLogoOverlay extends google.maps.OverlayView {
-      private position: google.maps.LatLngLiteral;
-      public container: HTMLDivElement;
-
-      constructor(pos: google.maps.LatLngLiteral, element: HTMLDivElement) {
-        super();
-        this.position = pos;
-        this.container = element;
-        this.container.style.position = 'absolute';
-        this.container.style.transform = 'translate(-50%, -100%)';
-        this.container.style.pointerEvents = 'auto';
-      }
-
-      onAdd(): void {
-        const panes = this.getPanes();
-        if (panes) {
-          panes.overlayMouseTarget.appendChild(this.container);
-        }
-      }
-
-      draw(): void {
-        const projection = this.getProjection();
-        if (!projection) return;
-        const pt = projection.fromLatLngToDivPixel(new google.maps.LatLng(this.position.lat, this.position.lng));
-        if (pt) {
-          this.container.style.left = `${pt.x}px`;
-          this.container.style.top = `${pt.y}px`;
-        }
-      }
-
-      onRemove(): void {
-        if (this.container.parentNode) {
-          this.container.parentNode.removeChild(this.container);
-        }
-      }
-    }
-
-    // Create markers for each filtered store
-    filteredStores.forEach(({ restaurant, coords }) => {
-      const restId = restaurant.id || '';
-      const isSelected = selectedRestaurant?.id === restId;
-
-      const container = document.createElement('div');
-      container.className = `store-google-pin ${isSelected ? 'is-active' : ''}`;
-      container.style.cursor = 'pointer';
-      container.style.userSelect = 'none';
-      container.style.zIndex = isSelected ? '9999' : '100';
-
-      const logo = restaurant.logoUrl || (restaurant as any).logo_url || (restaurant as any).logo || restaurant.image || '';
-      const name = restaurant.name || 'Comercio';
-      const address = restaurant.location?.address || (restaurant as any).address || (restaurant.location?.city ? `${restaurant.location.city}` : '');
-      const isVerified = restaurant.isVerified || (restaurant as any).is_verified;
-
-      container.innerHTML = `
-        <div class="pin-inner" style="
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
-          transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};
-          filter: drop-shadow(0 8px 16px rgba(0,0,0,0.28));
-        ">
-          <!-- Logo Circle Pin Head -->
-          <div class="pin-avatar-head" style="
-            position: relative;
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            background: #ffffff;
-            border: 3px solid ${isSelected ? '#facc15' : '#ffffff'};
-            box-shadow: 0 4px 14px rgba(0,0,0,0.22);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: hidden;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-          ">
-            ${
-              logo
-                ? `<img src="${logo}" alt="${name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;" onerror="this.onerror=null; this.style.display='none'; this.parentNode.innerHTML='<span style=\\'font-size:20px\\'>🏪</span>';" />`
-                : `<span style="font-size: 20px;">🏪</span>`
-            }
-            ${
-              isVerified
-                ? `<div style="position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 9px; font-weight: 900; border: 1.5px solid white;">✓</div>`
-                : ''
-            }
-          </div>
-
-          <!-- Pointer Tip pointing to the exact address -->
-          <div class="pin-pointer-tip" style="
-            width: 0;
-            height: 0;
-            border-left: 7px solid transparent;
-            border-right: 7px solid transparent;
-            border-top: 9px solid ${isSelected ? '#facc15' : '#ffffff'};
-            margin-top: -1px;
-            transition: border-top-color 0.2s ease;
-          "></div>
-
-          <!-- Store Name & Address label badge directly underneath -->
-          <div class="pin-label-pill" style="
-            margin-top: 3px;
-            background: rgba(255, 255, 255, 0.96);
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            padding: 3px 8px;
-            border-radius: 9999px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.16);
-            border: 1px solid rgba(0,0,0,0.06);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            max-width: 135px;
-            text-align: center;
-            pointer-events: auto;
-          ">
-            <span style="
-              font-weight: 900;
-              font-size: 11px;
-              color: #0f172a;
-              white-space: nowrap;
-              overflow: hidden;
-              text-overflow: ellipsis;
-              max-width: 120px;
-              line-height: 1.2;
-            ">${name}</span>
-            ${
-              address
-                ? `<span style="
-                    font-size: 9px;
-                    font-weight: 600;
-                    color: #64748b;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                    max-width: 120px;
-                    line-height: 1;
-                    margin-top: 1px;
-                  ">${address}</span>`
-                : ''
-            }
-          </div>
-        </div>
-      `;
-
-      // Hover feedback
-      const pinInner = container.querySelector('.pin-inner') as HTMLElement;
-      container.addEventListener('mouseenter', () => {
-        if (pinInner && selectedRestaurant?.id !== restId) {
-          pinInner.style.transform = 'scale(1.12)';
-        }
-      });
-      container.addEventListener('mouseleave', () => {
-        if (pinInner && selectedRestaurant?.id !== restId) {
-          pinInner.style.transform = 'scale(1)';
-        }
-      });
-
-      // Tap / Click action
-      container.addEventListener('click', (e) => {
-        e.stopPropagation();
-        vibrate(25);
-
-        // If clicking the currently selected restaurant, navigate straight to profile to purchase!
-        if (selectedRestaurant?.id === restId) {
-          handleOpenStoreProfile(restaurant);
-          return;
-        }
-
-        setSelectedRestaurant(restaurant);
-        if (onSelectRestaurant) onSelectRestaurant(restaurant);
-
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.panTo(coords);
-        }
-      });
-
-      const overlay = new StoreLogoOverlay(coords, container);
-      overlay.setMap(map);
-
-      storeOverlaysRef.current.push({
-        overlay,
-        restId,
-        element: container
-      });
-    });
-  }, [mapReady, filteredStores, selectedRestaurant]);
-
-  // Update visual styles of existing overlays when selectedRestaurant changes
-  useEffect(() => {
-    storeOverlaysRef.current.forEach(({ restId, element }) => {
-      const isSelected = selectedRestaurant?.id === restId;
-      element.style.zIndex = isSelected ? '9999' : '100';
-
-      const pinInner = element.querySelector('.pin-inner') as HTMLElement;
-      const avatarHead = element.querySelector('.pin-avatar-head') as HTMLElement;
-      const pointerTip = element.querySelector('.pin-pointer-tip') as HTMLElement;
-
-      if (pinInner) {
-        pinInner.style.transform = isSelected ? 'scale(1.15)' : 'scale(1)';
-      }
-      if (avatarHead) {
-        avatarHead.style.borderColor = isSelected ? '#facc15' : '#ffffff';
-        avatarHead.style.boxShadow = isSelected ? '0 0 0 4px rgba(250, 204, 21, 0.4), 0 8px 20px rgba(0,0,0,0.3)' : '0 4px 14px rgba(0,0,0,0.22)';
-      }
-      if (pointerTip) {
-        pointerTip.style.borderTopColor = isSelected ? '#facc15' : '#ffffff';
-      }
-    });
-  }, [selectedRestaurant]);
 
   // Open store profile and start purchase flow
   const handleOpenStoreProfile = useCallback((rest: Restaurant) => {
@@ -571,12 +269,154 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
     navigate(`/restaurant/${rest.id}`);
   }, [navigate, onClose]);
 
+  // Render and update Store Logo Markers
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const markersLayer = markersLayerRef.current;
+    if (!map || !markersLayer || !mapReady) return;
+
+    markersLayer.clearLayers();
+
+    filteredStores.forEach(({ restaurant, coords }) => {
+      const restId = restaurant.id || '';
+      const isSelected = selectedRestaurant?.id === restId;
+
+      const logo = restaurant.logoUrl || (restaurant as any).logo_url || (restaurant as any).logo || restaurant.image || '';
+      const name = restaurant.name || 'Comercio';
+      const address = restaurant.location?.address || (restaurant as any).address || (restaurant.location?.city ? `${restaurant.location.city}` : '');
+      const isVerified = restaurant.isVerified || (restaurant as any).is_verified;
+
+      const storeIcon = L.divIcon({
+        className: 'custom-store-pin-wrapper',
+        html: `
+          <div style="
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transform: translate(-50%, -100%);
+            cursor: pointer;
+            user-select: none;
+            transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+            filter: drop-shadow(0 8px 16px rgba(0,0,0,0.28));
+          ">
+            <!-- Logo Circle Pin Head -->
+            <div style="
+              position: relative;
+              width: 48px;
+              height: 48px;
+              border-radius: 50%;
+              background: #ffffff;
+              border: 3.5px solid ${isSelected ? '#facc15' : '#ffffff'};
+              box-shadow: ${isSelected ? '0 0 0 4px rgba(250, 204, 21, 0.4), 0 8px 20px rgba(0,0,0,0.3)' : '0 4px 14px rgba(0,0,0,0.22)'};
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              overflow: hidden;
+              transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};
+              transition: all 0.2s ease;
+            ">
+              ${
+                logo
+                  ? `<img src="${logo}" alt="${name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;" onerror="this.onerror=null; this.style.display='none'; this.parentNode.innerHTML='<span style=\\'font-size:20px\\'>🏪</span>';" />`
+                  : `<span style="font-size: 20px;">🏪</span>`
+              }
+              ${
+                isVerified
+                  ? `<div style="position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 9px; font-weight: 900; border: 1.5px solid white;">✓</div>`
+                  : ''
+              }
+            </div>
+
+            <!-- Pointer Tip -->
+            <div style="
+              width: 0;
+              height: 0;
+              border-left: 7px solid transparent;
+              border-right: 7px solid transparent;
+              border-top: 9px solid ${isSelected ? '#facc15' : '#ffffff'};
+              margin-top: -1px;
+              transition: border-top-color 0.2s ease;
+            "></div>
+
+            <!-- Store Name & Address label badge directly underneath -->
+            <div style="
+              margin-top: 3px;
+              background: rgba(255, 255, 255, 0.96);
+              backdrop-filter: blur(8px);
+              -webkit-backdrop-filter: blur(8px);
+              padding: 3px 8px;
+              border-radius: 9999px;
+              box-shadow: 0 4px 12px rgba(0,0,0,0.16);
+              border: 1px solid rgba(0,0,0,0.06);
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              max-width: 140px;
+              text-align: center;
+              pointer-events: auto;
+            ">
+              <span style="
+                font-weight: 900;
+                font-size: 11px;
+                color: #0f172a;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 125px;
+                line-height: 1.2;
+              ">${name}</span>
+              ${
+                address
+                  ? `<span style="
+                      font-size: 9px;
+                      font-weight: 600;
+                      color: #64748b;
+                      white-space: nowrap;
+                      overflow: hidden;
+                      text-overflow: ellipsis;
+                      max-width: 125px;
+                      line-height: 1;
+                      margin-top: 1px;
+                    ">${address}</span>`
+                  : ''
+              }
+            </div>
+          </div>
+        `,
+        iconSize: [48, 60],
+        iconAnchor: [24, 60]
+      });
+
+      const marker = L.marker([coords.lat, coords.lng], {
+        icon: storeIcon,
+        zIndexOffset: isSelected ? 9999 : 100
+      });
+
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        vibrate(25);
+
+        if (selectedRestaurant?.id === restId) {
+          handleOpenStoreProfile(restaurant);
+          return;
+        }
+
+        setSelectedRestaurant(restaurant);
+        if (onSelectRestaurant) onSelectRestaurant(restaurant);
+        map.panTo([coords.lat, coords.lng]);
+      });
+
+      markersLayer.addLayer(marker);
+    });
+  }, [mapReady, filteredStores, selectedRestaurant, handleOpenStoreProfile, onSelectRestaurant]);
+
   // Center user GPS
   const handleCenterUser = () => {
     vibrate(20);
-    if (userLocation && mapInstanceRef.current) {
-      mapInstanceRef.current.panTo(userLocation);
-      mapInstanceRef.current.setZoom(15);
+    const map = mapInstanceRef.current;
+    if (userLocation && map) {
+      map.flyTo([userLocation.lat, userLocation.lng], 16);
     }
   };
 
@@ -587,24 +427,24 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
     if (!map || filteredStores.length === 0) return;
 
     if (filteredStores.length === 1) {
-      map.panTo(filteredStores[0].coords);
-      map.setZoom(15);
+      map.panTo([filteredStores[0].coords.lat, filteredStores[0].coords.lng]);
+      map.setZoom(16);
       return;
     }
 
-    const bounds = new google.maps.LatLngBounds();
-    filteredStores.forEach(s => {
-      bounds.extend(new google.maps.LatLng(s.coords.lat, s.coords.lng));
-    });
-    map.fitBounds(bounds, 50);
+    const bounds = L.latLngBounds(filteredStores.map(s => [s.coords.lat, s.coords.lng]));
+    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
   };
 
   const handleZoom = (delta: number) => {
     vibrate(15);
     const map = mapInstanceRef.current;
     if (!map) return;
-    const current = map.getZoom() || 14;
-    map.setZoom(current + delta);
+    if (delta > 0) {
+      map.zoomIn();
+    } else {
+      map.zoomOut();
+    }
   };
 
   if (!isOpen) return null;
@@ -622,7 +462,7 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-1.5">
                 <span className="font-black text-slate-900 text-xs truncate">
-                  {cityName ? `Comercios en ${cityName}` : 'Explorar en Google Maps'}
+                  {cityName ? `Comercios en ${cityName}` : 'Explorar Comercios en Mapa'}
                 </span>
                 <span className="bg-primary/20 text-slate-900 text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0">
                   {filteredStores.length} {filteredStores.length === 1 ? 'tienda' : 'tiendas'}
@@ -670,33 +510,11 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
 
       {/* Map Container */}
       <div className="relative w-full h-full flex-1">
-        {/* Fallback Loading State */}
-        {!isLoaded && !hasMapError && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100 gap-3">
-            <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin"></div>
-            <p className="text-xs font-black text-slate-700">Cargando Google Maps...</p>
-          </div>
-        )}
-
-        {/* Error Fallback */}
-        {hasMapError && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-50 p-6 text-center gap-3">
-            <AlertCircle className="w-12 h-12 text-amber-500" />
-            <h3 className="text-base font-black text-slate-900">No se pudo cargar Google Maps</h3>
-            <p className="text-xs text-slate-500 max-w-xs">
-              Verifica tu conexión a Internet o intenta nuevamente.
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="bg-primary hover:bg-primary-hover text-slate-900 font-black px-4 py-2 rounded-xl text-xs flex items-center gap-2 shadow-md"
-            >
-              <RefreshCw className="w-4 h-4" />
-              <span>Reintentar</span>
-            </button>
-          </div>
-        )}
-
-        <div ref={mapContainerRef} className="w-full h-full absolute inset-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+        <div
+          ref={mapContainerRef}
+          className="w-full h-full absolute inset-0 z-0"
+          style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+        />
       </div>
 
       {/* Floating Action Buttons (Right Side) */}
