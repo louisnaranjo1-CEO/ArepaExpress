@@ -104,6 +104,7 @@ export default function Home() {
   };
 
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [allRestaurants, setAllRestaurants] = useState<Restaurant[]>([]);
   const [banners, setBanners] = useState<any[]>([]);
   const [selectedBannerForModal, setSelectedBannerForModal] = useState<any | null>(null);
   const [cardBanners, setCardBanners] = useState<CardBannerItem[]>([]);
@@ -478,6 +479,7 @@ export default function Home() {
                 _sortScore: cityMatchScore + dist // Combine city score and real distance 
               };
             }).sort((a, b) => (a._sortScore as number) - (b._sortScore as number));
+            setAllRestaurants([...fetchedRestaurants]);
 
             // Strict location filtering (omit any business not in the city)
             if (manualCity) {
@@ -824,12 +826,13 @@ export default function Home() {
       {/* Banner Section Background Fade */}
       <div className="absolute top-[170px] left-0 right-0 h-40 bg-gradient-to-b from-primary to-white z-0 pointer-events-none"></div>
 
-      {/* Free Interactive Leaflet/OSM Map Modal */}
+      {/* Interactive Google Maps Explorer Modal */}
       <ExploreMapModal
         isOpen={isMapModalOpen}
         onClose={() => setIsMapModalOpen(false)}
-        restaurants={restaurants}
+        restaurants={allRestaurants.length > 0 ? allRestaurants : restaurants}
         userLocation={userLocation}
+        cityName={manualCity || locationName}
       />
 
       {/* App Info Modal */}
