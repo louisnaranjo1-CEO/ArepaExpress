@@ -231,22 +231,16 @@ export function useGoogleMapsResilience(
             });
         }
 
-        // Safety fallback timer: if Google Maps API doesn't initialize or render tiles within timeoutMs, fallback
-        const timer = setTimeout(() => {
-            if (typeof window !== 'undefined') {
-                if (window.__gm_auth_failed) {
-                    setHasError(true);
-                    return;
-                }
-                // Check if map container has actual tile images loaded
-                const hasGoogleTiles = target ? target.querySelectorAll('img[src*="googleapis.com/maps/vt"], img[src*="maps.gstatic.com"]').length > 0 : false;
-                if (!hasGoogleTiles || !window.google?.maps) {
-                    console.warn('[GoogleMaps] Load timeout reached or tiles not rendered; activating resilient fallback.');
-                    window.__gm_auth_failed = true;
+        // Only if there is an explicit unrecoverable error
+        let timer: any = null;
+        if (timeoutMs > 0 && timeoutMs < 100000) {
+            // Keep timer as informational only or disable tile premature kill
+            timer = setTimeout(() => {
+                if (typeof window !== 'undefined' && window.__gm_auth_failed) {
                     setHasError(true);
                 }
-            }
-        }, timeoutMs);
+            }, timeoutMs);
+        }
 
         return () => {
             window.removeEventListener('google_maps_error', onErrorEvent);

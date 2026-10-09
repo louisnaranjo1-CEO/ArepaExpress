@@ -117,7 +117,7 @@ export default function BottomNav() {
   };
 
   return (
-    <nav className="relative z-50 bg-white border-t border-slate-100 pb-safe shrink-0">
+    <nav className="relative z-[60] bg-white border-t border-slate-100 pb-safe shrink-0 pointer-events-auto select-none">
       <div className="flex items-center justify-around px-2 py-3">
         <Link to="/" onClick={() => vibrate(30)} className="flex flex-col items-center gap-1 flex-1 group">
           <Home className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/' ? 'text-slate-900 fill-primary/20' : 'text-slate-400 group-hover:text-slate-900'}`} />

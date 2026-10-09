@@ -34,8 +34,6 @@ import {
     Zap,
     User as UserIcon
 } from 'lucide-react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { useJsApiLoader } from '@react-google-maps/api';
 import { UN2X3_LOGO } from '../lib/env';
 import toast from 'react-hot-toast';
@@ -44,7 +42,7 @@ import { vibrate } from '../utils/haptics';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { useCurrency } from '../context/CurrencyContext';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import { calculateDynamicFare, FareCalculationResult } from '../lib/pricing';
 import SpeedFleetAnimation from '../components/SpeedFleetAnimation';
 import {
@@ -62,56 +60,6 @@ import { promptEnableLocation, isLocationHardwareEnabled, openNativeLocationSett
 import RainOverlay from '../components/RainOverlay';
 import WeatherWidget from '../components/WeatherWidget';
 import MandadoRequestModal, { MandadoSubmitData } from '../components/MandadoRequestModal';
-
-// 3D Point Pin Generator for Leaflet Engine
-const create3DPinIcon = (type: 'origin' | 'destination') => {
-    const isOrigin = type === 'origin';
-    const color = isOrigin ? '#10b981' : '#f43f5e';
-    const label = isOrigin ? 'A' : 'B';
-    return L.divIcon({
-        className: 'pin-3d-marker',
-        html: `
-            <div style="position: relative; transform: translate(-50%, -100%);">
-                <div style="background: ${color}; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 12px rgba(0,0,0,0.35); border: 2.5px solid #ffffff;">
-                    <span style="transform: rotate(45deg); font-weight: 900; font-size: 13px; color: #ffffff; font-family: sans-serif;">${label}</span>
-                </div>
-                <div style="width: 12px; height: 4px; background: rgba(0,0,0,0.25); border-radius: 50%; margin: 2px auto 0 auto;"></div>
-            </div>
-        `,
-        iconSize: [32, 40],
-        iconAnchor: [16, 40]
-    });
-};
-
-const createUserDotIcon = () => {
-    return L.divIcon({
-        className: 'user-dot-marker',
-        html: `
-            <div style="position: relative; width: 22px; height: 22px; transform: translate(-50%, -50%);">
-                <div style="position: absolute; inset: 0; background: rgba(37,99,235,0.3); border-radius: 50%; animation: ping 1.5s cubic-bezier(0,0,0.2,1) infinite;"></div>
-                <div style="position: absolute; inset: 3px; background: #2563eb; border: 2.5px solid #ffffff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>
-            </div>
-        `,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11]
-    });
-};
-
-const createDriverIcon = (vehicleType: string) => {
-    const isMoto = vehicleType === 'moto' || vehicleType === 'mototaxi';
-    const emoji = isMoto ? '🛵' : '🚕';
-    const bg = isMoto ? '#10b981' : '#f59e0b';
-    return L.divIcon({
-        className: 'driver-marker',
-        html: `
-            <div style="transform: translate(-50%, -50%); background: #ffffff; border: 2px solid ${bg}; border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); font-size: 17px;">
-                ${emoji}
-            </div>
-        `,
-        iconSize: [32, 32],
-        iconAnchor: [16, 16]
-    });
-};
 
 interface Location {
     lat: number;
@@ -199,27 +147,18 @@ export default function Taxi() {
         libraries: GOOGLE_MAPS_LIBRARIES
     });
 
-    // Native Map DOM reference
+    // Native Map DOM reference (Official Google Maps instance)
     const mapDivRef = useRef<HTMLDivElement | null>(null);
-    const leafletDivRef = useRef<HTMLDivElement | null>(null);
-    const hasMapError = useGoogleMapsResilience(mapDivRef, loadError, 3500);
-
     const mapInstanceRef = useRef<google.maps.Map | null>(null);
     const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
+    const fallbackPolylineRef = useRef<google.maps.Polyline | null>(null);
     const geocoderRef = useRef<google.maps.Geocoder | null>(null);
     const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
     const userMarkerRef = useRef<google.maps.Marker | null>(null);
     const originMarkerRef = useRef<google.maps.Marker | null>(null);
     const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
     const driverMarkersRef = useRef<google.maps.Marker[]>([]);
-
-    // Leaflet Resilient Engine Refs
-    const leafletMapRef = useRef<L.Map | null>(null);
-    const leafletUserMarkerRef = useRef<L.Marker | null>(null);
-    const leafletOriginMarkerRef = useRef<L.Marker | null>(null);
-    const leafletDestMarkerRef = useRef<L.Marker | null>(null);
-    const leafletRouteLineRef = useRef<L.Polyline | null>(null);
-    const leafletDriverMarkersRef = useRef<L.Marker[]>([]);
+    const userLocationRef = useRef<google.maps.LatLngLiteral | null>(null);
 
     // State Machine
     const [step, setStep] = useState<'categories' | 'destination' | 'vehicle' | 'payment' | 'searching'>('categories');
@@ -248,6 +187,9 @@ export default function Taxi() {
     }, [origin]);
     const [destination, setDestination] = useState<Location | null>(null);
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
+    useEffect(() => {
+        userLocationRef.current = userLocation;
+    }, [userLocation]);
     const [isLocating, setIsLocating] = useState(false);
 
     // Route Info
@@ -565,7 +507,7 @@ export default function Taxi() {
     // 2. Fetch Nearby Drivers
     const fetchNearbyDrivers = useCallback(async (pickupCoords?: { lat: number; lng: number }) => {
         try {
-            const currentCoords = pickupCoords || userLocation || origin || { lat: 8.9242, lng: -67.4292 };
+            const currentCoords = pickupCoords || userLocationRef.current || originRef.current || { lat: 8.9242, lng: -67.4292 };
             const { data: driversData, error: dErr } = await supabase
                 .from('drivers')
                 .select('id, full_name, vehicle_type, vehicle_brand, vehicle_model, vehicle_year, vehicle_color, vehicle_plate, current_location, availability, is_online, driver_fares, rating, total_trips, is_comfort_eligible, has_ac, has_thermal_bag, documents, vehicle_image_url, registered_vehicles, active_vehicle_id, city, status');
@@ -696,7 +638,7 @@ export default function Taxi() {
         } catch (err) {
             console.error("fetchNearbyDrivers error:", err);
         }
-    }, [userLocation, origin]);
+    }, []);
 
     // 2.1 Realtime listener & automatic sync for Drivers in Supabase
     useEffect(() => {
@@ -723,10 +665,13 @@ export default function Taxi() {
         };
     }, [fetchNearbyDrivers]);
 
-    // 3. Initialize Google Maps DOM natively (Crash-Proof for React 19)
+    // 3. Initialize Google Maps DOM natively (Exclusively official Google Maps SDK)
     useEffect(() => {
-        if (hasMapError) return;
-        if (!isLoaded || !mapDivRef.current || mapInstanceRef.current) return;
+        if (!isLoaded || !mapDivRef.current) return;
+        if (mapInstanceRef.current) {
+            window.google?.maps?.event?.trigger(mapInstanceRef.current, 'resize');
+            return;
+        }
         if (!window.google?.maps) return;
 
         try {
@@ -774,6 +719,13 @@ export default function Taxi() {
                         geocoderRef.current.geocode({ location: clickPos }, (res, status) => {
                             if (status === 'OK' && res && res[0]) {
                                 addr = res[0].formatted_address;
+                                if (!originRef.current || originRef.current.lat === clickPos.lat) {
+                                    setOrigin(prev => prev ? { ...prev, address: addr } : null);
+                                    originRef.current = { lat: clickPos.lat, lng: clickPos.lng, address: addr };
+                                } else {
+                                    setDestination(prev => prev ? { ...prev, address: addr } : null);
+                                    setSearchQuery(addr);
+                                }
                             }
                         });
                     } catch (gErr) {}
@@ -788,174 +740,54 @@ export default function Taxi() {
                     setOrigin(newOrigin);
                     originRef.current = newOrigin;
                     setUserLocation(clickPos);
+                    userLocationRef.current = clickPos;
                     fetchNearbyDrivers(clickPos);
                     toast.success('Punto de partida fijado con éxito');
                 } else {
-                    setDestination({
+                    const newDest = {
                         lat: clickPos.lat,
                         lng: clickPos.lng,
                         address: addr
-                    });
+                    };
+                    setDestination(newDest);
                     setSearchQuery(addr);
                     setStep('vehicle');
                 }
             });
 
-            locateUser(true);
+            if (userLocationRef.current) {
+                map.panTo(userLocationRef.current);
+            }
         } catch (e) {
             console.error("Error initializing Google Map:", e);
         }
-    }, [isLoaded, hasMapError]);
-
-    // 3.1 Resilient Leaflet Engine (Active whenever Google Maps is unavailable, fails, or errors)
-    useEffect(() => {
-        if (!hasMapError || !leafletDivRef.current) return;
-        if (leafletMapRef.current) {
-            leafletMapRef.current.invalidateSize();
-            return;
-        }
-
-        const centerCoords = origin || userLocation || defaultCenter;
-        const map = L.map(leafletDivRef.current, {
-            center: [centerCoords.lat, centerCoords.lng],
-            zoom: 16,
-            zoomControl: false,
-            attributionControl: false
-        });
-
-        // 100% Free OpenStreetMap tiles (High performance, crystal clear street names in Venezuela, no API key required)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            subdomains: ['a', 'b', 'c'],
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-
-        map.on('click', async (e: L.LeafletMouseEvent) => {
-            vibrate(30);
-            const clickPos = { lat: e.latlng.lat, lng: e.latlng.lng };
-            let addr = `${clickPos.lat.toFixed(5)}, ${clickPos.lng.toFixed(5)}`;
-
-            // Quick background Nominatim reverse geocode
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${clickPos.lat}&lon=${clickPos.lng}&zoom=18&addressdetails=1`, {
-                    headers: { 'Accept-Language': 'es' },
-                    signal: AbortSignal.timeout(3000)
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const road = data.address?.road || data.address?.pedestrian || data.address?.neighbourhood || data.address?.suburb;
-                    const city = data.address?.city || data.address?.town || 'Calabozo';
-                    if (road) addr = `${road}, ${city}`;
-                    else if (data.display_name) addr = data.display_name.split(',').slice(0, 3).join(',');
-                }
-            } catch (err) {}
-
-            if (!originRef.current) {
-                const newOrigin = { lat: clickPos.lat, lng: clickPos.lng, address: addr };
-                setOrigin(newOrigin);
-                originRef.current = newOrigin;
-                setUserLocation(clickPos);
-                fetchNearbyDrivers(clickPos);
-                toast.success('Punto de partida fijado');
-            } else {
-                setDestination({ lat: clickPos.lat, lng: clickPos.lng, address: addr });
-                setSearchQuery(addr);
-                setStep('vehicle');
-            }
-        });
-
-        leafletMapRef.current = map;
-        setTimeout(() => map.invalidateSize(), 300);
 
         return () => {
-            map.remove();
-            leafletMapRef.current = null;
+            if (directionsRendererRef.current) {
+                directionsRendererRef.current.setMap(null);
+                directionsRendererRef.current = null;
+            }
+            if (fallbackPolylineRef.current) {
+                fallbackPolylineRef.current.setMap(null);
+                fallbackPolylineRef.current = null;
+            }
+            if (userMarkerRef.current) {
+                userMarkerRef.current.setMap(null);
+                userMarkerRef.current = null;
+            }
+            if (originMarkerRef.current) {
+                originMarkerRef.current.setMap(null);
+                originMarkerRef.current = null;
+            }
+            if (destinationMarkerRef.current) {
+                destinationMarkerRef.current.setMap(null);
+                destinationMarkerRef.current = null;
+            }
+            driverMarkersRef.current.forEach(m => m.setMap(null));
+            driverMarkersRef.current = [];
+            mapInstanceRef.current = null;
         };
-    }, [hasMapError]);
-
-    // 3.2 Update Leaflet Markers, Polyline & Drivers
-    useEffect(() => {
-        const map = leafletMapRef.current;
-        if (!map || !hasMapError) return;
-
-        // User GPS dot
-        if (userLocation) {
-            if (!leafletUserMarkerRef.current) {
-                leafletUserMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], {
-                    icon: createUserDotIcon(),
-                    zIndexOffset: 99
-                }).addTo(map);
-            } else {
-                leafletUserMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
-            }
-        }
-
-        // Origin Marker (Green Pin)
-        if (origin) {
-            if (!leafletOriginMarkerRef.current) {
-                leafletOriginMarkerRef.current = L.marker([origin.lat, origin.lng], {
-                    icon: create3DPinIcon('origin'),
-                    zIndexOffset: 100
-                }).addTo(map);
-            } else {
-                leafletOriginMarkerRef.current.setLatLng([origin.lat, origin.lng]);
-            }
-        } else if (leafletOriginMarkerRef.current) {
-            leafletOriginMarkerRef.current.remove();
-            leafletOriginMarkerRef.current = null;
-        }
-
-        // Destination Marker (Red Pin)
-        if (destination) {
-            if (!leafletDestMarkerRef.current) {
-                leafletDestMarkerRef.current = L.marker([destination.lat, destination.lng], {
-                    icon: create3DPinIcon('destination'),
-                    zIndexOffset: 100
-                }).addTo(map);
-            } else {
-                leafletDestMarkerRef.current.setLatLng([destination.lat, destination.lng]);
-            }
-        } else if (leafletDestMarkerRef.current) {
-            leafletDestMarkerRef.current.remove();
-            leafletDestMarkerRef.current = null;
-        }
-
-        // Route Polyline
-        if (origin && destination) {
-            const waypoints: [number, number][] = [
-                [origin.lat, origin.lng],
-                [destination.lat, destination.lng]
-            ];
-            if (!leafletRouteLineRef.current) {
-                leafletRouteLineRef.current = L.polyline(waypoints, {
-                    color: '#FF5D00',
-                    weight: 5,
-                    opacity: 0.95,
-                    dashArray: '6, 8',
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                }).addTo(map);
-            } else {
-                leafletRouteLineRef.current.setLatLngs(waypoints);
-            }
-            const bounds = L.latLngBounds(waypoints);
-            map.fitBounds(bounds, { padding: [60, 60], maxZoom: 17 });
-        } else if (leafletRouteLineRef.current) {
-            leafletRouteLineRef.current.remove();
-            leafletRouteLineRef.current = null;
-        }
-
-        // Nearby Drivers Markers
-        leafletDriverMarkersRef.current.forEach(m => m.remove());
-        leafletDriverMarkersRef.current = nearbyDrivers
-            .filter(d => !d.isBusy && d.lat && d.lng)
-            .map(d => {
-                return L.marker([d.lat, d.lng], {
-                    icon: createDriverIcon(d.vehicleType),
-                    zIndexOffset: 50
-                }).addTo(map);
-            });
-    }, [hasMapError, userLocation, origin, destination, nearbyDrivers]);
+    }, [isLoaded]);
 
     // 4. Locate User Helper (Strictly finds the person's exact location, NEVER assigns a default point)
     const locateUser = useCallback(async (panTo = true) => {
@@ -1059,6 +891,7 @@ export default function Taxi() {
         }
 
         setUserLocation(coords);
+        userLocationRef.current = coords;
         fetchWeather(coords.lat, coords.lng);
 
         // CRITICAL FIX: SET ORIGIN IMMEDIATELY SO THE AMBER "ACTIVAR GPS" BANNER VANISHES INSTANTLY!
@@ -1076,10 +909,6 @@ export default function Taxi() {
         if (mapInstanceRef.current && panTo) {
             mapInstanceRef.current.panTo(coords);
             mapInstanceRef.current.setZoom(17);
-        }
-        if (leafletMapRef.current && panTo) {
-            leafletMapRef.current.panTo([coords.lat, coords.lng]);
-            leafletMapRef.current.setZoom(17);
         }
 
         fetchNearbyDrivers(coords);
@@ -1131,12 +960,12 @@ export default function Taxi() {
                 localStorage.setItem('un2x3_exact_user_location', JSON.stringify(refined));
             }
         })();
-    }, [fetchNearbyDrivers, fetchWeather, userData]);
+    }, [fetchNearbyDrivers, fetchWeather]);
 
     // Always trigger GPS location immediately on mount
     useEffect(() => {
         locateUser(true);
-    }, [locateUser]);
+    }, []);
 
     // Handle user tap on GPS button / Activar GPS
     const handleRequestGps = useCallback(async () => {
@@ -1225,6 +1054,9 @@ export default function Taxi() {
             } else {
                 originMarkerRef.current.setPosition({ lat: origin.lat, lng: origin.lng });
             }
+        } else if (originMarkerRef.current) {
+            originMarkerRef.current.setMap(null);
+            originMarkerRef.current = null;
         }
 
         // Destination Marker (Red Pin)
@@ -1242,6 +1074,9 @@ export default function Taxi() {
             } else {
                 destinationMarkerRef.current.setPosition({ lat: destination.lat, lng: destination.lng });
             }
+        } else if (destinationMarkerRef.current) {
+            destinationMarkerRef.current.setMap(null);
+            destinationMarkerRef.current = null;
         }
 
         // Nearby Drivers Markers
@@ -1262,21 +1097,23 @@ export default function Taxi() {
         });
     }, [userLocation, origin, destination, nearbyDrivers]);
 
-    // 6. Calculate Route & Fit Bounds (Resilient to both Google Maps and Leaflet engines)
+    // 6. Calculate Route & Fit Bounds (Google Maps Directions API & Road Factor Polyline)
     useEffect(() => {
         if (!origin || !destination) return;
 
-        // Immediate straight-line distance fallback so pricing is NEVER blocked
+        // Immediate straight-line and driving baseline so pricing is NEVER blocked
         const distMeters = calculateDistance(origin.lat, origin.lng, destination.lat, destination.lng);
         const distKm = Number((distMeters / 1000).toFixed(1));
         const estimatedDuration = `~${Math.max(3, Math.ceil(distKm * 3.5))} min`;
+        const roadEstimateKm = Math.max(0.8, Number((distKm * 1.2).toFixed(1)));
+
         setRouteInfo({
-            distance: Math.max(0.8, distKm),
+            distance: roadEstimateKm,
             duration: estimatedDuration
         });
 
-        // If Google Maps engine is active
-        if (!hasMapError && window.google?.maps && mapInstanceRef.current) {
+        // Request official Google Maps Directions API
+        if (window.google?.maps && mapInstanceRef.current) {
             setIsCalculatingRoute(true);
             const directionsService = new window.google.maps.DirectionsService();
 
@@ -1289,33 +1126,78 @@ export default function Taxi() {
                 (res, status) => {
                     setIsCalculatingRoute(false);
                     if (status === window.google.maps.DirectionsStatus.OK && res) {
+                        // Clear fallback polyline
+                        if (fallbackPolylineRef.current) {
+                            fallbackPolylineRef.current.setMap(null);
+                            fallbackPolylineRef.current = null;
+                        }
+
                         if (directionsRendererRef.current) {
+                            directionsRendererRef.current.setMap(mapInstanceRef.current);
                             directionsRendererRef.current.setDirections(res);
                         }
                         const leg = res.routes[0]?.legs[0];
                         if (leg && leg.distance) {
                             const exactDistKm = Number((leg.distance.value / 1000).toFixed(1));
                             setRouteInfo({
-                                distance: exactDistKm,
+                                distance: Math.max(0.8, exactDistKm),
                                 duration: leg.duration?.text || estimatedDuration
                             });
                         }
 
-                        // Fit bounds to show route nicely
+                        // Fit bounds to show route nicely on screen
                         const bounds = new window.google.maps.LatLngBounds();
                         bounds.extend({ lat: origin.lat, lng: origin.lng });
                         bounds.extend({ lat: destination.lat, lng: destination.lng });
                         mapInstanceRef.current?.fitBounds(bounds, {
-                            top: 100,
-                            bottom: 300,
-                            left: 40,
-                            right: 40
+                            top: 80,
+                            bottom: 280,
+                            left: 35,
+                            right: 35
+                        });
+                    } else {
+                        console.warn('[DirectionsService] Status:', status, '- Using road factor polyline');
+                        if (directionsRendererRef.current) {
+                            directionsRendererRef.current.set('directions', null);
+                        }
+
+                        const linePath = [
+                            { lat: origin.lat, lng: origin.lng },
+                            { lat: destination.lat, lng: destination.lng }
+                        ];
+
+                        if (!fallbackPolylineRef.current && mapInstanceRef.current) {
+                            fallbackPolylineRef.current = new window.google.maps.Polyline({
+                                path: linePath,
+                                strokeColor: '#FF5D00',
+                                strokeOpacity: 0.95,
+                                strokeWeight: 5,
+                                map: mapInstanceRef.current
+                            });
+                        } else if (fallbackPolylineRef.current) {
+                            fallbackPolylineRef.current.setPath(linePath);
+                            fallbackPolylineRef.current.setMap(mapInstanceRef.current);
+                        }
+
+                        setRouteInfo({
+                            distance: roadEstimateKm,
+                            duration: estimatedDuration
+                        });
+
+                        const bounds = new window.google.maps.LatLngBounds();
+                        bounds.extend({ lat: origin.lat, lng: origin.lng });
+                        bounds.extend({ lat: destination.lat, lng: destination.lng });
+                        mapInstanceRef.current?.fitBounds(bounds, {
+                            top: 80,
+                            bottom: 280,
+                            left: 35,
+                            right: 35
                         });
                     }
                 }
             );
         }
-    }, [origin, destination, hasMapError]);
+    }, [origin, destination]);
 
     // 7. Autocomplete Search Handler
     const handleSearchChange = (val: string) => {
@@ -1372,12 +1254,15 @@ export default function Taxi() {
                     };
                     setDestination(destLoc);
 
-                    if (!origin && userLocation) {
-                        setOrigin({
-                            lat: userLocation.lat,
-                            lng: userLocation.lng,
+                    if (!originRef.current) {
+                        const fallbackCoords = userLocationRef.current || defaultCenter;
+                        const autoOrigin: Location = {
+                            lat: fallbackCoords.lat,
+                            lng: fallbackCoords.lng,
                             address: 'Mi ubicación actual'
-                        });
+                        };
+                        setOrigin(autoOrigin);
+                        originRef.current = autoOrigin;
                     }
 
                     setStep('vehicle');
@@ -2256,12 +2141,12 @@ export default function Taxi() {
 
     return (
         <div className="relative w-full h-full bg-slate-100 overflow-hidden select-none">
-            {/* 1. Full Screen Interactive Map (Google Maps with Zero-Fail Leaflet Fallback) */}
-            {!hasMapError ? (
-                <div ref={mapDivRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-            ) : (
-                <div ref={leafletDivRef} className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-            )}
+            {/* 1. Full Screen Interactive Map (Official Google Maps Instance) */}
+            <div
+                ref={mapDivRef}
+                className="absolute inset-0 z-0"
+                style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+            />
 
             {/* Live Weather Rain Animation Canvas Overlay */}
             <RainOverlay
@@ -2269,10 +2154,10 @@ export default function Taxi() {
                 intensity={weather?.precipitationMm && weather.precipitationMm > 1 ? 'heavy' : 'moderate'}
             />
 
-            {!isLoaded && !hasMapError && (
+            {!isLoaded && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100/90 backdrop-blur-sm">
                     <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-600">Iniciando Mapa...</p>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-600">Iniciando Google Maps...</p>
                 </div>
             )}
 
@@ -2890,11 +2775,23 @@ export default function Taxi() {
                                                 key={addr.id}
                                                 onClick={() => {
                                                     vibrate(30);
-                                                    setDestination({
+                                                    const dest = {
                                                         lat: addr.lat,
                                                         lng: addr.lng,
                                                         address: addr.address || addr.name
-                                                    });
+                                                    };
+                                                    setDestination(dest);
+                                                    setSearchQuery(dest.address);
+                                                    if (!originRef.current) {
+                                                        const fallbackCoords = userLocationRef.current || defaultCenter;
+                                                        const autoOrigin: Location = {
+                                                            lat: fallbackCoords.lat,
+                                                            lng: fallbackCoords.lng,
+                                                            address: 'Mi ubicación actual'
+                                                        };
+                                                        setOrigin(autoOrigin);
+                                                        originRef.current = autoOrigin;
+                                                    }
                                                     setStep('vehicle');
                                                 }}
                                                 className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 flex-shrink-0 transition-colors"
@@ -2909,9 +2806,19 @@ export default function Taxi() {
 
                             {/* Continue Button */}
                             <button
-                                disabled={!origin || !destination}
+                                disabled={!destination}
                                 onClick={() => {
                                     vibrate(30);
+                                    if (!originRef.current) {
+                                        const fallbackCoords = userLocationRef.current || defaultCenter;
+                                        const autoOrigin: Location = {
+                                            lat: fallbackCoords.lat,
+                                            lng: fallbackCoords.lng,
+                                            address: 'Mi ubicación actual'
+                                        };
+                                        setOrigin(autoOrigin);
+                                        originRef.current = autoOrigin;
+                                    }
                                     setStep('vehicle');
                                 }}
                                 className="w-full py-3.5 bg-primary text-slate-950 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-primary/20 active:scale-95 disabled:opacity-40 disabled:pointer-events-none transition-all"
