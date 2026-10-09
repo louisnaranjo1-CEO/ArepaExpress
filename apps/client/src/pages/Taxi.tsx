@@ -913,51 +913,26 @@ export default function Taxi() {
 
         fetchNearbyDrivers(coords);
 
-        // Reverse geocode asynchronously in the background to refine street address (Never blocks origin)
+        // Reverse geocode asynchronously with Google Maps Geocoder to refine street address
         (async () => {
-            let foundAddr: string | null = null;
             try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords!.lat}&lon=${coords!.lng}&zoom=18&addressdetails=1`, {
-                    headers: { 'Accept-Language': 'es' },
-                    signal: AbortSignal.timeout(3500)
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const addr = data.address || {};
-                    const road = addr.road || addr.pedestrian || addr.neighbourhood || addr.suburb;
-                    const city = addr.city || addr.town || addr.village || 'Calabozo';
-                    if (road) foundAddr = `${road}, ${city}`;
-                    else if (data.display_name) foundAddr = data.display_name.split(',').slice(0, 3).join(',');
-                }
-            } catch (nomErr) {}
-
-            if (!foundAddr && geocoderRef.current) {
-                try {
-                    geocoderRef.current.geocode({ location: coords }, (res, status) => {
-                        if (status === 'OK' && res && res[0]) {
-                            foundAddr = res[0].formatted_address;
-                            if (foundAddr) {
-                                const refined: Location = {
-                                    lat: coords!.lat,
-                                    lng: coords!.lng,
-                                    address: foundAddr
-                                };
-                                setOrigin(refined);
-                                originRef.current = refined;
-                                localStorage.setItem('un2x3_exact_user_location', JSON.stringify(refined));
-                            }
+                const geocoder = geocoderRef.current || (window.google?.maps?.Geocoder ? new window.google.maps.Geocoder() : null);
+                if (geocoder && coords) {
+                    geocoder.geocode({ location: coords }, (res, status) => {
+                        if (status === 'OK' && res && res[0]?.formatted_address) {
+                            const refined: Location = {
+                                lat: coords.lat,
+                                lng: coords.lng,
+                                address: res[0].formatted_address
+                            };
+                            setOrigin(refined);
+                            originRef.current = refined;
+                            localStorage.setItem('un2x3_exact_user_location', JSON.stringify(refined));
                         }
                     });
-                } catch (gErr) {}
-            } else if (foundAddr) {
-                const refined: Location = {
-                    lat: coords!.lat,
-                    lng: coords!.lng,
-                    address: foundAddr
-                };
-                setOrigin(refined);
-                originRef.current = refined;
-                localStorage.setItem('un2x3_exact_user_location', JSON.stringify(refined));
+                }
+            } catch (gErr) {
+                console.warn('[Taxi] Google Geocoder lookup error:', gErr);
             }
         })();
     }, [fetchNearbyDrivers, fetchWeather]);

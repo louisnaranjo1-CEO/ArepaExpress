@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { 
   X, Navigation, Store, Star, Clock, ChevronRight, MapPin, 
-  Search, ShoppingBag, Plus, Minus, Compass
+  Search, ShoppingBag, Plus, Minus, Compass, Loader2
 } from 'lucide-react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
+import { googleMapsDarkStyles } from '../lib/weather';
 import { Restaurant } from '../lib/seed';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import { getCityCoordinates } from '../lib/venezuelaData';
@@ -77,6 +78,23 @@ function extractStoreCoords(rest: Restaurant): { lat: number; lng: number } | nu
   return null;
 }
 
+// Generate store marker SVG Data URI
+function getStorePinSvgUri(category: string = '', isSelected: boolean = false): string {
+  const pinColor = isSelected ? '#F59E0B' : '#E11D48';
+  const strokeColor = '#FFFFFF';
+  const size = isSelected ? 48 : 40;
+
+  const svg = `
+  <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size + 8}" viewBox="0 0 40 48">
+    <ellipse cx="20" cy="45" rx="8" ry="3" fill="rgba(0,0,0,0.35)"/>
+    <path d="M20 0 C9 0 0 9 0 20 C0 35 20 48 20 48 C20 48 40 35 40 20 C40 9 31 0 20 0 Z" fill="${pinColor}" stroke="${strokeColor}" stroke-width="2.5"/>
+    <circle cx="20" cy="18" r="12" fill="#FFFFFF"/>
+    <path d="M14 15 L26 15 L25 24 L15 24 Z" fill="${pinColor}"/>
+    <circle cx="20" cy="14" r="3" fill="${pinColor}"/>
+  </svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
   isOpen,
   onClose,
@@ -86,14 +104,15 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
   onSelectRestaurant,
 }) => {
   const navigate = useNavigate();
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<L.Map | null>(null);
-  const markersLayerRef = useRef<L.LayerGroup | null>(null);
-  const userMarkerRef = useRef<L.Marker | null>(null);
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+    libraries: GOOGLE_MAPS_LIBRARIES
+  });
 
+  const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [mapReady, setMapReady] = useState(false);
 
   // Format valid stores with coordinates
   const validatedStores = useMemo<ValidatedStore[]>(() => {
@@ -149,353 +168,91 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
     return { lat: 8.9326, lng: -67.4264 }; // Calabozo default
   }, [userLocation, cityName, validatedStores]);
 
-  // Initialize Leaflet Map
-  useEffect(() => {
-    if (!isOpen || !mapContainerRef.current) return;
-
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.invalidateSize();
-      return;
-    }
-
-    try {
-      const map = L.map(mapContainerRef.current, {
-        center: [initialCenter.lat, initialCenter.lng],
-        zoom: userLocation ? 15 : 14,
-        zoomControl: false,
-        attributionControl: false
-      });
-
-      // High-performance OpenStreetMap tiles (100% free, fast in Venezuela, no API key required)
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        subdomains: ['a', 'b', 'c'],
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
-
-      // Create Layer Group for Store Markers
-      const markersLayer = L.layerGroup().addTo(map);
-      markersLayerRef.current = markersLayer;
-
-      map.on('click', () => {
-        setSelectedRestaurant(null);
-      });
-
-      mapInstanceRef.current = map;
-      setMapReady(true);
-
-      // Invalidate size shortly after modal open animation completes
-      setTimeout(() => {
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.invalidateSize();
-        }
-      }, 200);
-
-      setTimeout(() => {
-        if (mapInstanceRef.current) {
-          mapInstanceRef.current.invalidateSize();
-        }
-      }, 500);
-    } catch (err) {
-      console.error('Error initializing Leaflet map in ExploreMapModal:', err);
-    }
-
-    return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
-      markersLayerRef.current = null;
-      userMarkerRef.current = null;
-      setMapReady(false);
-    };
-  }, [isOpen]);
-
-  // Center / Bounds fitting on initial load or filtered change
-  useEffect(() => {
+  // Fit bounds when map or filtered stores change
+  const handleFitAllStores = useCallback(() => {
     const map = mapInstanceRef.current;
-    if (!map || !mapReady) return;
-
-    if (filteredStores.length > 1) {
-      const bounds = L.latLngBounds(filteredStores.map(s => [s.coords.lat, s.coords.lng]));
-      if (userLocation) {
-        bounds.extend([userLocation.lat, userLocation.lng]);
-      }
-      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 16 });
-    } else if (filteredStores.length === 1) {
-      map.panTo([filteredStores[0].coords.lat, filteredStores[0].coords.lng]);
-      map.setZoom(15);
-    }
-  }, [mapReady, filteredStores.length]);
-
-  // User GPS Location Pin Marker
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !mapReady || !userLocation) {
-      if (userMarkerRef.current) {
-        userMarkerRef.current.remove();
-        userMarkerRef.current = null;
-      }
-      return;
-    }
-
-    const userIcon = L.divIcon({
-      className: 'user-gps-pin',
-      html: `
-        <div style="position: relative; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; transform: translate(-50%, -50%); pointer-events: none;">
-          <div style="position: absolute; inset: -4px; border-radius: 50%; background: rgba(59, 130, 246, 0.35); animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>
-          <div style="width: 22px; height: 22px; border-radius: 50%; background: #2563eb; border: 3.5px solid #ffffff; box-shadow: 0 4px 14px rgba(0,0,0,0.35);"></div>
-        </div>
-      `,
-      iconSize: [36, 36],
-      iconAnchor: [18, 18]
-    });
-
-    if (userMarkerRef.current) {
-      userMarkerRef.current.setLatLng([userLocation.lat, userLocation.lng]);
-    } else {
-      userMarkerRef.current = L.marker([userLocation.lat, userLocation.lng], {
-        icon: userIcon,
-        zIndexOffset: 50
-      }).addTo(map);
-    }
-  }, [mapReady, userLocation]);
-
-  // Open store profile and start purchase flow
-  const handleOpenStoreProfile = useCallback((rest: Restaurant) => {
-    if (!rest.id) return;
-    vibrate(35);
-    onClose();
-    navigate(`/restaurant/${rest.id}`);
-  }, [navigate, onClose]);
-
-  // Render and update Store Logo Markers
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    const markersLayer = markersLayerRef.current;
-    if (!map || !markersLayer || !mapReady) return;
-
-    markersLayer.clearLayers();
-
-    filteredStores.forEach(({ restaurant, coords }) => {
-      const restId = restaurant.id || '';
-      const isSelected = selectedRestaurant?.id === restId;
-
-      const logo = restaurant.logoUrl || (restaurant as any).logo_url || (restaurant as any).logo || restaurant.image || '';
-      const name = restaurant.name || 'Comercio';
-      const address = restaurant.location?.address || (restaurant as any).address || (restaurant.location?.city ? `${restaurant.location.city}` : '');
-      const isVerified = restaurant.isVerified || (restaurant as any).is_verified;
-
-      const storeIcon = L.divIcon({
-        className: 'custom-store-pin-wrapper',
-        html: `
-          <div style="
-            position: relative;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            transform: translate(-50%, -100%);
-            cursor: pointer;
-            user-select: none;
-            transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
-            filter: drop-shadow(0 8px 16px rgba(0,0,0,0.28));
-          ">
-            <!-- Logo Circle Pin Head -->
-            <div style="
-              position: relative;
-              width: 48px;
-              height: 48px;
-              border-radius: 50%;
-              background: #ffffff;
-              border: 3.5px solid ${isSelected ? '#facc15' : '#ffffff'};
-              box-shadow: ${isSelected ? '0 0 0 4px rgba(250, 204, 21, 0.4), 0 8px 20px rgba(0,0,0,0.3)' : '0 4px 14px rgba(0,0,0,0.22)'};
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              overflow: hidden;
-              transform: ${isSelected ? 'scale(1.15)' : 'scale(1)'};
-              transition: all 0.2s ease;
-            ">
-              ${
-                logo
-                  ? `<img src="${logo}" alt="${name}" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;" onerror="this.onerror=null; this.style.display='none'; this.parentNode.innerHTML='<span style=\\'font-size:20px\\'>🏪</span>';" />`
-                  : `<span style="font-size: 20px;">🏪</span>`
-              }
-              ${
-                isVerified
-                  ? `<div style="position: absolute; bottom: 0; right: 0; width: 14px; height: 14px; background: #3b82f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 9px; font-weight: 900; border: 1.5px solid white;">✓</div>`
-                  : ''
-              }
-            </div>
-
-            <!-- Pointer Tip -->
-            <div style="
-              width: 0;
-              height: 0;
-              border-left: 7px solid transparent;
-              border-right: 7px solid transparent;
-              border-top: 9px solid ${isSelected ? '#facc15' : '#ffffff'};
-              margin-top: -1px;
-              transition: border-top-color 0.2s ease;
-            "></div>
-
-            <!-- Store Name & Address label badge directly underneath -->
-            <div style="
-              margin-top: 3px;
-              background: rgba(255, 255, 255, 0.96);
-              backdrop-filter: blur(8px);
-              -webkit-backdrop-filter: blur(8px);
-              padding: 3px 8px;
-              border-radius: 9999px;
-              box-shadow: 0 4px 12px rgba(0,0,0,0.16);
-              border: 1px solid rgba(0,0,0,0.06);
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              max-width: 140px;
-              text-align: center;
-              pointer-events: auto;
-            ">
-              <span style="
-                font-weight: 900;
-                font-size: 11px;
-                color: #0f172a;
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
-                max-width: 125px;
-                line-height: 1.2;
-              ">${name}</span>
-              ${
-                address
-                  ? `<span style="
-                      font-size: 9px;
-                      font-weight: 600;
-                      color: #64748b;
-                      white-space: nowrap;
-                      overflow: hidden;
-                      text-overflow: ellipsis;
-                      max-width: 125px;
-                      line-height: 1;
-                      margin-top: 1px;
-                    ">${address}</span>`
-                  : ''
-              }
-            </div>
-          </div>
-        `,
-        iconSize: [48, 60],
-        iconAnchor: [24, 60]
-      });
-
-      const marker = L.marker([coords.lat, coords.lng], {
-        icon: storeIcon,
-        zIndexOffset: isSelected ? 9999 : 100
-      });
-
-      marker.on('click', (e) => {
-        L.DomEvent.stopPropagation(e);
-        vibrate(25);
-
-        if (selectedRestaurant?.id === restId) {
-          handleOpenStoreProfile(restaurant);
-          return;
-        }
-
-        setSelectedRestaurant(restaurant);
-        if (onSelectRestaurant) onSelectRestaurant(restaurant);
-        map.panTo([coords.lat, coords.lng]);
-      });
-
-      markersLayer.addLayer(marker);
-    });
-  }, [mapReady, filteredStores, selectedRestaurant, handleOpenStoreProfile, onSelectRestaurant]);
-
-  // Center user GPS
-  const handleCenterUser = () => {
-    vibrate(20);
-    const map = mapInstanceRef.current;
-    if (userLocation && map) {
-      map.flyTo([userLocation.lat, userLocation.lng], 16);
-    }
-  };
-
-  // Fit all visible businesses
-  const handleFitAllStores = () => {
-    vibrate(20);
-    const map = mapInstanceRef.current;
-    if (!map || filteredStores.length === 0) return;
+    if (!map || !window.google || filteredStores.length === 0) return;
 
     if (filteredStores.length === 1) {
-      map.panTo([filteredStores[0].coords.lat, filteredStores[0].coords.lng]);
+      map.panTo(filteredStores[0].coords);
       map.setZoom(16);
       return;
     }
 
-    const bounds = L.latLngBounds(filteredStores.map(s => [s.coords.lat, s.coords.lng]));
-    map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+    const bounds = new window.google.maps.LatLngBounds();
+    filteredStores.forEach(s => bounds.extend(s.coords));
+    if (userLocation) bounds.extend(userLocation);
+    map.fitBounds(bounds, {
+      top: 100,
+      bottom: 220,
+      left: 60,
+      right: 60
+    });
+  }, [filteredStores, userLocation]);
+
+  const handleCenterUser = () => {
+    const map = mapInstanceRef.current;
+    if (map && userLocation) {
+      vibrate(20);
+      map.panTo(userLocation);
+      map.setZoom(16);
+    }
   };
 
   const handleZoom = (delta: number) => {
-    vibrate(15);
     const map = mapInstanceRef.current;
-    if (!map) return;
-    if (delta > 0) {
-      map.zoomIn();
-    } else {
-      map.zoomOut();
+    if (map) {
+      vibrate(10);
+      const currentZoom = map.getZoom() || 15;
+      map.setZoom(currentZoom + delta);
     }
   };
+
+  const handleOpenStoreProfile = (restaurant: Restaurant) => {
+    vibrate(30);
+    if (onSelectRestaurant) {
+      onSelectRestaurant(restaurant);
+    } else {
+      navigate(`/restaurant/${restaurant.id}`);
+      onClose();
+    }
+  };
+
+  const onMapLoad = useCallback((map: google.maps.Map) => {
+    mapInstanceRef.current = map;
+    // Fit bounds after slight delay
+    setTimeout(() => {
+      handleFitAllStores();
+    }, 200);
+  }, [handleFitAllStores]);
+
+  const onMapUnmount = useCallback(() => {
+    mapInstanceRef.current = null;
+  }, []);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-900 animate-in fade-in duration-200">
-      {/* Top Floating Navigation Bar */}
-      <div className="absolute top-3 left-3 right-3 z-40 flex flex-col gap-2 pointer-events-none">
-        <div className="flex items-center justify-between gap-2">
-          {/* Brand & Stats Header */}
-          <div className="bg-white/95 backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xl border border-white/50 pointer-events-auto flex items-center gap-2 max-w-[calc(100%-54px)]">
-            <div className="w-7 h-7 rounded-xl bg-primary flex items-center justify-center text-slate-900 font-black shadow-sm shrink-0">
-              <MapPin className="w-4 h-4" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-black text-slate-900 text-xs truncate">
-                  {cityName ? `Comercios en ${cityName}` : 'Explorar Comercios en Mapa'}
-                </span>
-                <span className="bg-primary/20 text-slate-900 text-[10px] font-black px-1.5 py-0.5 rounded-full shrink-0">
-                  {filteredStores.length} {filteredStores.length === 1 ? 'tienda' : 'tiendas'}
-                </span>
-              </div>
-              <span className="text-[10px] text-slate-500 font-semibold truncate">
-                Toca cualquier logo para iniciar tu compra
-              </span>
-            </div>
-          </div>
+    <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col overflow-hidden select-none animate-in fade-in duration-200">
+      {/* Top Header Floating Overlay */}
+      <div className="absolute top-0 inset-x-0 z-40 p-3 pt-safe flex items-center gap-2 bg-gradient-to-b from-slate-950/90 via-slate-950/70 to-transparent pointer-events-none">
+        {/* Back / Close Button */}
+        <button
+          onClick={onClose}
+          className="w-10 h-10 rounded-2xl bg-white/95 backdrop-blur-md shadow-xl flex items-center justify-center text-slate-800 hover:text-slate-950 active:scale-95 transition-all pointer-events-auto border border-white/20"
+        >
+          <X className="w-5 h-5 stroke-[2.5]" />
+        </button>
 
-          {/* Close Modal Button */}
-          <button
-            onClick={() => {
-              vibrate(20);
-              onClose();
-            }}
-            className="w-11 h-11 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl flex items-center justify-center text-slate-700 hover:text-slate-900 hover:scale-105 active:scale-95 transition-all pointer-events-auto border border-white/50 shrink-0"
-            title="Cerrar mapa"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Quick Search In Map */}
-        <div className="bg-white/95 backdrop-blur-md px-3 py-1.5 rounded-2xl shadow-lg border border-white/50 pointer-events-auto flex items-center gap-2">
-          <Search className="w-4 h-4 text-slate-400 shrink-0" />
+        {/* Search Bar Input */}
+        <div className="flex-1 relative flex items-center bg-white/95 backdrop-blur-md rounded-2xl px-3 py-2 shadow-xl border border-white/20 pointer-events-auto">
+          <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
           <input
             type="text"
+            placeholder="Buscar comercios, hamburguesas, farmacias..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={cityName ? `Buscar tienda en ${cityName}...` : 'Buscar tienda por nombre o categoría...'}
-            className="w-full bg-transparent text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none"
+            className="w-full bg-transparent border-none outline-none font-bold text-xs text-slate-800 placeholder:text-slate-400"
           />
           {searchQuery && (
             <button
@@ -508,13 +265,72 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
         </div>
       </div>
 
-      {/* Map Container */}
+      {/* Map Container - Exclusive Official Google Maps Canvas */}
       <div className="relative w-full h-full flex-1">
-        <div
-          ref={mapContainerRef}
-          className="w-full h-full absolute inset-0 z-0"
-          style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-        />
+        {isLoaded ? (
+          <GoogleMap
+            mapContainerStyle={{ width: '100%', height: '100%' }}
+            center={initialCenter}
+            zoom={userLocation ? 15 : 14}
+            onLoad={onMapLoad}
+            onUnmount={onMapUnmount}
+            onClick={() => setSelectedRestaurant(null)}
+            options={{
+              disableDefaultUI: true,
+              zoomControl: false,
+              streetViewControl: false,
+              mapTypeControl: false,
+              fullscreenControl: false,
+              styles: googleMapsDarkStyles
+            }}
+          >
+            {/* User GPS Location Marker */}
+            {userLocation && (
+              <Marker
+                position={userLocation}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  fillColor: '#3B82F6',
+                  fillOpacity: 1,
+                  strokeColor: '#FFFFFF',
+                  strokeWeight: 3,
+                  scale: 8
+                }}
+                zIndex={200}
+                title="Tu ubicación"
+              />
+            )}
+
+            {/* Validated Stores Markers */}
+            {filteredStores.map(store => {
+              const isSelected = selectedRestaurant?.id === store.restaurant.id;
+              return (
+                <Marker
+                  key={store.restaurant.id}
+                  position={store.coords}
+                  icon={{
+                    url: getStorePinSvgUri(store.restaurant.category, isSelected),
+                    anchor: window.google ? new window.google.maps.Point(20, 48) : undefined,
+                    scaledSize: window.google ? new window.google.maps.Size(isSelected ? 48 : 40, isSelected ? 56 : 48) : undefined
+                  }}
+                  zIndex={isSelected ? 150 : 50}
+                  onClick={() => {
+                    vibrate(20);
+                    setSelectedRestaurant(store.restaurant);
+                    if (mapInstanceRef.current) {
+                      mapInstanceRef.current.panTo(store.coords);
+                    }
+                  }}
+                />
+              );
+            })}
+          </GoogleMap>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
+            <p className="text-xs font-bold text-slate-400">Iniciando Google Maps...</p>
+          </div>
+        )}
       </div>
 
       {/* Floating Action Buttons (Right Side) */}

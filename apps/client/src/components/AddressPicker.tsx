@@ -1,12 +1,10 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import { X, MapPin, Navigation, Check, Search, Loader2 } from 'lucide-react';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience, getGoogleMapsLastError } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import { googleMapsDarkStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 
 const containerStyle = {
     width: '100%',
@@ -43,11 +41,7 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
         libraries: GOOGLE_MAPS_LIBRARIES
     });
 
-    const mapContainerRef = useRef<HTMLDivElement>(null);
-    const hasMapError = useGoogleMapsResilience(mapContainerRef, loadError);
-
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
-
     const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [reference, setReference] = useState(initialData?.reference || '');
     const [map, setMap] = useState<google.maps.Map | null>(null);
@@ -55,67 +49,8 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
     const [searchQuery, setSearchQuery] = useState('');
     const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
-    const leafletMapRef = useRef<L.Map | null>(null);
-    const leafletMarkerRef = useRef<L.Marker | null>(null);
-    const leafletDivRef = useRef<HTMLDivElement | null>(null);
-
-    // Leaflet fallback engine
-    useEffect(() => {
-        if (!hasMapError && isLoaded) return;
-        if (!leafletDivRef.current) return;
-
-        if (leafletMapRef.current) {
-            leafletMapRef.current.invalidateSize();
-            return;
-        }
-
-        const mapInstance = L.map(leafletDivRef.current, {
-            center: [position.lat, position.lng],
-            zoom: 16,
-            zoomControl: false,
-            attributionControl: false
-        });
-
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            subdomains: ['a', 'b', 'c'],
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(mapInstance);
-
-        const marker = L.marker([position.lat, position.lng], {
-            draggable: true
-        }).addTo(mapInstance);
-
-        marker.on('dragend', () => {
-            const pos = marker.getLatLng();
-            setPosition({ lat: pos.lat, lng: pos.lng });
-        });
-
-        mapInstance.on('click', (e: L.LeafletMouseEvent) => {
-            marker.setLatLng(e.latlng);
-            setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
-        });
-
-        leafletMapRef.current = mapInstance;
-        leafletMarkerRef.current = marker;
-
-        setTimeout(() => mapInstance.invalidateSize(), 250);
-
-        return () => {
-            mapInstance.remove();
-            leafletMapRef.current = null;
-            leafletMarkerRef.current = null;
-        };
-    }, [hasMapError, isLoaded]);
-
-    useEffect(() => {
-        if (leafletMarkerRef.current && position) {
-            leafletMarkerRef.current.setLatLng([position.lat, position.lng]);
-        }
-    }, [position]);
-
-    const onLoad = useCallback(function callback(map: google.maps.Map) {
-        setMap(map);
+    const onLoad = useCallback(function callback(mapInstance: google.maps.Map) {
+        setMap(mapInstance);
     }, []);
 
     const onUnmount = useCallback(function callback() {
@@ -128,27 +63,39 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
 
         if (Capacitor.isNativePlatform()) {
             try {
-                const perm = await Geolocation.requestPermissions();
-                if (perm.location === 'granted') {
-                    const pos = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 12000, maximumAge: 0 });
-                    coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                const perm = await Geolocation.checkPermissions();
+                if (perm.location !== 'granted') {
+                    await Geolocation.requestPermissions();
                 }
-            } catch (e) {
-                console.warn("Native geolocation error in AddressPicker:", e);
+                const pos = await Geolocation.getCurrentPosition({
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 5000
+                });
+                coords = {
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                };
+            } catch (err) {
+                console.warn("Native GPS fallback in AddressPicker:", err);
             }
         }
 
         if (!coords && navigator.geolocation) {
             try {
-                coords = await new Promise<{ lat: number; lng: number } | null>((res) => {
-                    navigator.geolocation.getCurrentPosition(
-                        (p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }),
-                        () => res(null),
-                        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-                    );
+                const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 5000
+                    });
                 });
-            } catch (e) {
-                console.warn("Web geolocation error in AddressPicker:", e);
+                coords = {
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                };
+            } catch (webErr) {
+                console.warn("Web GPS fallback in AddressPicker:", webErr);
             }
         }
 
@@ -159,24 +106,32 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                 map.panTo(coords);
                 map.setZoom(17);
             }
-            if (leafletMapRef.current) {
-                leafletMapRef.current.setView([coords.lat, coords.lng], 17);
+
+            // Google Maps Geocoder reverse lookup
+            if (window.google?.maps?.Geocoder) {
+                const geocoder = new window.google.maps.Geocoder();
+                geocoder.geocode({ location: coords }, (results, status) => {
+                    if (status === 'OK' && results && results[0]?.formatted_address) {
+                        setReference(results[0].formatted_address);
+                    }
+                });
             }
         }
         setIsLocating(false);
     }, [map]);
 
+    // Initial load GPS detection
     useEffect(() => {
         if (!initialData) {
             handleCurrentLocation();
         }
-    }, [handleCurrentLocation, initialData]);
+    }, [initialData, handleCurrentLocation]);
 
-    const executeSearch = async (customQuery?: string) => {
-        const queryToSearch = customQuery || searchQuery;
-        if (!queryToSearch || !queryToSearch.trim()) return;
+    const executeSearch = async () => {
+        const queryToSearch = searchQuery.trim();
+        if (!queryToSearch) return;
 
-        if (map && window.google?.maps?.places) {
+        if (map && window.google?.maps?.places?.PlacesService) {
             const service = new window.google.maps.places.PlacesService(map);
             service.findPlaceFromQuery(
                 {
@@ -199,35 +154,39 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                     }
                 }
             );
-        } else {
-            // Free OpenStreetMap Nominatim Search Fallback
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(queryToSearch + ', Calabozo, Venezuela')}&limit=1`);
-                const data = await res.json();
-                if (data && data.length > 0) {
-                    const lat = parseFloat(data[0].lat);
-                    const lng = parseFloat(data[0].lon);
-                    const newPos = { lat, lng };
+        } else if (map && window.google?.maps?.Geocoder) {
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ address: `${queryToSearch}, Venezuela` }, (results, status) => {
+                if (status === 'OK' && results && results[0]?.geometry?.location) {
+                    const loc = results[0].geometry.location;
+                    const newPos = { lat: loc.lat(), lng: loc.lng() };
                     setPosition(newPos);
-                    if (leafletMapRef.current) {
-                        leafletMapRef.current.setView([lat, lng], 17);
-                    }
-                    if (!reference) {
-                        setReference(data[0].display_name.split(',')[0]);
+                    map.panTo(newPos);
+                    map.setZoom(17);
+                    if (results[0].formatted_address && !reference) {
+                        setReference(results[0].formatted_address);
                     }
                 }
-            } catch (e) {
-                console.warn("Nominatim search error in AddressPicker:", e);
-            }
+            });
         }
     };
 
     const onClick = useCallback((e: google.maps.MapMouseEvent) => {
         if (e.latLng) {
-            setPosition({
+            const newPos = {
                 lat: e.latLng.lat(),
                 lng: e.latLng.lng()
-            });
+            };
+            setPosition(newPos);
+            // Reverse geocode clicked point with Google Maps Geocoder
+            if (window.google?.maps?.Geocoder) {
+                const geocoder = new window.google.maps.Geocoder();
+                geocoder.geocode({ location: newPos }, (results, status) => {
+                    if (status === 'OK' && results && results[0]?.formatted_address) {
+                        setReference(results[0].formatted_address);
+                    }
+                });
+            }
         }
     }, []);
 
@@ -235,7 +194,7 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
         if (!position) return;
         const refText = reference.trim();
         onSave({
-            name: refText || 'Ubicación GPS detectada',
+            name: refText || 'Ubicación GPS confirmada',
             lat: position.lat,
             lng: position.lng,
             reference: refText
@@ -244,29 +203,33 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300 font-sans">
-            <div className="bg-white w-full max-w-md rounded-t-[40px] sm:rounded-[40px] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-full duration-300 max-h-[95vh]">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] border border-white/20">
                 {/* Header */}
-                <div className="p-5 pb-3 flex items-center justify-between border-b border-slate-100">
-                    <div>
-                        <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <MapPin className="w-5 h-5 text-primary" />
-                            {title || 'Toca el mapa para marcar'}
-                        </h2>
-                        <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                            {subtitle || 'Mueve el marcador o busca un lugar'}
-                        </p>
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-2xl bg-amber-500/10 flex items-center justify-center text-primary">
+                            <MapPin className="w-5 h-5 fill-primary text-primary" />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-slate-800 text-sm">
+                                {title || "Seleccionar Ubicación"}
+                            </h3>
+                            <p className="text-[11px] font-bold text-slate-500">
+                                {subtitle || "Toca en el mapa oficial de Google para fijar el punto"}
+                            </p>
+                        </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors cursor-pointer"
+                        className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
                     >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4" />
                     </button>
                 </div>
 
-                {/* Places Search Bar */}
-                <div className="px-5 pt-3 pb-2 bg-white">
+                {/* Google Places Autocomplete Bar */}
+                <div className="p-3 bg-white border-b border-slate-100">
                     <div className="relative flex items-center">
                         {isLoaded && window.google?.maps?.places ? (
                             <Autocomplete
@@ -283,9 +246,6 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                                             if (map) {
                                                 map.panTo(newPos);
                                                 map.setZoom(17);
-                                            }
-                                            if (leafletMapRef.current) {
-                                                leafletMapRef.current.setView([newPos.lat, newPos.lng], 17);
                                             }
                                             if (place.formatted_address && !reference) {
                                                 setReference(place.formatted_address);
@@ -331,7 +291,7 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                             <div className="relative flex items-center w-full">
                                 <input
                                     type="text"
-                                    placeholder="Buscar calle o zona en Calabozo..."
+                                    placeholder="Buscar dirección..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
                                     onKeyDown={(e) => {
@@ -363,9 +323,9 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                     </div>
                 </div>
 
-                {/* Map Container */}
-                <div className="relative w-full h-[360px] bg-slate-100" ref={mapContainerRef}>
-                    {!hasMapError && isLoaded ? (
+                {/* Map Container - Exclusive Official Google Maps */}
+                <div className="relative w-full h-[360px] bg-slate-900">
+                    {isLoaded ? (
                         <GoogleMap
                             mapContainerStyle={containerStyle}
                             center={position}
@@ -380,7 +340,16 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                                 draggable={true}
                                 onDragEnd={(e) => {
                                     if (e.latLng) {
-                                        setPosition({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                                        const newPos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                                        setPosition(newPos);
+                                        if (window.google?.maps?.Geocoder) {
+                                            const geocoder = new window.google.maps.Geocoder();
+                                            geocoder.geocode({ location: newPos }, (results, status) => {
+                                                if (status === 'OK' && results && results[0]?.formatted_address) {
+                                                    setReference(results[0].formatted_address);
+                                                }
+                                            });
+                                        }
                                     }
                                 }}
                             />
@@ -401,11 +370,10 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                             )}
                         </GoogleMap>
                     ) : (
-                        <div 
-                            ref={leafletDivRef} 
-                            style={containerStyle} 
-                            className="w-full h-full"
-                        />
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
+                            <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
+                            <p className="text-xs font-bold text-slate-400">Iniciando Google Maps...</p>
+                        </div>
                     )}
 
                     {/* Real-time locate button */}
@@ -424,7 +392,7 @@ export default function AddressPicker({ onClose, onSave, initialData, title, sub
                     </button>
                 </div>
 
-                {/* Solo Punto de Referencia (Nombre eliminado) */}
+                {/* Reference Input */}
                 <div className="p-5 space-y-3.5 overflow-y-auto">
                     <div>
                         <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">

@@ -12,10 +12,8 @@ import DemoAlertModal from '../components/DemoAlertModal';
 import DualPrice from '../components/DualPrice';
 import LocationRequiredModal from '../components/LocationRequiredModal';
 import { calculateDynamicFare } from '../lib/pricing';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience, getGoogleMapsLastError } from '../lib/mapsConfig';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import { googleMapsDarkStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -91,70 +89,6 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [isLocatingGps, setIsLocatingGps] = useState(false);
   const [manualReference, setManualReference] = useState('');
 
-  const cartMapContainerRef = useRef<HTMLDivElement>(null);
-  const hasCartMapError = useGoogleMapsResilience(cartMapContainerRef, loadError, 3000);
-  const leafletCartMapRef = useRef<L.Map | null>(null);
-  const leafletCartMarkerRef = useRef<L.Marker | null>(null);
-  const leafletCartDivRef = useRef<HTMLDivElement | null>(null);
-
-  // Resilient Leaflet Engine for Cart address picker
-  useEffect(() => {
-    if (!showFullscreenDeliveryMap) return;
-    if (!hasCartMapError && isMapLoaded) return;
-    if (!leafletCartDivRef.current) return;
-
-    if (leafletCartMapRef.current) {
-      leafletCartMapRef.current.invalidateSize();
-      return;
-    }
-
-    const center = gpsCoords || { lat: selectedAddress?.lat || 8.9326, lng: selectedAddress?.lng || -67.4264 };
-    const map = L.map(leafletCartDivRef.current, {
-      center: [center.lat, center.lng],
-      zoom: 17,
-      zoomControl: false,
-      attributionControl: false
-    });
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      subdomains: ['a', 'b', 'c'],
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
-
-    const marker = L.marker([center.lat, center.lng], {
-      draggable: true
-    }).addTo(map);
-
-    marker.on('dragend', () => {
-      const pos = marker.getLatLng();
-      setGpsCoords({ lat: pos.lat, lng: pos.lng });
-    });
-
-    map.on('click', (e: L.LeafletMouseEvent) => {
-      marker.setLatLng(e.latlng);
-      setGpsCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
-    });
-
-    leafletCartMapRef.current = map;
-    leafletCartMarkerRef.current = marker;
-
-    setTimeout(() => map.invalidateSize(), 250);
-
-    return () => {
-      map.remove();
-      leafletCartMapRef.current = null;
-      leafletCartMarkerRef.current = null;
-    };
-  }, [showFullscreenDeliveryMap, hasCartMapError, isMapLoaded, selectedAddress]);
-
-  // Sync Leaflet marker when gpsCoords change
-  useEffect(() => {
-    if (leafletCartMarkerRef.current && gpsCoords) {
-      leafletCartMarkerRef.current.setLatLng([gpsCoords.lat, gpsCoords.lng]);
-    }
-  }, [gpsCoords]);
-
   const fetchCurrentLocation = async () => {
     setIsLocatingGps(true);
     let coords: { lat: number; lng: number } | null = null;
@@ -185,9 +119,6 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
     const finalCoords = coords || { lat: 8.9326, lng: -67.4264 };
     setGpsCoords(finalCoords);
-    if (leafletCartMapRef.current) {
-      leafletCartMapRef.current.setView([finalCoords.lat, finalCoords.lng], 17);
-    }
     setSelectedAddress((prev: any) => ({
       name: prev?.name || 'Ubicación GPS detectada',
       lat: finalCoords.lat,
@@ -1421,11 +1352,10 @@ export default function Cart({ hideHeader = false }: CartProps) {
                 />
               </GoogleMap>
             ) : (
-              <div 
-                ref={leafletCartDivRef} 
-                className="w-full h-full absolute inset-0 z-0" 
-                style={{ width: '100%', height: '100%', minHeight: '300px' }} 
-              />
+              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
+                <p className="text-xs font-bold text-slate-400">Iniciando Google Maps...</p>
+              </div>
             )}
           </div>
 
