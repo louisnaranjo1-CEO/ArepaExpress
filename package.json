@@ -28,7 +28,6 @@
     "clean": "rm -rf dist apps/*/dist"
   },
   "dependencies": {
-    "@capacitor-firebase/authentication": "^8.2.0",
     "@capacitor/android": "^8.3.0",
     "@capacitor/app": "^8.1.1",
     "@capacitor/browser": "^8.0.4",
@@ -46,7 +45,6 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
-    "firebase": "^12.9.0",
     "html-to-image": "^1.11.13",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

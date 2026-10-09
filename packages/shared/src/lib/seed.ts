@@ -1,5 +1,4 @@
-import { collection, writeBatch, doc, query, where, getDocs } from 'firebase/firestore';
-import { db } from './firebase';
+import { collection, writeBatch, doc, query, where, getDocs, db } from './firebase-supabase-adapter';
 
 export interface ProductVariant {
     name: string;

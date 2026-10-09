@@ -1,5 +1,4 @@
-import { db } from './firebase';
-import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, arrayUnion, db } from './firebase-supabase-adapter';
 
 const MAX_HISTORY = 20;
 

@@ -1,32 +1,42 @@
-// Scripts for firebase and firebase messaging
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+// Native Web Push Service Worker
+self.addEventListener('push', (event) => {
+    let data = {};
+    if (event.data) {
+        try {
+            data = event.data.json();
+        } catch (e) {
+            data = { title: 'Un 2x3', body: event.data.text() };
+        }
+    }
 
-// Initialize the Firebase app in the service worker by passing in
-// your app's Firebase config object.
-// https://firebase.google.com/docs/web/setup#config-object
-firebase.initializeApp({
-    apiKey: "AIzaSyCb1c-p1R6AZGetk8YzKiLuxjaxjmPqJX8",
-    authDomain: "arepa-express-ve-2026.firebaseapp.com",
-    projectId: "arepa-express-ve-2026",
-    storageBucket: "arepa-express-ve-2026.firebasestorage.app",
-    messagingSenderId: "549258124406",
-    appId: "1:549258124406:web:ec869512afd46a11ea9357"
-});
-
-// Retrieve an instance of Firebase Messaging so that it can handle background
-// messages.
-const messaging = firebase.messaging();
-
-messaging.onBackgroundMessage((payload) => {
-    console.log('[firebase-messaging-sw.js] Received background message ', payload);
-    // Customize notification here
-    const notificationTitle = payload.notification.title;
-    const notificationOptions = {
-        body: payload.notification.body,
-        icon: '/logo.png'
+    const title = data.title || 'Un 2x3 Notificación';
+    const options = {
+        body: data.body || data.message || 'Tienes una nueva actualización en tu pedido o servicio.',
+        icon: data.icon || '/favicon.ico',
+        badge: data.badge || '/favicon.ico',
+        vibrate: [200, 100, 200],
+        data: {
+            url: data.url || '/'
+        }
     };
 
-    self.registration.showNotification(notificationTitle,
-        notificationOptions);
+    event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    const targetUrl = event.notification.data?.url || '/';
+
+    event.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+            for (let client of windowClients) {
+                if (client.url === targetUrl && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow(targetUrl);
+            }
+        })
+    );
 });

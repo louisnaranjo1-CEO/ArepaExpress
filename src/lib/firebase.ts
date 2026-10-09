@@ -1,4 +1,3 @@
-// Firebase is fully deprecated and removed.
-// All operations are proxied transparently to Supabase Database & Storage.
+// Firebase SDK is 100% removed. All calls are emulated and mapped to Supabase.
 export * from './firebase-supabase-adapter';
 export { default } from './firebase-supabase-adapter';

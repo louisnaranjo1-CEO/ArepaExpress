@@ -4,4 +4,5 @@
     <string name="title_activity_main">Arepa Express Admin</string>
     <string name="package_name">com.arepaexpress.admin</string>
     <string name="custom_url_scheme">com.arepaexpress.admin</string>
+    <string name="google_maps_key" translatable="false">AIzaSyAT2_wZfYTBGDR7gEpLXRzG-BUQ9Cbu0aQ</string>
 </resources>

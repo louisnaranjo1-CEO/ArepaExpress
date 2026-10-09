@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle, ShoppingBag, Store, Navigation, Map, SlidersHorizontal, Volume2, X } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY } from '@shared/lib/mapsConfig';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -73,7 +74,7 @@ export default function TransportRequests() {
 
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
-        googleMapsApiKey: "AIzaSyAT2_wZfYTBGDR7gEpLXRzG-BUQ9Cbu0aQ",
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
         libraries: ['places', 'geometry'] as any
     });
 

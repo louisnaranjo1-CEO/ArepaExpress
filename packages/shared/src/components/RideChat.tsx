@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, db } from '../lib/firebase-supabase-adapter';
 import { useAuth } from '../context/AuthContext';
 import { Send, ArrowLeft } from 'lucide-react';
 

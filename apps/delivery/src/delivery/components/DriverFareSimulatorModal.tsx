@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import { X, Navigation, Sun, Moon, Sparkles, DollarSign, ShieldCheck, MapPin, RotateCcw } from 'lucide-react';
+import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { GoogleMap, useJsApiLoader, Marker, Polyline } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@shared/lib/mapsConfig';
+import { googleMapsDarkStyles } from '@shared/lib/weather';
+import { X, Navigation, Sun, Moon, Sparkles, DollarSign, ShieldCheck, MapPin, RotateCcw, Loader2 } from 'lucide-react';
 
 interface Coords {
     lat: number;
@@ -64,12 +65,13 @@ export default function DriverFareSimulatorModal({
     adminSettings,
     bcvRate = 0
 }: DriverFareSimulatorModalProps) {
-    const mapContainerRef = useRef<HTMLDivElement>(null);
-    const mapRef = useRef<L.Map | null>(null);
-    const originMarkerRef = useRef<L.Marker | null>(null);
-    const destMarkerRef = useRef<L.Marker | null>(null);
-    const polylineRef = useRef<L.Polyline | null>(null);
+    const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+        libraries: GOOGLE_MAPS_LIBRARIES
+    });
 
+    const mapRef = useRef<google.maps.Map | null>(null);
     const [shift, setShift] = useState<'day' | 'night'>('day');
     const [useComfort, setUseComfort] = useState(false);
     const [simulatedKm, setSimulatedKm] = useState<number>(5.0);
@@ -86,116 +88,14 @@ export default function DriverFareSimulatorModal({
         }
     }, [originCoords, destCoords]);
 
-    // Setup Leaflet map when modal opens
-    useEffect(() => {
-        if (!isOpen) return;
+    const polylineCoords = useMemo(() => [originCoords, destCoords], [originCoords, destCoords]);
 
-        let map: L.Map | null = null;
-        const timer = setTimeout(() => {
-            if (!mapContainerRef.current) return;
+    const onMapClick = useCallback((e: google.maps.MapMouseEvent) => {
+        if (e.latLng) {
+            setDestCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+        }
+    }, []);
 
-            // Free CartoDB Voyager tiles (clean, fast, free, no Google billing)
-            map = L.map(mapContainerRef.current, {
-                center: [originCoords.lat, originCoords.lng],
-                zoom: 13,
-                zoomControl: true,
-                attributionControl: false
-            });
-
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                maxZoom: 19,
-                subdomains: 'abcd'
-            }).addTo(map);
-
-            mapRef.current = map;
-
-            // Custom Origin Icon (Green Pin)
-            const originIcon = L.divIcon({
-                className: 'sim-origin-marker',
-                html: `
-                    <div style="background: #10B981; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; box-shadow: 0 4px 12px rgba(16,185,129,0.5); border: 3px solid white;">
-                        A
-                    </div>
-                `,
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
-            });
-
-            // Custom Destination Icon (Red Pin)
-            const destIcon = L.divIcon({
-                className: 'sim-dest-marker',
-                html: `
-                    <div style="background: #EF4444; color: white; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; box-shadow: 0 4px 12px rgba(239,68,68,0.5); border: 3px solid white;">
-                        B
-                    </div>
-                `,
-                iconSize: [32, 32],
-                iconAnchor: [16, 16]
-            });
-
-            // Origin Marker (Draggable)
-            const oMarker = L.marker([originCoords.lat, originCoords.lng], {
-                icon: originIcon,
-                draggable: true
-            }).addTo(map);
-
-            oMarker.on('dragend', (e) => {
-                const ll = (e.target as L.Marker).getLatLng();
-                setOriginCoords({ lat: ll.lat, lng: ll.lng });
-            });
-            originMarkerRef.current = oMarker;
-
-            // Destination Marker (Draggable)
-            const dMarker = L.marker([destCoords.lat, destCoords.lng], {
-                icon: destIcon,
-                draggable: true
-            }).addTo(map);
-
-            dMarker.on('dragend', (e) => {
-                const ll = (e.target as L.Marker).getLatLng();
-                setDestCoords({ lat: ll.lat, lng: ll.lng });
-            });
-            destMarkerRef.current = dMarker;
-
-            // Route Polyline
-            const line = L.polyline(
-                [[originCoords.lat, originCoords.lng], [destCoords.lat, destCoords.lng]],
-                { color: '#3B82F6', weight: 4, opacity: 0.85, dashArray: '6, 8' }
-            ).addTo(map);
-            polylineRef.current = line;
-
-            // Map Click sets destination or moves points
-            map.on('click', (e) => {
-                const newDest = { lat: e.latlng.lat, lng: e.latlng.lng };
-                setDestCoords(newDest);
-                if (destMarkerRef.current) {
-                    destMarkerRef.current.setLatLng(e.latlng);
-                }
-            });
-
-            // Invalidate size once rendered
-            setTimeout(() => {
-                map?.invalidateSize();
-            }, 250);
-        }, 150);
-
-        return () => {
-            clearTimeout(timer);
-            if (mapRef.current) {
-                mapRef.current.remove();
-                mapRef.current = null;
-            }
-        };
-    }, [isOpen]);
-
-    // Update polyline on coordinates change
-    useEffect(() => {
-        if (!polylineRef.current) return;
-        polylineRef.current.setLatLngs([
-            [originCoords.lat, originCoords.lng],
-            [destCoords.lat, destCoords.lng]
-        ]);
-    }, [originCoords, destCoords]);
 
     // Calculate Fares and Commissions based on active settings
     const calculation = useMemo(() => {
@@ -373,12 +273,63 @@ export default function DriverFareSimulatorModal({
 
                 {/* Modal Body: Map + Preset distances + Calculation Result */}
                 <div className="overflow-y-auto flex-1 p-5 space-y-4">
-                    {/* Interactive Leaflet Map */}
-                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner h-52 sm:h-60 bg-slate-100">
-                        <div ref={mapContainerRef} className="w-full h-full" />
+                    {/* Interactive Google Map */}
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner h-52 sm:h-60 bg-slate-900">
+                        {isLoaded ? (
+                            <GoogleMap
+                                mapContainerStyle={{ width: '100%', height: '100%' }}
+                                center={{
+                                    lat: (originCoords.lat + destCoords.lat) / 2,
+                                    lng: (originCoords.lng + destCoords.lng) / 2
+                                }}
+                                zoom={13}
+                                onLoad={(map) => { mapRef.current = map; }}
+                                onUnmount={() => { mapRef.current = null; }}
+                                onClick={onMapClick}
+                                options={{
+                                    disableDefaultUI: true,
+                                    zoomControl: true,
+                                    styles: googleMapsDarkStyles
+                                }}
+                            >
+                                <Marker
+                                    position={originCoords}
+                                    draggable={true}
+                                    label={{ text: "A", color: "#FFFFFF", fontWeight: "bold" }}
+                                    onDragEnd={(e) => {
+                                        if (e.latLng) {
+                                            setOriginCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                                        }
+                                    }}
+                                />
+                                <Marker
+                                    position={destCoords}
+                                    draggable={true}
+                                    label={{ text: "B", color: "#FFFFFF", fontWeight: "bold" }}
+                                    onDragEnd={(e) => {
+                                        if (e.latLng) {
+                                            setDestCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+                                        }
+                                    }}
+                                />
+                                <Polyline
+                                    path={polylineCoords}
+                                    options={{
+                                        strokeColor: '#3B82F6',
+                                        strokeWeight: 4,
+                                        strokeOpacity: 0.85
+                                    }}
+                                />
+                            </GoogleMap>
+                        ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
+                                <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
+                                <p className="text-[11px] font-bold text-slate-400">Cargando Google Maps...</p>
+                            </div>
+                        )}
                         
                         {/* Map hint badge */}
-                        <div className="absolute top-2.5 left-2.5 z-[1000] bg-slate-900/85 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1.5 rounded-xl shadow flex items-center gap-1.5 pointer-events-none">
+                        <div className="absolute top-2.5 left-2.5 z-10 bg-slate-900/85 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1.5 rounded-xl shadow flex items-center gap-1.5 pointer-events-none border border-white/10">
                             <MapPin className="w-3 h-3 text-amber-400" />
                             <span>Arrastra los puntos <strong>A</strong> y <strong>B</strong> o haz clic en el mapa</span>
                         </div>
@@ -387,13 +338,19 @@ export default function DriverFareSimulatorModal({
                         <button
                             type="button"
                             onClick={() => {
-                                setOriginCoords({ lat: 10.4900, lng: -66.8850 });
-                                setDestCoords({ lat: 10.4850, lng: -66.8350 });
+                                const newOrigin = { lat: 10.4900, lng: -66.8850 };
+                                const newDest = { lat: 10.4850, lng: -66.8350 };
+                                setOriginCoords(newOrigin);
+                                setDestCoords(newDest);
                                 if (mapRef.current) {
-                                    mapRef.current.setView([10.4875, -66.8600], 13);
+                                    mapRef.current.panTo({
+                                        lat: (newOrigin.lat + newDest.lat) / 2,
+                                        lng: (newOrigin.lng + newDest.lng) / 2
+                                    });
+                                    mapRef.current.setZoom(13);
                                 }
                             }}
-                            className="absolute bottom-2.5 right-2.5 z-[1000] bg-white/90 hover:bg-white text-slate-700 text-[10px] font-black px-2.5 py-1.5 rounded-xl shadow border border-slate-200 flex items-center gap-1 transition-all"
+                            className="absolute bottom-2.5 right-2.5 z-10 bg-white/90 hover:bg-white text-slate-700 text-[10px] font-black px-2.5 py-1.5 rounded-xl shadow border border-slate-200 flex items-center gap-1 transition-all cursor-pointer"
                         >
                             <RotateCcw className="w-3 h-3" />
                             <span>Centrar</span>

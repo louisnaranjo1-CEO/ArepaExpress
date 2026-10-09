@@ -1,232 +1,393 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, MapPin, Navigation, Check } from 'lucide-react';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
+import { X, MapPin, Navigation, Check, Search, Loader2 } from 'lucide-react';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@shared/lib/mapsConfig';
+import { googleMapsDarkStyles } from '@shared/lib/weather';
 
-interface AddressPickerProps {
-    onClose: () => void;
-    onSave: (data: { name: string; lat: number; lng: number; reference: string }) => void;
-    initialData?: { name: string; lat: number; lng: number; reference: string };
-    title?: string;
-    subtitle?: string;
-}
+const containerStyle = {
+    width: '100%',
+    height: '380px'
+};
 
 const defaultCenter = {
     lat: 10.4806, // Caracas, Venezuela
     lng: -66.9036
 };
 
-// Marcador SVG personalizado para Leaflet
-const createCustomPin = () => {
-    return L.divIcon({
-        className: 'custom-map-pin',
-        html: `
-            <div style="position: relative; transform: translate(-50%, -100%); cursor: pointer;">
-                <div style="background-color: #FACC15; color: #0F172A; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); border: 3px solid #ffffff;">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>
-                        <circle cx="12" cy="10" r="3"/>
-                    </svg>
-                </div>
-                <div style="width: 4px; height: 10px; background-color: #0F172A; margin: -2px auto 0 auto; border-radius: 2px;"></div>
-                <div style="width: 14px; height: 6px; background-color: rgba(0,0,0,0.25); border-radius: 50%; margin: 0 auto; filter: blur(1px);"></div>
-            </div>
-        `,
-        iconSize: [44, 54],
-        iconAnchor: [22, 54]
-    });
+const mapOptions: google.maps.MapOptions = {
+    disableDefaultUI: true,
+    zoomControl: false,
+    streetViewControl: false,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    clickableIcons: true,
+    styles: googleMapsDarkStyles
 };
 
+interface AddressPickerProps {
+    onClose: () => void;
+    onSave: (data: { name: string; lat: number; lng: number; reference: string }) => void;
+    initialData?: { name?: string; lat: number; lng: number; reference: string };
+    title?: string;
+    subtitle?: string;
+}
+
 export default function AddressPicker({ onClose, onSave, initialData, title, subtitle }: AddressPickerProps) {
+    const { isLoaded } = useJsApiLoader({
+        id: 'google-map-script',
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+        libraries: GOOGLE_MAPS_LIBRARIES
+    });
+
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
+    const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
     const [reference, setReference] = useState(initialData?.reference || '');
-    const [name, setName] = useState(initialData?.name || 'Destino');
-    const [locating, setLocating] = useState(false);
+    const [map, setMap] = useState<google.maps.Map | null>(null);
+    const [isLocating, setIsLocating] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
+    const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
-    const mapContainerRef = useRef<HTMLDivElement>(null);
-    const mapInstanceRef = useRef<L.Map | null>(null);
-    const markerRef = useRef<L.Marker | null>(null);
-
-    // Inicializar Leaflet Map
-    useEffect(() => {
-        if (!mapContainerRef.current) return;
-
-        // Si ya existe instancia de mapa, limpiarla
-        if (mapInstanceRef.current) {
-            mapInstanceRef.current.remove();
-            mapInstanceRef.current = null;
-        }
-
-        const map = L.map(mapContainerRef.current, {
-            center: [position.lat, position.lng],
-            zoom: 15,
-            zoomControl: false
-        });
-
-        // Capa de tiles OpenStreetMap gratuita, rápida y de alta resolución
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; OpenStreetMap'
-        }).addTo(map);
-
-        // Control de zoom en la esquina superior derecha
-        L.control.zoom({ position: 'topright' }).addTo(map);
-
-        // Marcador arrastrable
-        const marker = L.marker([position.lat, position.lng], {
-            icon: createCustomPin(),
-            draggable: true
-        }).addTo(map);
-
-        marker.on('dragend', () => {
-            const latlng = marker.getLatLng();
-            setPosition({ lat: latlng.lat, lng: latlng.lng });
-        });
-
-        // Tocar el mapa para mover el marcador
-        map.on('click', (e: L.LeafletMouseEvent) => {
-            marker.setLatLng(e.latlng);
-            setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
-        });
-
-        mapInstanceRef.current = map;
-        markerRef.current = marker;
-
-        // Forzar recalculo de dimensiones cuando el contenedor termina de animar
-        const resizeTimeout = setTimeout(() => {
-            map.invalidateSize();
-        }, 250);
-
-        // Si no hay datos iniciales, intentar obtener GPS
-        if (!initialData && navigator.geolocation) {
-            setLocating(true);
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                    setPosition(newPos);
-                    marker.setLatLng([newPos.lat, newPos.lng]);
-                    map.setView([newPos.lat, newPos.lng], 16);
-                    setLocating(false);
-                },
-                (err) => {
-                    console.warn("No se pudo obtener GPS:", err);
-                    setLocating(false);
-                },
-                { enableHighAccuracy: true, timeout: 8000 }
-            );
-        }
-
-        return () => {
-            clearTimeout(resizeTimeout);
-            map.remove();
-            mapInstanceRef.current = null;
-        };
+    const onLoad = useCallback(function callback(mapInstance: google.maps.Map) {
+        setMap(mapInstance);
     }, []);
 
-    const handleGpsCenter = () => {
-        if (!navigator.geolocation || !mapInstanceRef.current || !markerRef.current) return;
-        setLocating(true);
+    const onUnmount = useCallback(function callback() {
+        setMap(null);
+    }, []);
 
-        navigator.geolocation.getCurrentPosition(
-            (pos) => {
-                const newPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                setPosition(newPos);
-                markerRef.current?.setLatLng([newPos.lat, newPos.lng]);
-                mapInstanceRef.current?.setView([newPos.lat, newPos.lng], 16);
-                setLocating(false);
-            },
-            (err) => {
-                console.warn("GPS error:", err);
-                setLocating(false);
-                alert("No se pudo obtener tu ubicación actual. Asegúrate de dar permisos de GPS.");
-            },
-            { enableHighAccuracy: true, timeout: 10000 }
-        );
+    const handleCurrentLocation = useCallback(async () => {
+        setIsLocating(true);
+        let coords: { lat: number; lng: number } | null = null;
+
+        if (navigator.geolocation) {
+            try {
+                const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 5000
+                    });
+                });
+                coords = {
+                    lat: pos.coords.latitude,
+                    lng: pos.coords.longitude
+                };
+            } catch (webErr) {
+                console.warn("GPS fallback in delivery AddressPicker:", webErr);
+            }
+        }
+
+        if (coords) {
+            setPosition(coords);
+            setUserLocation(coords);
+            if (map) {
+                map.panTo(coords);
+                map.setZoom(17);
+            }
+
+            if (window.google?.maps?.Geocoder) {
+                const geocoder = new window.google.maps.Geocoder();
+                geocoder.geocode({ location: coords }, (results, status) => {
+                    if (status === 'OK' && results && results[0]?.formatted_address) {
+                        setReference(results[0].formatted_address);
+                    }
+                });
+            }
+        }
+        setIsLocating(false);
+    }, [map]);
+
+    useEffect(() => {
+        if (!initialData) {
+            handleCurrentLocation();
+        }
+    }, [initialData, handleCurrentLocation]);
+
+    const executeSearch = async () => {
+        const queryToSearch = searchQuery.trim();
+        if (!queryToSearch) return;
+
+        if (map && window.google?.maps?.places?.PlacesService) {
+            const service = new window.google.maps.places.PlacesService(map);
+            service.findPlaceFromQuery(
+                {
+                    query: queryToSearch,
+                    fields: ['name', 'geometry', 'formatted_address']
+                },
+                (results, status) => {
+                    if (status === window.google.maps.places.PlacesServiceStatus.OK && results && results[0]?.geometry?.location) {
+                        const place = results[0];
+                        const newPos = {
+                            lat: place.geometry.location.lat(),
+                            lng: place.geometry.location.lng()
+                        };
+                        setPosition(newPos);
+                        map.panTo(newPos);
+                        map.setZoom(17);
+                        if (place.formatted_address && !reference) {
+                            setReference(place.formatted_address);
+                        }
+                    }
+                }
+            );
+        } else if (map && window.google?.maps?.Geocoder) {
+            const geocoder = new window.google.maps.Geocoder();
+            geocoder.geocode({ address: `${queryToSearch}, Venezuela` }, (results, status) => {
+                if (status === 'OK' && results && results[0]?.geometry?.location) {
+                    const loc = results[0].geometry.location;
+                    const newPos = { lat: loc.lat(), lng: loc.lng() };
+                    setPosition(newPos);
+                    map.panTo(newPos);
+                    map.setZoom(17);
+                    if (results[0].formatted_address && !reference) {
+                        setReference(results[0].formatted_address);
+                    }
+                }
+            });
+        }
     };
 
+    const onClick = useCallback((e: google.maps.MapMouseEvent) => {
+        if (e.latLng) {
+            const newPos = {
+                lat: e.latLng.lat(),
+                lng: e.latLng.lng()
+            };
+            setPosition(newPos);
+            if (window.google?.maps?.Geocoder) {
+                const geocoder = new window.google.maps.Geocoder();
+                geocoder.geocode({ location: newPos }, (results, status) => {
+                    if (status === 'OK' && results && results[0]?.formatted_address) {
+                        setReference(results[0].formatted_address);
+                    }
+                });
+            }
+        }
+    }, []);
+
     const handleSave = () => {
-        if (!position || !name.trim()) return;
+        if (!position) return;
+        const refText = reference.trim();
         onSave({
-            name: name.trim(),
+            name: refText || 'Ubicación GPS confirmada',
             lat: position.lat,
             lng: position.lng,
-            reference: reference.trim()
+            reference: refText
         });
+        onClose();
     };
 
     return (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-300 font-sans">
-            <div className="bg-white w-full max-w-md rounded-t-[40px] sm:rounded-[40px] overflow-hidden flex flex-col shadow-2xl animate-in slide-in-from-bottom-full duration-300 max-h-[95vh]">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+            <div className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] border border-white/20">
                 {/* Header */}
-                <div className="p-5 pb-3 flex items-center justify-between border-b border-slate-100">
-                    <div>
-                        <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
-                            <MapPin className="w-5 h-5 text-primary" />
-                            {title || 'Tu Ubicación'}
-                        </h2>
-                        <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                            {subtitle || 'Toca el mapa o arrastra el pin para marcar'}
-                        </p>
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                            <MapPin className="w-5 h-5 fill-amber-500 text-amber-500" />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-slate-800 text-sm">
+                                {title || "Seleccionar Ubicación"}
+                            </h3>
+                            <p className="text-[11px] font-bold text-slate-500">
+                                {subtitle || "Toca en el mapa oficial de Google para fijar el punto"}
+                            </p>
+                        </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 hover:bg-red-50 hover:text-red-500 transition-colors"
+                        className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
                     >
-                        <X className="w-5 h-5" />
+                        <X className="w-4 h-4" />
                     </button>
                 </div>
 
-                {/* Map Container */}
-                <div className="relative w-full h-[360px] bg-slate-100">
-                    <div ref={mapContainerRef} className="w-full h-full" style={{ zIndex: 1 }} />
+                {/* Google Places Autocomplete Bar */}
+                <div className="p-3 bg-white border-b border-slate-100">
+                    <div className="relative flex items-center">
+                        {isLoaded && window.google?.maps?.places ? (
+                            <Autocomplete
+                                onLoad={(autocomplete) => { autocompleteRef.current = autocomplete; }}
+                                onPlaceChanged={() => {
+                                    if (autocompleteRef.current) {
+                                        const place = autocompleteRef.current.getPlace();
+                                        if (place.geometry?.location) {
+                                            const newPos = {
+                                                lat: place.geometry.location.lat(),
+                                                lng: place.geometry.location.lng()
+                                            };
+                                            setPosition(newPos);
+                                            if (map) {
+                                                map.panTo(newPos);
+                                                map.setZoom(17);
+                                            }
+                                            if (place.formatted_address && !reference) {
+                                                setReference(place.formatted_address);
+                                            }
+                                        }
+                                    }
+                                }}
+                                className="w-full"
+                            >
+                                <div className="relative flex items-center w-full">
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar dirección, local o calle..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                executeSearch();
+                                            }
+                                        }}
+                                        className="w-full bg-slate-100/80 border border-slate-200 focus:border-amber-500 focus:bg-white p-3 pl-11 pr-10 rounded-2xl outline-none font-bold text-xs text-slate-800 transition-all shadow-inner"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => executeSearch()}
+                                        className="absolute left-3 text-slate-500 hover:text-slate-900 cursor-pointer"
+                                    >
+                                        <Search className="w-4 h-4" />
+                                    </button>
+                                    {searchQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setSearchQuery('')}
+                                            className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+                            </Autocomplete>
+                        ) : (
+                            <div className="relative flex items-center w-full">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar dirección..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            executeSearch();
+                                        }
+                                    }}
+                                    className="w-full bg-slate-100/80 border border-slate-200 focus:border-amber-500 focus:bg-white p-3 pl-11 pr-10 rounded-2xl outline-none font-bold text-xs text-slate-800 transition-all shadow-inner"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => executeSearch()}
+                                    className="absolute left-3 text-slate-500 hover:text-slate-900 cursor-pointer"
+                                >
+                                    <Search className="w-4 h-4" />
+                                </button>
+                                {searchQuery && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setSearchQuery('')}
+                                        className="absolute right-3 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                                    >
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
 
-                    {/* GPS Button */}
+                {/* Map Container - Google Maps */}
+                <div className="relative w-full h-[360px] bg-slate-900">
+                    {isLoaded ? (
+                        <GoogleMap
+                            mapContainerStyle={containerStyle}
+                            center={position}
+                            zoom={16}
+                            onLoad={onLoad}
+                            onUnmount={onUnmount}
+                            onClick={onClick}
+                            options={mapOptions}
+                        >
+                            <Marker
+                                position={position}
+                                draggable={true}
+                                onDragEnd={(e) => {
+                                    if (e.latLng) {
+                                        const newPos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                                        setPosition(newPos);
+                                        if (window.google?.maps?.Geocoder) {
+                                            const geocoder = new window.google.maps.Geocoder();
+                                            geocoder.geocode({ location: newPos }, (results, status) => {
+                                                if (status === 'OK' && results && results[0]?.formatted_address) {
+                                                    setReference(results[0].formatted_address);
+                                                }
+                                            });
+                                        }
+                                    }
+                                }}
+                            />
+
+                            {userLocation && (
+                                <Marker
+                                    position={userLocation}
+                                    icon={{
+                                        path: google.maps.SymbolPath.CIRCLE,
+                                        fillColor: '#4285F4',
+                                        fillOpacity: 1,
+                                        strokeColor: 'white',
+                                        strokeWeight: 2,
+                                        scale: 7
+                                    }}
+                                    zIndex={1}
+                                />
+                            )}
+                        </GoogleMap>
+                    ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
+                            <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
+                            <p className="text-xs font-bold text-slate-400">Iniciando Google Maps...</p>
+                        </div>
+                    )}
+
+                    {/* GPS Locate button */}
                     <button
                         type="button"
-                        onClick={handleGpsCenter}
-                        disabled={locating}
-                        className="absolute bottom-4 right-4 bg-white hover:bg-slate-50 rounded-2xl shadow-xl flex items-center gap-2 text-slate-900 border border-slate-200/80 active:scale-95 transition-all px-3.5 py-2.5 z-[500] font-black text-xs"
+                        onClick={handleCurrentLocation}
+                        disabled={isLocating}
+                        className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl flex items-center gap-2 text-slate-900 border border-slate-200 active:scale-95 transition-all px-3.5 py-2.5 z-10 font-black text-xs cursor-pointer disabled:opacity-70"
                     >
-                        <Navigation className={`w-4 h-4 text-primary fill-primary/30 ${locating ? 'animate-spin' : ''}`} />
-                        <span>{locating ? "Localizando..." : "Ubicación en tiempo real"}</span>
+                        {isLocating ? (
+                            <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+                        ) : (
+                            <Navigation className="w-4 h-4 fill-amber-500 text-amber-500" />
+                        )}
+                        <span>{isLocating ? "Obteniendo GPS..." : "Mi ubicación"}</span>
                     </button>
                 </div>
 
-                {/* Reference Inputs */}
+                {/* Reference Input & Actions */}
                 <div className="p-5 space-y-3.5 overflow-y-auto">
                     <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                            Nombre del Lugar (Ej. Mi Casa, Domicilio)
+                        <label className="text-xs font-black text-slate-700 uppercase tracking-widest ml-1">
+                            Punto de Referencia
                         </label>
                         <input
                             type="text"
-                            placeholder="Casa, Apartamento..."
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary focus:bg-white px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all text-sm mt-1"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
-                            Punto de Referencia / Dirección Escrita
-                        </label>
-                        <input
-                            type="text"
-                            placeholder="Ej: Calle 3, Edif. Los Samanes, Apto 2-B..."
+                            placeholder="Ej. Frente a la plaza, Casa blanca con rejas..."
                             value={reference}
                             onChange={(e) => setReference(e.target.value)}
-                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary focus:bg-white px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all text-sm mt-1"
+                            className="w-full mt-1.5 p-3.5 bg-slate-100 border border-slate-200 rounded-2xl font-bold text-xs text-slate-900 outline-none focus:border-amber-500 focus:bg-white transition-all shadow-inner"
                         />
                     </div>
 
                     <button
                         onClick={handleSave}
-                        disabled={!position}
-                        className="w-full bg-primary hover:bg-yellow-400 text-slate-950 py-3.5 rounded-2xl font-black text-sm shadow-xl shadow-primary/20 hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2"
+                        className="w-full py-4 bg-amber-400 hover:bg-amber-500 active:scale-98 text-slate-950 font-black rounded-2xl shadow-lg shadow-amber-400/25 flex items-center justify-center gap-2 transition-all cursor-pointer text-sm"
                     >
-                        <Check className="w-5 h-5" />
-                        <span>Confirmar Dirección</span>
+                        <Check className="w-4 h-4 stroke-[3]" />
+                        Confirmar Ubicación
                     </button>
                 </div>
             </div>

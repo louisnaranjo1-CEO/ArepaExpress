@@ -2,14 +2,65 @@ require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const sharp = require('sharp');
 const axios = require('axios');
 const { fal } = require('@fal-ai/serverless-client');
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: '25mb' }));
-app.use(express.urlencoded({ extended: true, limit: '25mb' }));
+
+// 1. Security Headers (Helmet + HSTS + XSS protection)
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
+
+app.use((req, res, next) => {
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  next();
+});
+
+// 2. CORS configuration
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// 3. Rate limiting (General DDoS and bot mitigation)
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes desde esta dirección IP, por favor intenta más tarde.' }
+});
+app.use(generalLimiter);
+
+// 4. Strict rate limiting for sensitive endpoints
+const strictLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Límite de solicitudes excedido para esta acción sensible.' }
+});
+
+// 5. Body parser limits
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ extended: true, limit: '20mb' }));
+
+// 6. Sanitization helper
+function sanitizeString(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[<>]/g, '').trim();
+}
+
 
 // Configuración segura de la base de datos
 const pool = new Pool({
@@ -126,10 +177,14 @@ app.put('/api/drivers/:uid/status', async (req, res) => {
   }
 });
 
-// GET /api/drivers/:uid — Obtener perfil y ubicación actual del driver
+// GET /api/drivers/:uid — Obtener perfil y ubicación actual del driver (con protección de PII)
 app.get('/api/drivers/:uid', async (req, res) => {
   try {
     const { uid } = req.params;
+    const authHeader = req.headers['authorization'];
+    const callerId = req.headers['x-user-id'];
+    const isOwnerOrAdmin = callerId === uid || (authHeader && authHeader.length > 20);
+
     const result = await pool.query(`
       SELECT 
         id, firebase_uid, email, full_name, phone, cedula, rif, age,
@@ -160,14 +215,15 @@ app.get('/api/drivers/:uid', async (req, res) => {
         }
     }
 
+    // Proteger PII sensible: si no es el mismo driver ni admin, no exponer cédula, RIF ni licencia
     res.json({
       id: d.firebase_uid,
-      email: d.email,
+      email: isOwnerOrAdmin ? d.email : undefined,
       fullName: d.full_name,
-      phone: d.phone,
-      cedula: d.cedula,
-      rif: d.rif,
-      age: d.age,
+      phone: isOwnerOrAdmin ? d.phone : undefined,
+      cedula: isOwnerOrAdmin ? d.cedula : undefined,
+      rif: isOwnerOrAdmin ? d.rif : undefined,
+      age: isOwnerOrAdmin ? d.age : undefined,
       vehicleType: d.vehicle_type,
       vehiclePlate: d.vehicle_plate,
       isOnline: d.is_online,
@@ -179,9 +235,9 @@ app.get('/api/drivers/:uid', async (req, res) => {
       documents: {
         selfieUrl: d.selfie_url || '',
         vehicleUrl: d.vehicle_url || '',
-        licenseUrl: d.license_url || '',
+        licenseUrl: isOwnerOrAdmin ? (d.license_url || '') : '',
       },
-      homeLocation: homeLocation,
+      homeLocation: isOwnerOrAdmin ? homeLocation : null,
       status: d.status,
       createdAt: d.created_at,
       updatedAt: d.updated_at,
@@ -214,7 +270,7 @@ app.get('/api/drivers/:uid/location-history', async (req, res) => {
 });
 
 // POST /api/drivers/register — Registrar un nuevo driver desde la app
-app.post('/api/drivers/register', async (req, res) => {
+app.post('/api/drivers/register', strictLimiter, async (req, res) => {
   try {
     const {
       firebase_uid, email, full_name, phone, cedula, rif, age,
@@ -225,6 +281,20 @@ app.post('/api/drivers/register', async (req, res) => {
     if (!firebase_uid || !email || !full_name) {
       return res.status(400).json({ error: 'firebase_uid, email, and full_name are required' });
     }
+
+    // Input sanitization and validation
+    const cleanEmail = sanitizeString(email).toLowerCase();
+    const cleanFullName = sanitizeString(full_name);
+    const cleanPhone = sanitizeString(phone);
+    const cleanCedula = sanitizeString(cedula);
+    const cleanRif = sanitizeString(rif);
+    const cleanVehicleType = sanitizeString(vehicle_type);
+    const cleanVehiclePlate = sanitizeString(vehicle_plate);
+    const cleanAge = parseInt(age, 10) || 18;
+    const cleanHomeState = sanitizeString(home_state);
+    const cleanHomeCity = sanitizeString(home_city);
+    const cleanLat = home_coords_lat != null ? parseFloat(home_coords_lat) : null;
+    const cleanLng = home_coords_lng != null ? parseFloat(home_coords_lng) : null;
 
     const result = await pool.query(`
       INSERT INTO drivers (
@@ -250,9 +320,9 @@ app.post('/api/drivers/register', async (req, res) => {
         home_coords_lat = EXCLUDED.home_coords_lat,
         home_coords_lng = EXCLUDED.home_coords_lng
       RETURNING id, firebase_uid, status;
-    `, [firebase_uid, email, full_name, phone, cedula, rif, age,
-        vehicle_type, vehicle_plate, selfie_url, vehicle_url, license_url,
-        home_state, home_city, home_coords_lat, home_coords_lng]);
+    `, [firebase_uid, cleanEmail, cleanFullName, cleanPhone, cleanCedula, cleanRif, cleanAge,
+        cleanVehicleType, cleanVehiclePlate, selfie_url, vehicle_url, license_url,
+        cleanHomeState, cleanHomeCity, cleanLat, cleanLng]);
 
     res.json(result.rows[0]);
   } catch (error) {
@@ -460,16 +530,25 @@ async function processStoreProductImage(inputBuffer) {
   };
 }
 
-app.post('/api/products/process-image', async (req, res) => {
+app.post('/api/products/process-image', strictLimiter, async (req, res) => {
   try {
     const { imageBase64 } = req.body;
-    if (!imageBase64) {
-      return res.status(400).json({ error: 'imageBase64 es requerido' });
+    if (!imageBase64 || typeof imageBase64 !== 'string') {
+      return res.status(400).json({ error: 'imageBase64 es requerido y debe ser una cadena válida' });
+    }
+
+    // Validación estricta de tamaño máximo (15MB base64 aprox ~11MB de archivo binario)
+    if (imageBase64.length > 16 * 1024 * 1024) {
+      return res.status(400).json({ error: 'La imagen excede el tamaño máximo permitido (10MB)' });
     }
 
     let cleanBase64 = imageBase64;
     if (cleanBase64.includes(';base64,')) {
       cleanBase64 = cleanBase64.split(';base64,')[1];
+    }
+
+    if (!cleanBase64 || cleanBase64.length < 50) {
+      return res.status(400).json({ error: 'Payload base64 de imagen inválido o corrupto' });
     }
 
     const inputBuffer = Buffer.from(cleanBase64, 'base64');

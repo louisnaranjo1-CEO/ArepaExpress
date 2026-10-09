@@ -20,62 +20,28 @@ export const processReferralCode = async (newUserId: string, referralCode: strin
     }
 }
 
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Browser } from '@capacitor/browser';
 
 export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolean }> => {
     try {
-        let user: any = null;
-        let isNewUser = false;
-
         if (Capacitor.isNativePlatform()) {
-            try {
-                // Flujo nativo: Abre el modal nativo de Google Play Services directamente en la app
-                const result = await FirebaseAuthentication.signInWithGoogle({
-                    useCredentialManager: true
+            const redirectUri = 'deliexpress.app://auth/callback';
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: redirectUri,
+                    skipBrowserRedirect: true
+                }
+            });
+            if (error) throw error;
+            if (data?.url) {
+                await Browser.open({
+                    url: data.url,
+                    windowName: '_self',
+                    presentationStyle: 'popover'
                 });
-                const idToken = result.credential?.idToken;
-                if (!idToken) {
-                    throw new Error("No se pudo obtener la credencial de Google.");
-                }
-
-                const { data, error } = await supabase.auth.signInWithIdToken({
-                    provider: 'google',
-                    token: idToken
-                });
-
-                if (error) throw error;
-                user = data.user;
-
-                if (user && user.created_at && user.last_sign_in_at) {
-                    const createdTime = new Date(user.created_at).getTime();
-                    const signinTime = new Date(user.last_sign_in_at).getTime();
-                    isNewUser = (signinTime - createdTime) < 5000;
-                }
-            } catch (nativeErr: any) {
-                console.warn("Fallo en login nativo de Google, intentando fallback:", nativeErr);
-                if (nativeErr?.message?.includes('cancel') || nativeErr?.code === '12501' || nativeErr?.code === '16') {
-                    throw new Error("Inicio de sesión cancelado.");
-                }
-
-                const redirectUri = 'deliexpress.app://auth/callback';
-                const { data, error } = await supabase.auth.signInWithOAuth({
-                    provider: 'google',
-                    options: {
-                        redirectTo: redirectUri,
-                        skipBrowserRedirect: true
-                    }
-                });
-                if (error) throw error;
-                if (data?.url) {
-                    await Browser.open({
-                        url: data.url,
-                        windowName: '_self',
-                        presentationStyle: 'popover'
-                    });
-                }
-                return { user: null, isNewUser: false };
             }
+            return { user: null, isNewUser: false };
         } else {
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
@@ -311,3 +277,4 @@ export const logout = async (): Promise<void> => {
         throw error;
     }
 };
+

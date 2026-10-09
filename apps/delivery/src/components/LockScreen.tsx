@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { verifyBiometric } from '../utils/security';
-import { auth } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { UN2X3_LOGO } from '../lib/env';
 import { Shield, Fingerprint, Lock, ChevronRight, AlertCircle, LogOut } from 'lucide-react';
 
@@ -30,7 +30,7 @@ export default function LockScreen() {
             if (!err.message?.includes('canceled')) {
                 console.error("LockScreen: persistent error, signing out...");
                 setTimeout(async () => {
-                    await auth.signOut();
+                    await supabase.auth.signOut();
                     window.location.reload();
                 }, 3000);
             } else {

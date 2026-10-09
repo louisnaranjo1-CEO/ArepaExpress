@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import { X, MapPin, Navigation, Check, Search, Loader2 } from 'lucide-react';
+import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@shared/lib/mapsConfig';
 
 const containerStyle = {
     width: '100%',
@@ -31,8 +32,8 @@ interface AddressPickerProps {
 export default function AddressPicker({ onClose, onSave, initialData }: AddressPickerProps) {
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
-        googleMapsApiKey: "AIzaSyAT2_wZfYTBGDR7gEpLXRzG-BUQ9Cbu0aQ",
-        libraries: ['places', 'geometry'] as any
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
+        libraries: GOOGLE_MAPS_LIBRARIES
     });
 
     const [position, setPosition] = useState(initialData ? { lat: initialData.lat, lng: initialData.lng } : defaultCenter);
