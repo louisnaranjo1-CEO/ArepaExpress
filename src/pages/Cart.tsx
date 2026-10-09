@@ -14,7 +14,7 @@ import LocationRequiredModal from '../components/LocationRequiredModal';
 import { calculateDynamicFare } from '../lib/pricing';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
-import { googleMapsDarkStyles } from '../lib/weather';
+import { yangoDayMapStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 
@@ -1338,7 +1338,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   streetViewControl: false,
                   mapTypeControl: false,
                   fullscreenControl: false,
-                  styles: googleMapsDarkStyles
+                  styles: yangoDayMapStyles
                 }}
               >
                 <Marker 

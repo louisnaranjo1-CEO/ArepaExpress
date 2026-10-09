@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { GoogleMap, useJsApiLoader, Marker, Polyline } from '@react-google-maps/api';
 import { Maximize2, Minimize2, Compass, Layers, Loader2 } from 'lucide-react';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
-import { googleMapsDarkStyles } from '../lib/weather';
+import { isNightTime, yangoDayMapStyles, googleMapsDarkStyles } from '../lib/weather';
 
 interface Coords {
     lat: number;
@@ -214,7 +214,7 @@ export default function LiveTripMap({
                         streetViewControl: false,
                         mapTypeControl: false,
                         fullscreenControl: false,
-                        styles: mapTypeId === 'roadmap' ? googleMapsDarkStyles : undefined
+                        styles: mapTypeId === 'roadmap' ? yangoDayMapStyles : undefined
                     }}
                 >
                     {/* Origin Marker (A) */}

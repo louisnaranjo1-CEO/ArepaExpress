@@ -351,7 +351,7 @@ export default function Taxi() {
             setIsNight(night);
             if (mapInstanceRef.current) {
                 mapInstanceRef.current.setOptions({
-                    styles: googleMapsDarkStyles
+                    styles: yangoDayMapStyles
                 });
             }
         };
@@ -689,7 +689,7 @@ export default function Taxi() {
                 fullscreenControl: false,
                 clickableIcons: false,
                 gestureHandling: 'greedy',
-                styles: isNightTime() ? googleMapsDarkStyles : yangoDayMapStyles
+                styles: yangoDayMapStyles
             });
 
             mapInstanceRef.current = map;

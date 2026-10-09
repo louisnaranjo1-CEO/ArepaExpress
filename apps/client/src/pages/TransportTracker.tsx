@@ -808,7 +808,7 @@ export default function TransportTracker() {
                 fullscreenControl: false,
                 clickableIcons: false,
                 gestureHandling: 'greedy',
-                styles: isNightTime() ? googleMapsDarkStyles : yangoDayMapStyles
+                styles: yangoDayMapStyles
             });
 
             mapInstanceRef.current = map;

@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
-import { googleMapsDarkStyles } from '../lib/weather';
+import { yangoDayMapStyles } from '../lib/weather';
 import { Restaurant } from '../lib/seed';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import { getCityCoordinates } from '../lib/venezuelaData';
@@ -281,7 +281,7 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
               streetViewControl: false,
               mapTypeControl: false,
               fullscreenControl: false,
-              styles: googleMapsDarkStyles
+              styles: yangoDayMapStyles
             }}
           >
             {/* User GPS Location Marker */}

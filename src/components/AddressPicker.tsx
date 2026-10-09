@@ -2,7 +2,7 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Autocomplete } from '@react-google-maps/api';
 import { X, MapPin, Navigation, Check, Search, Loader2 } from 'lucide-react';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
-import { googleMapsDarkStyles } from '../lib/weather';
+import { yangoDayMapStyles } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 
@@ -23,7 +23,7 @@ const mapOptions: google.maps.MapOptions = {
     mapTypeControl: false,
     fullscreenControl: false,
     clickableIcons: true,
-    styles: googleMapsDarkStyles
+    styles: yangoDayMapStyles
 };
 
 interface AddressPickerProps {

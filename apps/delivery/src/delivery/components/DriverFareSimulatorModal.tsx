@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { GoogleMap, useJsApiLoader, Marker, Polyline } from '@react-google-maps/api';
 import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@shared/lib/mapsConfig';
-import { googleMapsDarkStyles } from '@shared/lib/weather';
+import { yangoDayMapStyles } from '@shared/lib/weather';
 import { X, Navigation, Sun, Moon, Sparkles, DollarSign, ShieldCheck, MapPin, RotateCcw, Loader2 } from 'lucide-react';
 
 interface Coords {
@@ -289,7 +289,7 @@ export default function DriverFareSimulatorModal({
                                 options={{
                                     disableDefaultUI: true,
                                     zoomControl: true,
-                                    styles: googleMapsDarkStyles
+                                    styles: yangoDayMapStyles
                                 }}
                             >
                                 <Marker
