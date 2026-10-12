@@ -131,6 +131,9 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 /**
  * Busca lugares o autocompleta direcciones restringido estrictamente a la ubicación local del usuario
  */
+/**
+ * Busca lugares, comercios y direcciones en la ciudad completa donde se encuentra el usuario
+ */
 export async function searchMapboxPlaces(
     query: string,
     proximity?: { lat: number; lng: number },
@@ -144,76 +147,118 @@ export async function searchMapboxPlaces(
     const token = getMapboxToken();
     if (!query || query.trim().length < 2) return [];
 
+    const norm = (s: string) => s ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim() : '';
+    const cleanQuery = query.trim();
+    const qNorm = norm(cleanQuery);
+
+    const prox = (proximity && proximity.lat && proximity.lng)
+        ? proximity
+        : DEFAULT_MAP_CENTER;
+
+    const rawCityName = options?.cityName 
+        ? options.cityName.split(',')[0].trim() 
+        : 'Calabozo';
+    const cityNorm = norm(rawCityName);
+
+    const results: MapboxPlace[] = [];
+    const seen = new Set<string>();
+
+    // 1. Consulta OpenStreetMap (Nominatim) enfocada en la ciudad completa del usuario en Venezuela
     try {
-        const prox = (proximity && proximity.lat && proximity.lng)
-            ? proximity
-            : DEFAULT_MAP_CENTER;
+        const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanQuery + ' ' + rawCityName + ' Venezuela')}&format=json&addressdetails=1&limit=10`;
+        const osmRes = await fetch(osmUrl, {
+            headers: { 'User-Agent': 'ArepaExpress/1.0 (contacto@un2x3.com)' }
+        });
 
+        if (osmRes.ok) {
+            const items = await osmRes.json();
+            for (const item of items) {
+                const rawName = item.name || item.display_name.split(',')[0].trim();
+                const nameNorm = norm(rawName);
+                const disp = item.display_name;
+                const dispNorm = norm(disp);
+
+                // Evitar devolver únicamente el nombre de la ciudad como si fuera un negocio o farmacia
+                if (nameNorm === cityNorm && !qNorm.includes(cityNorm)) continue;
+
+                // Verificar que pertenezca a la ciudad o municipio del usuario
+                const itemCity = norm(item.address?.city || item.address?.town || item.address?.municipality || item.address?.county || '');
+                const isCityMatch = itemCity.includes(cityNorm) || dispNorm.includes(cityNorm);
+                if (!isCityMatch) continue;
+
+                const lat = parseFloat(item.lat);
+                const lng = parseFloat(item.lon);
+                if (isNaN(lat) || isNaN(lng)) continue;
+
+                const dist = haversineKm(prox.lat, prox.lng, lat, lng);
+                const key = `${nameNorm}_${lat.toFixed(3)}_${lng.toFixed(3)}`;
+
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    results.push({
+                        id: `osm-${item.place_id}`,
+                        name: rawName,
+                        place_name: disp,
+                        lat,
+                        lng,
+                        distanceKm: dist,
+                        type: item.type || item.class
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[OSM Search] Error querying local places:', e);
+    }
+
+    // 2. Consulta Mapbox Geocoding para direcciones, avenidas y puntos de interés
+    try {
         const proximityParam = `&proximity=${prox.lng},${prox.lat}`;
-        const countryParam = country ? `&country=${country}` : '&country=ve';
-        const cleanQuery = query.trim();
+        const mbUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanQuery)}.json?access_token=${token}&country=ve${proximityParam}&autocomplete=true&limit=8`;
+        const mbRes = await fetch(mbUrl);
 
-        // Calcular Bounding Box local de la ciudad / proximidad (~20 km a la redonda)
-        const radiusLng = 0.20;
-        const radiusLat = 0.18;
-        const localBbox = options?.bbox || [
-            Number((prox.lng - radiusLng).toFixed(4)),
-            Number((prox.lat - radiusLat).toFixed(4)),
-            Number((prox.lng + radiusLng).toFixed(4)),
-            Number((prox.lat + radiusLat).toFixed(4))
-        ];
-        const bboxParam = `&bbox=${localBbox.join(',')}`;
+        if (mbRes.ok) {
+            const mbData = await mbRes.json();
+            for (const f of (mbData.features || [])) {
+                const rawName = f.text || f.place_name.split(',')[0].trim();
+                const nameNorm = norm(rawName);
+                const disp = f.place_name;
+                const dispNorm = norm(disp);
 
-        // 1. Primer intento: búsqueda acotada dentro de la ciudad/área local (bbox + country=ve)
-        let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanQuery)}.json?access_token=${token}&autocomplete=true&types=poi,address,place,neighborhood,locality${proximityParam}${countryParam}${bboxParam}&limit=8`;
+                // Evitar devolver únicamente la localidad "Calabozo" si el usuario buscó otra cosa
+                if (nameNorm === cityNorm && !qNorm.includes(cityNorm)) continue;
 
-        let res = await fetch(url);
-        let data = await res.json();
+                // Asegurar que esté en Venezuela y concuerde con la ciudad
+                const isVenezuela = dispNorm.includes('venezuela');
+                const isCityMatch = dispNorm.includes(cityNorm);
+                if (!isVenezuela || !isCityMatch) continue;
 
-        // 2. Si dentro del bbox no hubo resultados pero se especificó ciudad, intentar con nombre de ciudad en query dentro de Venezuela
-        if ((!data.features || data.features.length === 0) && options?.cityName) {
-            const queryWithCity = `${cleanQuery}, ${options.cityName}`;
-            const cityUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(queryWithCity)}.json?access_token=${token}&autocomplete=true&types=poi,address,place,neighborhood,locality${proximityParam}${countryParam}&limit=8`;
-            res = await fetch(cityUrl);
-            data = await res.json();
-        }
-
-        // 3. Fallback: búsqueda general con proximidad estricta dentro de Venezuela (NUNCA global a otros países)
-        if (!data.features || data.features.length === 0) {
-            const fallbackVeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanQuery)}.json?access_token=${token}&autocomplete=true&types=poi,address,place,neighborhood,locality${proximityParam}&country=ve&limit=8`;
-            res = await fetch(fallbackVeUrl);
-            data = await res.json();
-        }
-
-        if (!data.features) return [];
-
-        const maxDist = options?.maxDistanceKm || 35; // Máximo 35 km de radio respecto a la ciudad / usuario
-
-        return data.features
-            .map((f: any) => {
                 const lng = f.center?.[0];
                 const lat = f.center?.[1];
-                const distanceKm = (lat && lng) ? haversineKm(prox.lat, prox.lng, lat, lng) : 999;
-                return {
-                    id: f.id,
-                    name: f.text || f.place_name,
-                    place_name: f.place_name,
-                    lng,
-                    lat,
-                    relevance: f.relevance,
-                    distanceKm
-                };
-            })
-            // Descartar estrictamente resultados fuera del país o a más de maxDist de la ciudad
-            .filter((p: any) => {
-                const isVenezuela = p.place_name.toLowerCase().includes('venezuela');
-                const isWithinRange = p.distanceKm <= maxDist;
-                return isVenezuela && isWithinRange;
-            });
+                if (typeof lat !== 'number' || typeof lng !== 'number') continue;
+
+                const dist = haversineKm(prox.lat, prox.lng, lat, lng);
+                const key = `${nameNorm}_${lat.toFixed(3)}_${lng.toFixed(3)}`;
+
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    results.push({
+                        id: f.id,
+                        name: rawName,
+                        place_name: disp,
+                        lat,
+                        lng,
+                        distanceKm: dist,
+                        relevance: f.relevance
+                    });
+                }
+            }
+        }
     } catch (e) {
-        console.error('[Mapbox Geocoding] Error searching places:', e);
-        return [];
+        console.warn('[Mapbox Search] Error querying places:', e);
     }
+
+    return results;
 }
 
 /**

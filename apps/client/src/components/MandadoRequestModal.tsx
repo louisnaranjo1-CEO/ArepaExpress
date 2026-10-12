@@ -23,14 +23,15 @@ import {
     Compass,
     Check
 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
+import AddressPicker from './AddressPicker';
 
 export interface MandadoSubmitData {
     description: string;
     storeName: string;
     hasExactStores: boolean;
     storeAddresses?: string;
+    storeCoords?: { lat: number; lng: number };
     transportPassenger: boolean;
     passengerRouteDescription?: string;
     destinationAddress: string;
@@ -58,8 +59,8 @@ export default function MandadoRequestModal({
     onSubmit,
     isSubmitting
 }: MandadoRequestModalProps) {
-    // Current Step: 1, 2, or 3
-    const [step, setStep] = useState<1 | 2 | 3>(1);
+    // Current Step: 1, 2, 3, or 4
+    const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
     const [showRulesModal, setShowRulesModal] = useState(false);
 
     // Step 1: Request details
@@ -74,16 +75,22 @@ export default function MandadoRequestModal({
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isPlayingAudio, setIsPlayingAudio] = useState(false);
 
-    // Step 2: Store locations & passenger conditions
+    // Step 2: Store locations & exact search
     const [hasExactStores, setHasExactStores] = useState<boolean | null>(null); // true = sí sé, false = que sugiera conductor
     const [storeName, setStoreName] = useState('');
     const [storeAddress, setStoreAddress] = useState('');
+    const [storeCoords, setStoreCoords] = useState<{ lat: number; lng: number } | null>(null);
+    const [showStoreAddressPicker, setShowStoreAddressPicker] = useState(false);
+
+    // Step 3: Passenger conditions
     const [transportPassenger, setTransportPassenger] = useState(false);
     const [passengerRouteDescription, setPassengerRouteDescription] = useState('');
 
-    // Step 3: Delivery destination
+    // Step 4: Delivery destination
     const [deliveryOption, setDeliveryOption] = useState<'current_location' | 'other_address'>('current_location');
     const [customDestination, setCustomDestination] = useState('');
+    const [destCoords, setDestCoords] = useState<{ lat: number; lng: number } | null>(null);
+    const [showDestAddressPicker, setShowDestAddressPicker] = useState(false);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
@@ -233,17 +240,26 @@ export default function MandadoRequestModal({
             toast.error("Selecciona si tienes los lugares de compra definidos o si prefieres sugerencias.");
             return;
         }
-        if (transportPassenger && !passengerRouteDescription.trim()) {
-            toast.error("Indica desde dónde y hacia dónde se trasladará a la persona");
+        if (hasExactStores && !storeName.trim() && !storeAddress.trim()) {
+            toast.error("Por favor ingresa o selecciona en el mapa el negocio donde comprar.");
             return;
         }
         vibrate(25);
         setStep(3);
     };
 
+    const handleNextFromStep3 = () => {
+        if (transportPassenger && !passengerRouteDescription.trim()) {
+            toast.error("Indica desde dónde y hacia dónde se trasladará a la persona");
+            return;
+        }
+        vibrate(25);
+        setStep(4);
+    };
+
     const handleFinalSubmit = async () => {
         let finalDestAddress = '';
-        let finalDestCoords = userLocation || undefined;
+        let finalDestCoords = destCoords || userLocation || undefined;
 
         if (deliveryOption === 'current_location') {
             finalDestAddress = defaultAddress || 'Mi ubicación actual (GPS)';
@@ -261,6 +277,7 @@ export default function MandadoRequestModal({
             storeName: storeName.trim(),
             hasExactStores: Boolean(hasExactStores),
             storeAddresses: storeAddress.trim(),
+            storeCoords: storeCoords || undefined,
             transportPassenger,
             passengerRouteDescription: passengerRouteDescription.trim(),
             destinationAddress: finalDestAddress,
@@ -296,13 +313,14 @@ export default function MandadoRequestModal({
                             <h2 className="text-base sm:text-lg font-black text-slate-950 leading-tight flex items-center gap-2">
                                 Muchacho e' Mandao
                                 <span className="text-[9px] uppercase font-black px-2 py-0.5 rounded-full bg-slate-950 text-[#FFFF00] tracking-wider">
-                                    Paso {step} de 3
+                                    Paso {step} de 4
                                 </span>
                             </h2>
                             <p className="text-[11px] text-slate-900/80 font-bold">
-                                {step === 1 && "¿Qué necesitas que hagamos por ti?"}
-                                {step === 2 && "Lugares de compra y condiciones"}
-                                {step === 3 && "Destino final de entrega"}
+                                {step === 1 && "¿Qué necesitas que busquemos o compremos?"}
+                                {step === 2 && "¿Dónde comprar o retirar?"}
+                                {step === 3 && "¿Se transportará a alguna persona?"}
+                                {step === 4 && "Destino final de entrega"}
                             </p>
                         </div>
                     </div>
@@ -323,7 +341,7 @@ export default function MandadoRequestModal({
                 <div className="w-full bg-amber-100/60 h-1.5 flex">
                     <div 
                         className={`h-full bg-slate-950 transition-all duration-300 ${
-                            step === 1 ? 'w-1/3' : step === 2 ? 'w-2/3' : 'w-full'
+                            step === 1 ? 'w-1/4' : step === 2 ? 'w-2/4' : step === 3 ? 'w-3/4' : 'w-full'
                         }`} 
                     />
                 </div>
@@ -505,187 +523,144 @@ export default function MandadoRequestModal({
                     )}
 
                     {/* ============================================================== */}
-                    {/* PASO 2: LUGARES DE COMPRA Y CONDICIONES DEL VIAJE              */}
+                    {/* PASO 2: ¿DÓNDE COMPRAR O RETIRAR?                             */}
                     {/* ============================================================== */}
                     {step === 2 && (
-                        <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-200">
-                            {/* Question 1: ¿Lugares de compra definidos? */}
-                            <div className="space-y-2.5">
+                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
+                            <div className="space-y-1">
                                 <label className="text-xs font-black text-slate-900 uppercase tracking-wider block">
-                                    1. ¿Tienes los lugares exactos de compra definidos?
+                                    ¿Tienes los lugares exactos de compra definidos?
                                 </label>
-
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {/* Opción A: Sí sé dónde comprar */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            vibrate(20);
-                                            setHasExactStores(true);
-                                        }}
-                                        className={`p-3.5 rounded-2xl border-2 text-left transition-all relative ${
-                                            hasExactStores === true
-                                                ? 'border-yellow-400 bg-amber-50/60 shadow-md ring-1 ring-yellow-400'
-                                                : 'border-slate-200 hover:border-slate-300 bg-slate-50'
-                                        }`}
-                                    >
-                                        <div className="flex items-start justify-between">
-                                            <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center mb-2">
-                                                <Store className="w-4 h-4" />
-                                            </div>
-                                            {hasExactStores === true && (
-                                                <div className="w-5 h-5 rounded-full bg-slate-950 text-yellow-300 flex items-center justify-center">
-                                                    <Check className="w-3 h-3 stroke-[3]" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <h4 className="text-xs font-black text-slate-900">Sí, yo sé dónde comprar</h4>
-                                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                                            Indicaré los negocios y direcciones exactas
-                                        </p>
-                                    </button>
-
-                                    {/* Opción B: Conductor sugiere lugares */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            vibrate(20);
-                                            setHasExactStores(false);
-                                        }}
-                                        className={`p-3.5 rounded-2xl border-2 text-left transition-all relative ${
-                                            hasExactStores === false
-                                                ? 'border-yellow-400 bg-amber-50/60 shadow-md ring-1 ring-yellow-400'
-                                                : 'border-slate-200 hover:border-slate-300 bg-slate-50'
-                                        }`}
-                                    >
-                                        <div className="flex items-start justify-between">
-                                            <div className="w-8 h-8 rounded-xl bg-cyan-100 text-cyan-900 flex items-center justify-center mb-2">
-                                                <Compass className="w-4 h-4" />
-                                            </div>
-                                            {hasExactStores === false && (
-                                                <div className="w-5 h-5 rounded-full bg-slate-950 text-yellow-300 flex items-center justify-center">
-                                                    <Check className="w-3 h-3 stroke-[3]" />
-                                                </div>
-                                            )}
-                                        </div>
-                                        <h4 className="text-xs font-black text-slate-900">Que el conductor sugiera</h4>
-                                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                                            El piloto propondrá los mejores sitios y precios
-                                        </p>
-                                    </button>
-                                </div>
-
-                                {/* Inputs condicionales si tiene lugares exactos */}
-                                {hasExactStores === true && (
-                                    <div className="space-y-2.5 pt-2 animate-in fade-in duration-200 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                                        <div className="space-y-1">
-                                            <label className="text-[11px] font-black text-slate-700 uppercase">
-                                                Nombre del negocio o comercio
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={storeName}
-                                                onChange={(e) => setStoreName(e.target.value)}
-                                                placeholder="Ej: Farmatodo, Panadería Central, Mercado..."
-                                                className="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl py-2.5 px-3 text-xs text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[11px] font-black text-slate-700 uppercase">
-                                                Dirección o referencia del negocio
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={storeAddress}
-                                                onChange={(e) => setStoreAddress(e.target.value)}
-                                                placeholder="Ej: Av. Principal, al lado de la farmacia..."
-                                                className="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl py-2.5 px-3 text-xs text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-
-                                {hasExactStores === false && (
-                                    <div className="p-3 bg-cyan-50/70 border border-cyan-200/80 rounded-2xl flex items-center gap-2.5 text-xs text-cyan-900 font-medium">
-                                        <Sparkles className="w-4 h-4 text-cyan-600 shrink-0" />
-                                        <span>El conductor te contactará por chat o llamada para proponerte los lugares más convenientes.</span>
-                                    </div>
-                                )}
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                    Indica si conoces la tienda o prefieres que el piloto te sugiera opciones.
+                                </p>
                             </div>
 
-                            {/* Question 2: ¿Se transportará alguna persona? */}
-                            <div className="space-y-2.5 pt-1">
-                                <label className="text-xs font-black text-slate-900 uppercase tracking-wider block">
-                                    2. ¿Se transportará a alguna persona durante este mandado?
-                                </label>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                {/* Opción A: Sí sé dónde comprar */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setHasExactStores(true);
+                                    }}
+                                    className={`p-3.5 rounded-2xl border-2 text-left transition-all relative ${
+                                        hasExactStores === true
+                                            ? 'border-yellow-400 bg-amber-50/70 shadow-md ring-2 ring-yellow-400/30'
+                                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center mb-2">
+                                            <Store className="w-4 h-4" />
+                                        </div>
+                                        {hasExactStores === true && (
+                                            <div className="w-5 h-5 rounded-full bg-slate-950 text-yellow-300 flex items-center justify-center">
+                                                <Check className="w-3 h-3 stroke-[3]" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <h4 className="text-xs font-black text-slate-900">Sí, yo sé dónde comprar</h4>
+                                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                        Indicaré los negocios y direcciones exactas
+                                    </p>
+                                </button>
 
-                                <div className="grid grid-cols-2 gap-3">
+                                {/* Opción B: Conductor sugiere lugares */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setHasExactStores(false);
+                                    }}
+                                    className={`p-3.5 rounded-2xl border-2 text-left transition-all relative ${
+                                        hasExactStores === false
+                                            ? 'border-yellow-400 bg-amber-50/70 shadow-md ring-2 ring-yellow-400/30'
+                                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between">
+                                        <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-900 flex items-center justify-center mb-2">
+                                            <Compass className="w-4 h-4" />
+                                        </div>
+                                        {hasExactStores === false && (
+                                            <div className="w-5 h-5 rounded-full bg-slate-950 text-yellow-300 flex items-center justify-center">
+                                                <Check className="w-3 h-3 stroke-[3]" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    <h4 className="text-xs font-black text-slate-900">Que el conductor sugiera</h4>
+                                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                        El piloto propondrá los mejores sitios y precios
+                                    </p>
+                                </button>
+                            </div>
+
+                            {/* Inputs condicionales si tiene lugares exactos */}
+                            {hasExactStores === true && (
+                                <div className="space-y-3 pt-1 animate-in fade-in duration-200 bg-amber-50/50 p-4 rounded-2xl border border-amber-200/80">
+                                    {/* Botón para abrir el mapa y buscador */}
                                     <button
                                         type="button"
                                         onClick={() => {
                                             vibrate(20);
-                                            setTransportPassenger(false);
+                                            setShowStoreAddressPicker(true);
                                         }}
-                                        className={`p-3 rounded-2xl border-2 flex items-center gap-2.5 transition-all ${
-                                            !transportPassenger
-                                                ? 'border-yellow-400 bg-amber-50/60 shadow-sm ring-1 ring-yellow-400'
-                                                : 'border-slate-200 hover:border-slate-300 bg-slate-50'
-                                        }`}
+                                        className="w-full py-3 px-4 bg-gradient-to-r from-amber-400 via-[#FFFF00] to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-xs rounded-xl flex items-center justify-center gap-2 shadow-sm border border-amber-300 active:scale-98 transition-all"
                                     >
-                                        <div className="w-7 h-7 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
-                                            <ShoppingBag className="w-3.5 h-3.5" />
-                                        </div>
-                                        <div className="text-left">
-                                            <p className="text-xs font-black text-slate-900">No</p>
-                                            <p className="text-[10px] text-slate-500 font-medium leading-tight">Solo diligencias</p>
-                                        </div>
+                                        <MapPin className="w-4 h-4 text-slate-950" />
+                                        <span>📍 Seleccionar negocio en mapa / buscador</span>
                                     </button>
 
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            vibrate(20);
-                                            setTransportPassenger(true);
-                                        }}
-                                        className={`p-3 rounded-2xl border-2 flex items-center gap-2.5 transition-all ${
-                                            transportPassenger
-                                                ? 'border-yellow-400 bg-amber-50/60 shadow-sm ring-1 ring-yellow-400'
-                                                : 'border-slate-200 hover:border-slate-300 bg-slate-50'
-                                        }`}
-                                    >
-                                        <div className="w-7 h-7 rounded-xl bg-amber-200 text-amber-950 flex items-center justify-center shrink-0">
-                                            <Users className="w-3.5 h-3.5" />
+                                    {(storeCoords || storeAddress) && (
+                                        <div className="flex items-center gap-2 p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 font-bold">
+                                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                                            <span className="truncate">
+                                                Fijado en mapa: {storeAddress || storeName}
+                                            </span>
                                         </div>
-                                        <div className="text-left">
-                                            <p className="text-xs font-black text-slate-900">Sí</p>
-                                            <p className="text-[10px] text-slate-500 font-medium leading-tight">Irá un pasajero</p>
-                                        </div>
-                                    </button>
-                                </div>
+                                    )}
 
-                                {transportPassenger && (
-                                    <div className="space-y-1.5 pt-2 animate-in fade-in duration-200">
-                                        <label className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center justify-between">
-                                            <span>Ruta del traslado de la persona *</span>
-                                            <span className="text-[10px] text-amber-700 font-bold normal-case">Obligatorio</span>
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-black text-slate-700 uppercase">
+                                            Nombre del negocio o comercio
                                         </label>
-                                        <textarea
-                                            value={passengerRouteDescription}
-                                            onChange={(e) => setPassengerRouteDescription(e.target.value)}
-                                            rows={3}
-                                            placeholder="Indica desde dónde y hacia dónde se trasladará a la persona (puntos de partida y llegada específicos)..."
-                                            className="w-full bg-amber-50/60 border-2 border-amber-300 focus:border-amber-500 focus:bg-white rounded-2xl p-3.5 text-xs text-slate-900 font-medium placeholder:text-amber-800/60 focus:outline-none transition-all resize-none shadow-inner leading-relaxed"
+                                        <input
+                                            type="text"
+                                            value={storeName}
+                                            onChange={(e) => setStoreName(e.target.value)}
+                                            placeholder="Ej: Farmatodo, Panadería Central, Mercado..."
+                                            className="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl py-2.5 px-3 text-xs text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none"
                                         />
                                     </div>
-                                )}
-                            </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[11px] font-black text-slate-700 uppercase">
+                                            Dirección o referencia del negocio
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={storeAddress}
+                                            onChange={(e) => setStoreAddress(e.target.value)}
+                                            placeholder="Ej: Av. Principal, al lado de la farmacia..."
+                                            className="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl py-2.5 px-3 text-xs text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {hasExactStores === false && (
+                                <div className="p-3.5 bg-cyan-50/70 border border-cyan-200/80 rounded-2xl flex items-center gap-2.5 text-xs text-cyan-900 font-medium">
+                                    <Sparkles className="w-4 h-4 text-cyan-600 shrink-0" />
+                                    <span>El conductor te contactará por chat o llamada para proponerte los lugares más convenientes y económicos.</span>
+                                </div>
+                            )}
 
                             {/* Buttons Navigation */}
                             <div className="flex items-center gap-3 pt-2">
                                 <button
                                     type="button"
                                     onClick={() => setStep(1)}
-                                    className="w-1/3 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs uppercase tracking-wider rounded-2xl active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                                    className="w-1/3 py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs uppercase tracking-wider rounded-2xl active:scale-98 transition-all flex items-center justify-center gap-1.5"
                                 >
                                     <ArrowLeft className="w-3.5 h-3.5" />
                                     <span>Atrás</span>
@@ -694,7 +669,107 @@ export default function MandadoRequestModal({
                                     type="button"
                                     onClick={handleNextFromStep2}
                                     disabled={hasExactStores === null}
-                                    className="flex-1 py-3 px-4 bg-primary hover:bg-[#f5f500] text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-yellow-500/20 active:scale-98 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                                    className="flex-1 py-3.5 px-4 bg-primary hover:bg-[#f5f500] text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-yellow-500/20 active:scale-98 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none"
+                                >
+                                    <span>Siguiente: Pasajeros</span>
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ============================================================== */}
+                    {/* PASO 3: ¿SE TRANSPORTARÁ A ALGUNA PERSONA?                      */}
+                    {/* ============================================================== */}
+                    {step === 3 && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
+                            <div className="space-y-1">
+                                <label className="text-xs font-black text-slate-900 uppercase tracking-wider block">
+                                    ¿Se transportará a alguna persona durante este mandado?
+                                </label>
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                    Selecciona si necesitas que el conductor traslade a un pasajero como parte del encargo.
+                                </p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setTransportPassenger(false);
+                                    }}
+                                    className={`p-4 rounded-2xl border-2 flex items-center gap-3 transition-all ${
+                                        !transportPassenger
+                                            ? 'border-yellow-400 bg-amber-50/70 shadow-md ring-2 ring-yellow-400/30'
+                                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                                    }`}
+                                >
+                                    <div className="w-10 h-10 rounded-xl bg-slate-200 text-slate-700 flex items-center justify-center shrink-0">
+                                        <ShoppingBag className="w-5 h-5" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="text-xs font-black text-slate-900">No, solo diligencias</p>
+                                        <p className="text-[11px] text-slate-500 font-medium leading-tight mt-0.5">
+                                            El piloto realiza las compras o entregas solo
+                                        </p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setTransportPassenger(true);
+                                    }}
+                                    className={`p-4 rounded-2xl border-2 flex items-center gap-3 transition-all ${
+                                        transportPassenger
+                                            ? 'border-yellow-400 bg-amber-50/70 shadow-md ring-2 ring-yellow-400/30'
+                                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                                    }`}
+                                >
+                                    <div className="w-10 h-10 rounded-xl bg-amber-200 text-amber-950 flex items-center justify-center shrink-0">
+                                        <Users className="w-5 h-5" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="text-xs font-black text-slate-900">Sí, irá un pasajero</p>
+                                        <p className="text-[11px] text-slate-500 font-medium leading-tight mt-0.5">
+                                            Irá alguien acompañando al piloto
+                                        </p>
+                                    </div>
+                                </button>
+                            </div>
+
+                            {transportPassenger && (
+                                <div className="space-y-1.5 pt-2 animate-in fade-in duration-200">
+                                    <label className="text-xs font-black text-amber-950 uppercase tracking-wider flex items-center justify-between">
+                                        <span>Ruta y detalles del pasajero *</span>
+                                        <span className="text-[10px] text-amber-700 font-bold normal-case">Obligatorio</span>
+                                    </label>
+                                    <textarea
+                                        value={passengerRouteDescription}
+                                        onChange={(e) => setPassengerRouteDescription(e.target.value)}
+                                        rows={3}
+                                        placeholder="Indica desde dónde recoger a la persona y hacia dónde se trasladará..."
+                                        className="w-full bg-amber-50/60 border-2 border-amber-300 focus:border-amber-500 focus:bg-white rounded-2xl p-3.5 text-xs text-slate-900 font-medium placeholder:text-amber-800/60 focus:outline-none transition-all resize-none shadow-inner leading-relaxed"
+                                    />
+                                </div>
+                            )}
+
+                            {/* Buttons Navigation */}
+                            <div className="flex items-center gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setStep(2)}
+                                    className="w-1/3 py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs uppercase tracking-wider rounded-2xl active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                                >
+                                    <ArrowLeft className="w-3.5 h-3.5" />
+                                    <span>Atrás</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleNextFromStep3}
+                                    className="flex-1 py-3.5 px-4 bg-primary hover:bg-[#f5f500] text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-yellow-500/20 active:scale-98 transition-all flex items-center justify-center gap-1.5"
                                 >
                                     <span>Siguiente: Destino</span>
                                     <ChevronRight className="w-4 h-4" />
@@ -704,99 +779,121 @@ export default function MandadoRequestModal({
                     )}
 
                     {/* ============================================================== */}
-                    {/* PASO 3: DESTINO FINAL DE ENTREGA                               */}
+                    {/* PASO 4: DESTINO FINAL DE ENTREGA                               */}
                     {/* ============================================================== */}
-                    {step === 3 && (
-                        <div className="space-y-5 animate-in fade-in slide-in-from-right-4 duration-200">
-                            <div className="space-y-2.5">
+                    {step === 4 && (
+                        <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-200">
+                            <div className="space-y-1">
                                 <label className="text-xs font-black text-slate-900 uppercase tracking-wider block">
                                     ¿Dónde finaliza el mandado? (Destino de entrega)
                                 </label>
+                                <p className="text-[11px] text-slate-500 font-medium">
+                                    Lugar donde el piloto llevará los artículos o finalizará la diligencia.
+                                </p>
+                            </div>
 
-                                <div className="space-y-2.5">
-                                    {/* Opción 1: Entregar en mi ubicación actual */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            vibrate(20);
-                                            setDeliveryOption('current_location');
-                                        }}
-                                        className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
-                                            deliveryOption === 'current_location'
-                                                ? 'border-yellow-400 bg-amber-50/60 shadow-md ring-1 ring-yellow-400'
-                                                : 'border-slate-200 hover:border-slate-300 bg-slate-50'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                                                <Navigation className="w-4 h-4 fill-emerald-800" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-xs font-black text-slate-900">
-                                                    Entregar en mi ubicación actual
-                                                </h4>
-                                                <p className="text-[11px] text-slate-500 font-medium">
-                                                    {defaultAddress || 'Coordenadas GPS en tiempo real'}
-                                                </p>
-                                            </div>
+                            <div className="space-y-2.5">
+                                {/* Opción 1: Entregar en mi ubicación actual */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setDeliveryOption('current_location');
+                                    }}
+                                    className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
+                                        deliveryOption === 'current_location'
+                                            ? 'border-yellow-400 bg-amber-50/70 shadow-md ring-2 ring-yellow-400/30'
+                                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                                            <Navigation className="w-4 h-4 fill-emerald-800" />
                                         </div>
-                                        {deliveryOption === 'current_location' && (
-                                            <div className="w-5 h-5 rounded-full bg-slate-950 text-yellow-300 flex items-center justify-center shrink-0">
-                                                <Check className="w-3 h-3 stroke-[3]" />
-                                            </div>
-                                        )}
-                                    </button>
-
-                                    {/* Opción 2: Entregar en otra dirección */}
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            vibrate(20);
-                                            setDeliveryOption('other_address');
-                                        }}
-                                        className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
-                                            deliveryOption === 'other_address'
-                                                ? 'border-yellow-400 bg-amber-50/60 shadow-md ring-1 ring-yellow-400'
-                                                : 'border-slate-200 hover:border-slate-300 bg-slate-50'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center shrink-0">
-                                                <MapPin className="w-4 h-4" />
-                                            </div>
-                                            <div>
-                                                <h4 className="text-xs font-black text-slate-900">
-                                                    Entregar en otra dirección
-                                                </h4>
-                                                <p className="text-[11px] text-slate-500 font-medium">
-                                                    Escribe o busca una dirección distinta
-                                                </p>
-                                            </div>
+                                        <div>
+                                            <h4 className="text-xs font-black text-slate-900">
+                                                Entregar en mi ubicación actual
+                                            </h4>
+                                            <p className="text-[11px] text-slate-500 font-medium">
+                                                {defaultAddress || 'Coordenadas GPS en tiempo real'}
+                                            </p>
                                         </div>
-                                        {deliveryOption === 'other_address' && (
-                                            <div className="w-5 h-5 rounded-full bg-slate-950 text-yellow-300 flex items-center justify-center shrink-0">
-                                                <Check className="w-3 h-3 stroke-[3]" />
-                                            </div>
-                                        )}
-                                    </button>
-                                </div>
+                                    </div>
+                                    {deliveryOption === 'current_location' && (
+                                        <div className="w-5 h-5 rounded-full bg-slate-950 text-yellow-300 flex items-center justify-center shrink-0">
+                                            <Check className="w-3 h-3 stroke-[3]" />
+                                        </div>
+                                    )}
+                                </button>
 
-                                {/* Campo para escribir otra dirección si eligió esa opción */}
-                                {deliveryOption === 'other_address' && (
-                                    <div className="pt-2 animate-in fade-in duration-200 space-y-1.5">
+                                {/* Opción 2: Entregar en otra dirección */}
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setDeliveryOption('other_address');
+                                    }}
+                                    className={`w-full p-4 rounded-2xl border-2 text-left transition-all flex items-center justify-between ${
+                                        deliveryOption === 'other_address'
+                                            ? 'border-yellow-400 bg-amber-50/70 shadow-md ring-2 ring-yellow-400/30'
+                                            : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+                                    }`}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center shrink-0">
+                                            <MapPin className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xs font-black text-slate-900">
+                                                Entregar en otra dirección
+                                            </h4>
+                                            <p className="text-[11px] text-slate-500 font-medium">
+                                                Escribe o selecciona una dirección distinta en el mapa
+                                            </p>
+                                        </div>
+                                    </div>
+                                    {deliveryOption === 'other_address' && (
+                                        <div className="w-5 h-5 rounded-full bg-slate-950 text-yellow-300 flex items-center justify-center shrink-0">
+                                            <Check className="w-3 h-3 stroke-[3]" />
+                                        </div>
+                                    )}
+                                </button>
+                            </div>
+
+                            {/* Campo para otra dirección */}
+                            {deliveryOption === 'other_address' && (
+                                <div className="pt-1 animate-in fade-in duration-200 space-y-2 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                                    <div className="flex items-center justify-between">
                                         <label className="text-[11px] font-black text-slate-700 uppercase">
                                             Dirección exacta de entrega
                                         </label>
-                                        <input
-                                            type="text"
-                                            value={customDestination}
-                                            onChange={(e) => setCustomDestination(e.target.value)}
-                                            placeholder="Ej: Urbanización Los Mangos, Casa #45..."
-                                            className="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl py-3 px-3.5 text-xs text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none"
-                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                vibrate(20);
+                                                setShowDestAddressPicker(true);
+                                            }}
+                                            className="text-[10px] font-black text-amber-700 hover:text-amber-900 underline flex items-center gap-1"
+                                        >
+                                            <MapPin className="w-3 h-3" />
+                                            Buscar en mapa
+                                        </button>
                                     </div>
-                                )}
-                            </div>
+                                    <input
+                                        type="text"
+                                        value={customDestination}
+                                        onChange={(e) => setCustomDestination(e.target.value)}
+                                        placeholder="Ej: Urbanización Los Mangos, Casa #45..."
+                                        className="w-full bg-white border border-slate-200 focus:border-amber-400 rounded-xl py-2.5 px-3 text-xs text-slate-900 font-medium placeholder:text-slate-400 focus:outline-none"
+                                    />
+                                    {destCoords && (
+                                        <div className="flex items-center gap-1.5 text-[10px] text-emerald-700 font-bold">
+                                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                                            <span>Coordenadas fijadas en mapa</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Resumen del Mandado */}
                             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2 text-xs">
@@ -820,7 +917,7 @@ export default function MandadoRequestModal({
                             <div className="flex items-center gap-3 pt-2">
                                 <button
                                     type="button"
-                                    onClick={() => setStep(2)}
+                                    onClick={() => setStep(3)}
                                     className="w-1/3 py-3.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 font-black text-xs uppercase tracking-wider rounded-2xl active:scale-98 transition-all flex items-center justify-center gap-1.5"
                                 >
                                     <ArrowLeft className="w-3.5 h-3.5" />
@@ -922,6 +1019,39 @@ export default function MandadoRequestModal({
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Modal Selector de Ubicación del Comercio en el Mapa */}
+            {showStoreAddressPicker && (
+                <AddressPicker
+                    title="Punto de Compra o Retiro"
+                    subtitle="Ubica o busca el negocio donde el conductor debe comprar o retirar"
+                    initialData={storeCoords ? { name: storeName, reference: storeAddress, lat: storeCoords.lat, lng: storeCoords.lng } : (userLocation ? { lat: userLocation.lat, lng: userLocation.lng, reference: '' } : undefined)}
+                    onClose={() => setShowStoreAddressPicker(false)}
+                    onSave={(data) => {
+                        setStoreName(data.name || storeName || 'Comercio seleccionado');
+                        setStoreAddress(data.reference || data.name || '');
+                        setStoreCoords({ lat: data.lat, lng: data.lng });
+                        setShowStoreAddressPicker(false);
+                        toast.success("Comercio fijado con éxito", { icon: '📍' });
+                    }}
+                />
+            )}
+
+            {/* Modal Selector de Ubicación del Destino de Entrega */}
+            {showDestAddressPicker && (
+                <AddressPicker
+                    title="Destino de Entrega"
+                    subtitle="Ubica o busca la dirección final donde llevar el mandado"
+                    initialData={destCoords ? { name: customDestination, reference: customDestination, lat: destCoords.lat, lng: destCoords.lng } : (userLocation ? { lat: userLocation.lat, lng: userLocation.lng, reference: '' } : undefined)}
+                    onClose={() => setShowDestAddressPicker(false)}
+                    onSave={(data) => {
+                        setCustomDestination(data.reference || data.name || '');
+                        setDestCoords({ lat: data.lat, lng: data.lng });
+                        setShowDestAddressPicker(false);
+                        toast.success("Destino fijado con éxito", { icon: '📍' });
+                    }}
+                />
             )}
         </div>
     );

@@ -94,6 +94,7 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null);
+  const [selectedPlace, setSelectedPlace] = useState<MapboxPlace | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   
   // Search recommendations state
@@ -226,16 +227,16 @@ function matchesStore(store: Restaurant, rawQuery: string): boolean {
           searchQuery, 
           proximity, 
           've',
-          { cityName: currentCity, maxDistanceKm: 25 }
+          { cityName: currentCity }
         );
-        setPlaceSuggestions(results.slice(0, 5));
+        setPlaceSuggestions(results.slice(0, 8));
       } catch (err) {
         console.error('Error fetching search places:', err);
         setPlaceSuggestions([]);
       } finally {
         setIsSearchingPlaces(false);
       }
-    }, 280);
+    }, 250);
 
     return () => {
       if (searchTimeoutRef.current) {
@@ -265,6 +266,7 @@ function matchesStore(store: Restaurant, rawQuery: string): boolean {
 
     map.on('click', () => {
       setSelectedRestaurant(null);
+      setSelectedPlace(null);
       setIsDropdownOpen(false);
     });
 
@@ -347,6 +349,7 @@ function matchesStore(store: Restaurant, rawQuery: string): boolean {
       el.addEventListener('click', (e) => {
         e.stopPropagation();
         vibrate(20);
+        setSelectedPlace(null);
         setSelectedRestaurant(store.restaurant);
         setIsDropdownOpen(false);
         map.flyTo({
@@ -422,6 +425,7 @@ function matchesStore(store: Restaurant, rawQuery: string): boolean {
   const handleSelectStoreRecommendation = (store: ValidatedStore) => {
     vibrate(25);
     setIsDropdownOpen(false);
+    setSelectedPlace(null);
     setSelectedRestaurant(store.restaurant);
     if (mapRef.current) {
       mapRef.current.flyTo({
@@ -437,6 +441,7 @@ function matchesStore(store: Restaurant, rawQuery: string): boolean {
     vibrate(25);
     setIsDropdownOpen(false);
     setSelectedRestaurant(null);
+    setSelectedPlace(place);
 
     const map = mapRef.current;
     if (map) {
@@ -627,7 +632,7 @@ function matchesStore(store: Restaurant, rawQuery: string): boolean {
 
       {/* Floating Action Buttons (Right Side) */}
       <div 
-        className={`absolute right-3 ${selectedRestaurant ? 'bottom-56 sm:bottom-60' : 'bottom-28 sm:bottom-32'} z-40 flex flex-col gap-2 pointer-events-auto transition-all duration-300`}
+        className={`absolute right-3 ${selectedRestaurant || selectedPlace ? 'bottom-56 sm:bottom-60' : 'bottom-28 sm:bottom-32'} z-40 flex flex-col gap-2 pointer-events-auto transition-all duration-300`}
       >
         {userLocation && (
           <button
@@ -714,6 +719,55 @@ function matchesStore(store: Restaurant, rawQuery: string): boolean {
             >
               <span>Ver Menú</span>
               <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom Floating Card for Selected Place / Location */}
+      {selectedPlace && !selectedRestaurant && (
+        <div className="absolute bottom-24 sm:bottom-28 inset-x-3 max-w-lg mx-auto z-40 pointer-events-auto animate-in slide-in-from-bottom duration-300">
+          <div className="relative bg-white/95 backdrop-blur-xl rounded-3xl p-4 shadow-2xl border border-white/60 flex items-center justify-between gap-3">
+            <button
+              onClick={() => setSelectedPlace(null)}
+              className="absolute -top-3 -right-2 w-7 h-7 bg-slate-800 text-white rounded-full flex items-center justify-center shadow-md hover:bg-slate-900 active:scale-90 transition-all z-10"
+              title="Cerrar ficha"
+            >
+              <X className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-13 h-13 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shrink-0 border border-blue-100 shadow-sm p-3">
+                <MapPin className="w-6 h-6 stroke-[2.5]" />
+              </div>
+              <div className="min-w-0">
+                <h4 className="font-black text-sm text-slate-800 truncate">
+                  {selectedPlace.name}
+                </h4>
+                <p className="text-xs text-slate-500 font-bold truncate">
+                  {selectedPlace.place_name}
+                </p>
+                <div className="flex items-center gap-2 mt-1 text-[11px] font-bold text-slate-400">
+                  <span className="text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full text-[10px] font-black">
+                    {cityName || 'En tu ciudad'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                if (mapRef.current) {
+                  mapRef.current.flyTo({
+                    center: [selectedPlace.lng, selectedPlace.lat],
+                    zoom: 17,
+                    duration: 600
+                  });
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-3.5 py-2.5 rounded-2xl font-black text-xs shadow-lg shadow-blue-500/20 flex items-center gap-1 shrink-0 active:scale-95 transition-all cursor-pointer"
+            >
+              <span>Ver en mapa</span>
             </button>
           </div>
         </div>

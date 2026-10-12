@@ -748,9 +748,24 @@ export default function TransportTracker() {
         );
     }
 
+    const driverName = driver?.fullName || (driver as any)?.full_name || request?.driver_name || 'Tu conductor';
+
+    const isPackageDelivery = Boolean(
+        request?.type === 'package_delivery' ||
+        request?.service_category === 'delivery_envios' ||
+        request?.mandado_details?.receiver_name ||
+        request?.receiver_name ||
+        request?.recipient_name
+    );
+
+    const receiverName = request?.mandado_details?.receiver_name || request?.receiver_name || request?.recipient_name;
+    const receiverPhone = request?.mandado_details?.receiver_phone || request?.receiver_phone || request?.recipient_phone;
+    const senderName = request?.mandado_details?.sender_name || request?.sender_name || request?.user_name;
+    const senderPhone = request?.mandado_details?.sender_phone || request?.sender_phone || request?.user_phone;
+    const packageDesc = request?.package_description || request?.mandado_details?.package_description || request?.mandado_details?.package_notes || request?.notes;
+
     const getStatusInfo = () => {
         const hasDriver = Boolean(driver || request?.driver_id || request?.assigned_driver_id || request?.driverId);
-        const driverName = driver?.fullName || (driver as any)?.full_name || request?.driver_name || 'Tu conductor';
 
         switch (request.status) {
             case 'driver_busy':
@@ -773,6 +788,24 @@ export default function TransportTracker() {
                         icon: ShoppingBag
                     };
                 }
+                if (isPackageDelivery) {
+                    if (hasDriver) {
+                        return {
+                            title: "Repartidor Seleccionado",
+                            subtitle: `${driverName} está revisando tu encomienda`,
+                            color: "text-amber-600",
+                            bg: "bg-amber-50",
+                            icon: Package
+                        };
+                    }
+                    return { 
+                        title: "Buscando repartidor...", 
+                        subtitle: "Conectando con pilotos de encomienda cercanos en el radar...", 
+                        color: "text-blue-600", 
+                        bg: "bg-blue-50", 
+                        icon: Package 
+                    };
+                }
                 if (hasDriver) {
                     return {
                         title: "Conductor Seleccionado",
@@ -785,15 +818,15 @@ export default function TransportTracker() {
                 return { title: "Buscando tu transporte...", subtitle: "Conectando con conductores cercanos en el radar...", color: "text-orange-600", bg: "bg-orange-50", icon: Clock };
             case 'accepted':
                 return { 
-                    title: "Conductor en Camino", 
-                    subtitle: `${driverName} va en camino hacia tu ubicación`, 
+                    title: isPackageDelivery ? "Repartidor en Camino" : "Conductor en Camino", 
+                    subtitle: `${driverName} va en camino hacia ${isPackageDelivery ? 'el punto de recogida' : 'tu ubicación'}`, 
                     color: "text-blue-600", 
                     bg: "bg-blue-50", 
-                    icon: Car 
+                    icon: isPackageDelivery ? Package : Car 
                 };
             case 'arriving':
                 return { 
-                    title: "¡El transporte está afuera!", 
+                    title: isPackageDelivery ? "¡Repartidor en el punto!" : "¡El transporte está afuera!", 
                     subtitle: `${driverName} ha llegado y te está esperando afuera`, 
                     color: "text-amber-600", 
                     bg: "bg-amber-100", 
@@ -801,16 +834,22 @@ export default function TransportTracker() {
                 };
             case 'in_progress':
                 return { 
-                    title: "Viaje en Curso", 
-                    subtitle: "Te diriges a tu destino con monitoreo en vivo", 
+                    title: isPackageDelivery ? "Encomienda en Traslado" : "Viaje en Curso", 
+                    subtitle: isPackageDelivery ? "El paquete va en camino hacia el destinatario" : "Te diriges a tu destino con monitoreo en vivo", 
                     color: "text-emerald-600", 
                     bg: "bg-emerald-50", 
                     icon: Navigation 
                 };
             case 'completed':
-                return { title: "Viaje Completado", subtitle: "Has llegado a tu destino con éxito", color: "text-slate-900", bg: "bg-slate-100", icon: CheckCircle2 };
+                return { 
+                    title: isPackageDelivery ? "Encomienda Entregada" : "Viaje Completado", 
+                    subtitle: isPackageDelivery ? "El paquete ha sido entregado con éxito al destinatario" : "Has llegado a tu destino con éxito", 
+                    color: "text-slate-900", 
+                    bg: "bg-slate-100", 
+                    icon: CheckCircle2 
+                };
             case 'cancelled':
-                return { title: "Viaje Cancelado", subtitle: request.cancellation_reason || "Esta solicitud fue cancelada", color: "text-red-500", bg: "bg-red-50", icon: XCircle };
+                return { title: isPackageDelivery ? "Envío Cancelado" : "Viaje Cancelado", subtitle: request.cancellation_reason || "Esta solicitud fue cancelada", color: "text-red-500", bg: "bg-red-50", icon: XCircle };
             default:
                 return { title: "Procesando", subtitle: "Por favor espera", color: "text-slate-500", bg: "bg-slate-50", icon: Clock };
         }
@@ -1048,22 +1087,103 @@ export default function TransportTracker() {
                     </div>
                 )}
 
-                {/* Muchacho e' Mandao: Encargo details & Live Driver Bids in Tracker */}
-                {request.service_category === 'muchacho_mandado' && request.status === 'searching' && (
-                    <div className="mb-4 space-y-3">
-                        <div className="bg-slate-900 text-white rounded-2xl p-3.5 border border-slate-800 shadow-sm">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Tu Mandado Solicitado</span>
-                            <p className="text-xs font-bold text-slate-200 mt-1 line-clamp-2">
-                                {request.mandado_details?.description || request.notes || 'Sin descripción'}
-                            </p>
-                            {request.mandado_details?.storeName && (
-                                <p className="text-[11px] text-slate-400 mt-1">🏪 {request.mandado_details.storeName}</p>
-                            )}
-                            <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-amber-300 font-semibold flex items-center gap-1.5">
-                                <Shield className="w-3.5 h-3.5 shrink-0" />
-                                Cero intermediación: Paga directo al comercio por Pago Móvil.
+                {/* Ficha de Encomienda / Paquete (Cliente) */}
+                {isPackageDelivery && (
+                    <div className="mb-4 bg-gradient-to-br from-blue-50/90 to-indigo-50/70 border-2 border-blue-200/90 rounded-2xl p-3.5 shadow-sm space-y-3">
+                        <div className="flex items-center justify-between border-b border-blue-200/60 pb-2">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                    <Package className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <span className="text-xs font-black text-blue-950 block leading-tight">
+                                        Ficha de Encomienda / Paquete
+                                    </span>
+                                    <span className="text-[10px] font-bold text-blue-600">
+                                        {request.status === 'completed' ? 'Entrega finalizada' : 'Seguimiento de envío activo'}
+                                    </span>
+                                </div>
+                            </div>
+                            <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-100/90 px-2.5 py-0.5 rounded-full border border-blue-200">
+                                Encomienda
+                            </span>
+                        </div>
+
+                        {/* Destinatario y Remitente */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            {/* Destinatario */}
+                            <div className="bg-white/95 p-2.5 rounded-xl border border-blue-100 shadow-2xs space-y-1">
+                                <span className="text-[9px] font-black uppercase text-blue-900 tracking-wider flex items-center gap-1">
+                                    👤 Destinatario (Quién Recibe)
+                                </span>
+                                <p className="font-black text-slate-900 text-xs truncate">
+                                    {receiverName || 'Destinatario'}
+                                </p>
+                                {receiverPhone ? (
+                                    <a
+                                        href={`tel:${receiverPhone}`}
+                                        className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-700 hover:underline font-mono"
+                                    >
+                                        <Phone className="w-3 h-3" /> {receiverPhone}
+                                    </a>
+                                ) : (
+                                    <p className="text-[10px] text-slate-400 italic">Sin teléfono registrado</p>
+                                )}
+                            </div>
+
+                            {/* Remitente */}
+                            <div className="bg-white/95 p-2.5 rounded-xl border border-blue-100 shadow-2xs space-y-1">
+                                <span className="text-[9px] font-black uppercase text-slate-500 tracking-wider flex items-center gap-1">
+                                    📦 Remitente (Quién Envía)
+                                </span>
+                                <p className="font-black text-slate-800 text-xs truncate">
+                                    {senderName || 'Remitente'}
+                                </p>
+                                {senderPhone ? (
+                                    <span className="text-[11px] font-bold text-slate-600 font-mono block">
+                                        {senderPhone}
+                                    </span>
+                                ) : null}
                             </div>
                         </div>
+
+                        {/* Detalle o Notas del Paquete */}
+                        {packageDesc && (
+                            <div className="bg-white/95 p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+                                <span className="text-[9px] font-black uppercase text-blue-900 tracking-wider block mb-0.5">
+                                    📦 Detalle del Paquete:
+                                </span>
+                                <p className="text-xs font-bold text-slate-800 leading-snug">
+                                    {packageDesc}
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Muchacho e' Mandao: Encargo details (Visible across all trip statuses) */}
+                {request.service_category === 'muchacho_mandado' && (
+                    <div className="mb-4 bg-slate-900 text-white rounded-2xl p-3.5 border border-slate-800 shadow-sm space-y-1">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">Tu Mandado Solicitado</span>
+                        <p className="text-xs font-bold text-slate-200 mt-1 leading-snug">
+                            {request.mandado_details?.description || request.notes || 'Sin descripción'}
+                        </p>
+                        {request.mandado_details?.storeName && (
+                            <p className="text-[11px] text-slate-400 mt-1">🏪 {request.mandado_details.storeName}</p>
+                        )}
+                        {request.mandado_details?.storeAddresses && (
+                            <p className="text-[10px] text-slate-400">📍 {request.mandado_details.storeAddresses}</p>
+                        )}
+                        <div className="mt-2 pt-2 border-t border-slate-800 text-[10px] text-amber-300 font-semibold flex items-center gap-1.5">
+                            <Shield className="w-3.5 h-3.5 shrink-0" />
+                            Cero intermediación: Paga directo al comercio por Pago Móvil.
+                        </div>
+                    </div>
+                )}
+
+                {/* Muchacho e' Mandao: Live Driver Bids in Tracker (Only while searching) */}
+                {request.service_category === 'muchacho_mandado' && request.status === 'searching' && (
+                    <div className="mb-4 space-y-3">
 
                         <div className="flex items-center justify-between px-1">
                             <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">

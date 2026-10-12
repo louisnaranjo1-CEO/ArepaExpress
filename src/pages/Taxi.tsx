@@ -180,6 +180,8 @@ export default function Taxi() {
     const [activeService, setActiveService] = useState<any>(null);
     const [isSubmittingMandado, setIsSubmittingMandado] = useState(false);
     const [packageDescription, setPackageDescription] = useState('');
+    const [recipientName, setRecipientName] = useState('');
+    const [recipientPhone, setRecipientPhone] = useState('');
     const [driverNotes, setDriverNotes] = useState('');
     const [showNotesModal, setShowNotesModal] = useState(false);
     // Transporte Rápido (1 Toque)
@@ -1147,7 +1149,7 @@ export default function Taxi() {
             const places = await searchMapboxPlaces(val, center);
             const mapped: PlacePrediction[] = places.map((p) => {
                 const parts = p.place_name.split(',');
-                const main = p.text || parts[0] || p.place_name;
+                const main = p.name || (p as any).text || parts[0] || p.place_name;
                 const secondary = parts.slice(1).join(',').trim() || '';
                 return {
                     place_id: p.id,
@@ -1156,7 +1158,7 @@ export default function Taxi() {
                         main_text: main,
                         secondary_text: secondary
                     },
-                    center: p.center // [lng, lat]
+                    center: (p as any).center || [p.lng, p.lat]
                 };
             });
             setPredictions(mapped);
@@ -1424,8 +1426,8 @@ export default function Taxi() {
                 user_phone: userData?.phone || guestPhone || 'Sin número',
                 user_cedula: userData?.cedula || (guestCedula ? `${guestCedulaType}-${guestCedula}` : 'N/A'),
                 origin: { 
-                    lat: effectiveCoords.lat, 
-                    lng: effectiveCoords.lng, 
+                    lat: data.storeCoords?.lat || effectiveCoords.lat, 
+                    lng: data.storeCoords?.lng || effectiveCoords.lng, 
                     address: data.storeName 
                         ? `Comercio: ${data.storeName}${data.storeAddresses ? ` (${data.storeAddresses})` : ''}` 
                         : (data.hasExactStores ? 'Lugares de compra definidos' : 'Sugerencia de lugares por piloto')
@@ -1448,6 +1450,7 @@ export default function Taxi() {
                     storeName: data.storeName,
                     hasExactStores: data.hasExactStores,
                     storeAddresses: data.storeAddresses,
+                    storeCoords: data.storeCoords,
                     transportPassenger: data.transportPassenger,
                     passengerRouteDescription: data.passengerRouteDescription,
                     deliveryOption: data.deliveryOption,
@@ -1497,6 +1500,21 @@ export default function Taxi() {
         if (selectedCategory === 'muchacho_mandado' && !mandadoDescription.trim()) {
             toast.error("Por favor describe qué necesitas que te compren o retiren");
             return;
+        }
+
+        if (selectedCategory === 'delivery_envios' || mainMode === 'package') {
+            if (!recipientName.trim()) {
+                toast.error("Por favor ingresa el nombre de quién recibe (Destinatario)");
+                return;
+            }
+            if (!recipientPhone.trim()) {
+                toast.error("Por favor ingresa el teléfono del destinatario");
+                return;
+            }
+            if (!packageDescription.trim()) {
+                toast.error("Por favor describe qué contiene o qué paquete vas a enviar");
+                return;
+            }
         }
 
         // Determine price, vehicle type and commission dynamically from liveCommissions
@@ -1615,9 +1633,26 @@ export default function Taxi() {
                     description: mandadoDescription,
                     storeName: mandadoStoreName || 'Comercio Local'
                 };
-            } else if (selectedCategory === 'delivery_envios') {
+            } else if (selectedCategory === 'delivery_envios' || mainMode === 'package') {
                 orderData.type = 'package_delivery';
-                orderData.package_description = packageDescription;
+                orderData.service_category = 'delivery_envios';
+                orderData.package_description = packageDescription.trim();
+                orderData.receiver_name = recipientName.trim();
+                orderData.recipient_name = recipientName.trim();
+                orderData.receiver_phone = recipientPhone.trim();
+                orderData.recipient_phone = recipientPhone.trim();
+                orderData.sender_name = orderData.user_name;
+                orderData.sender_phone = orderData.user_phone;
+                orderData.mandado_details = {
+                    sender_name: orderData.user_name,
+                    sender_phone: orderData.user_phone,
+                    receiver_name: recipientName.trim(),
+                    receiver_phone: recipientPhone.trim(),
+                    recipient_name: recipientName.trim(),
+                    recipient_phone: recipientPhone.trim(),
+                    package_notes: packageDescription.trim(),
+                    package_description: packageDescription.trim()
+                };
             } else {
                 orderData.type = 'transport';
             }
@@ -3099,18 +3134,53 @@ export default function Taxi() {
                             )}
 
                             {mainMode === 'package' && (
-                                <div className="space-y-2 bg-blue-50/80 border border-blue-200 rounded-2xl p-3 animate-in fade-in">
-                                    <div className="flex items-center gap-2 text-xs text-blue-900">
-                                        <Package className="w-4 h-4 text-blue-600 shrink-0" />
-                                        <span className="font-black text-[11px]">Descripción del paquete a trasladar:</span>
+                                <div className="space-y-3 bg-blue-50/90 border-2 border-blue-200 rounded-2xl p-3.5 animate-in fade-in shadow-xs">
+                                    <div className="flex items-center justify-between border-b border-blue-200/60 pb-2">
+                                        <div className="flex items-center gap-2 text-xs text-blue-950 font-black">
+                                            <Package className="w-4 h-4 text-blue-600 shrink-0" />
+                                            <span>Ficha de Encomienda / Paquete</span>
+                                        </div>
+                                        <span className="text-[10px] font-black uppercase text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                                            Obligatorio
+                                        </span>
                                     </div>
-                                    <input
-                                        type="text"
-                                        placeholder="Ej: Documentos en sobre, llaves, paquete mediano..."
-                                        value={packageDescription}
-                                        onChange={(e) => setPackageDescription(e.target.value)}
-                                        className="w-full bg-white border border-blue-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400"
-                                    />
+
+                                    {/* Destinatario */}
+                                    <div className="space-y-1.5">
+                                        <span className="text-[10px] font-black uppercase text-blue-900 tracking-wider block">
+                                            👤 Destinatario (Quién Recibe el Paquete):
+                                        </span>
+                                        <div className="space-y-1.5">
+                                            <input
+                                                type="text"
+                                                placeholder="Nombre completo de quien recibe *"
+                                                value={recipientName}
+                                                onChange={(e) => setRecipientName(e.target.value)}
+                                                className="w-full bg-white border border-blue-200 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400"
+                                            />
+                                            <input
+                                                type="tel"
+                                                placeholder="Teléfono del destinatario (Ej: 04121234567) *"
+                                                value={recipientPhone}
+                                                onChange={(e) => setRecipientPhone(e.target.value)}
+                                                className="w-full bg-white border border-blue-200 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400 font-mono"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Detalle del paquete */}
+                                    <div className="space-y-1">
+                                        <span className="text-[10px] font-black uppercase text-blue-900 tracking-wider block">
+                                            📦 ¿Qué paquete o artículo envías? *
+                                        </span>
+                                        <input
+                                            type="text"
+                                            placeholder="Ej: Comida preparada, documentos, llaves, paquete..."
+                                            value={packageDescription}
+                                            onChange={(e) => setPackageDescription(e.target.value)}
+                                            className="w-full bg-white border border-blue-200 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400"
+                                        />
+                                    </div>
                                 </div>
                             )}
 
