@@ -171,8 +171,8 @@ export function isNightTime(): boolean {
     return hour >= 19 || hour < 6;
 }
 
-// Estilo Claro de Google Maps (Estilo Yango diurno)
-export const yangoDayMapStyles: google.maps.MapTypeStyle[] = [
+// Estilo Claro de Mapa (Estilo Yango diurno)
+export const yangoDayMapStyles: any[] = [
     {
         featureType: 'poi',
         elementType: 'labels',
@@ -196,6 +196,6 @@ export const yangoDayMapStyles: google.maps.MapTypeStyle[] = [
 ];
 
 // Modo de mapa diurno exclusivo (solicitado: solo diurno para máxima claridad y legibilidad)
-export const googleMapsDarkStyles: google.maps.MapTypeStyle[] = yangoDayMapStyles;
+export const googleMapsDarkStyles: any[] = yangoDayMapStyles;
 export const yangoDarkMapStyles = yangoDayMapStyles;
 

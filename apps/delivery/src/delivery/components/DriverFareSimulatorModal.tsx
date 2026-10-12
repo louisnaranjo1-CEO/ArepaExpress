@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { GoogleMap, useJsApiLoader, Marker, Polyline } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '@shared/lib/mapsConfig';
-import { yangoDayMapStyles } from '@shared/lib/weather';
-import { X, Navigation, Sun, Moon, Sparkles, DollarSign, ShieldCheck, MapPin, RotateCcw, Loader2 } from 'lucide-react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import LiveTripMap from '@shared/components/LiveTripMap';
+import { getMapboxRoute } from '@shared/lib/mapboxConfig';
+import { X, Navigation, Sun, Moon, Sparkles, DollarSign, ShieldCheck, MapPin, RotateCcw } from 'lucide-react';
 
 interface Coords {
     lat: number;
@@ -65,13 +64,6 @@ export default function DriverFareSimulatorModal({
     adminSettings,
     bcvRate = 0
 }: DriverFareSimulatorModalProps) {
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-        libraries: GOOGLE_MAPS_LIBRARIES
-    });
-
-    const mapRef = useRef<google.maps.Map | null>(null);
     const [shift, setShift] = useState<'day' | 'night'>('day');
     const [useComfort, setUseComfort] = useState(false);
     const [simulatedKm, setSimulatedKm] = useState<number>(5.0);
@@ -80,20 +72,23 @@ export default function DriverFareSimulatorModal({
     const [originCoords, setOriginCoords] = useState<Coords>({ lat: 10.4900, lng: -66.8850 });
     const [destCoords, setDestCoords] = useState<Coords>({ lat: 10.4850, lng: -66.8350 });
 
-    // Initialize or update distance when markers move
+    // Initialize or update distance using Mapbox Directions
     useEffect(() => {
-        const d = calculateUrbanDistanceKm(originCoords, destCoords);
-        if (d > 0.2) {
-            setSimulatedKm(d);
-        }
+        let isCancelled = false;
+        getMapboxRoute(originCoords, destCoords).then(route => {
+            if (isCancelled) return;
+            if (route && route.distanceKm > 0) {
+                setSimulatedKm(route.distanceKm);
+            } else {
+                const d = calculateUrbanDistanceKm(originCoords, destCoords);
+                if (d > 0.2) setSimulatedKm(d);
+            }
+        });
+        return () => { isCancelled = true; };
     }, [originCoords, destCoords]);
 
-    const polylineCoords = useMemo(() => [originCoords, destCoords], [originCoords, destCoords]);
-
-    const onMapClick = useCallback((e: google.maps.MapMouseEvent) => {
-        if (e.latLng) {
-            setDestCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-        }
+    const onMapClick = useCallback((coords: Coords) => {
+        setDestCoords(coords);
     }, []);
 
 
@@ -273,60 +268,15 @@ export default function DriverFareSimulatorModal({
 
                 {/* Modal Body: Map + Preset distances + Calculation Result */}
                 <div className="overflow-y-auto flex-1 p-5 space-y-4">
-                    {/* Interactive Google Map */}
-                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner h-52 sm:h-60 bg-slate-900">
-                        {isLoaded ? (
-                            <GoogleMap
-                                mapContainerStyle={{ width: '100%', height: '100%' }}
-                                center={{
-                                    lat: (originCoords.lat + destCoords.lat) / 2,
-                                    lng: (originCoords.lng + destCoords.lng) / 2
-                                }}
-                                zoom={13}
-                                onLoad={(map) => { mapRef.current = map; }}
-                                onUnmount={() => { mapRef.current = null; }}
-                                onClick={onMapClick}
-                                options={{
-                                    disableDefaultUI: true,
-                                    zoomControl: true,
-                                    styles: yangoDayMapStyles
-                                }}
-                            >
-                                <Marker
-                                    position={originCoords}
-                                    draggable={true}
-                                    label={{ text: "A", color: "#FFFFFF", fontWeight: "bold" }}
-                                    onDragEnd={(e) => {
-                                        if (e.latLng) {
-                                            setOriginCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-                                        }
-                                    }}
-                                />
-                                <Marker
-                                    position={destCoords}
-                                    draggable={true}
-                                    label={{ text: "B", color: "#FFFFFF", fontWeight: "bold" }}
-                                    onDragEnd={(e) => {
-                                        if (e.latLng) {
-                                            setDestCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-                                        }
-                                    }}
-                                />
-                                <Polyline
-                                    path={polylineCoords}
-                                    options={{
-                                        strokeColor: '#3B82F6',
-                                        strokeWeight: 4,
-                                        strokeOpacity: 0.85
-                                    }}
-                                />
-                            </GoogleMap>
-                        ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
-                                <Loader2 className="w-6 h-6 animate-spin text-amber-400" />
-                                <p className="text-[11px] font-bold text-slate-400">Cargando Google Maps...</p>
-                            </div>
-                        )}
+                    {/* Interactive Mapbox Map */}
+                    <div className="relative rounded-2xl overflow-hidden border border-slate-200 shadow-inner h-52 sm:h-60 bg-slate-100">
+                        <LiveTripMap
+                            origin={originCoords}
+                            destination={destCoords}
+                            interactive={true}
+                            onMapClick={onMapClick}
+                            showControls={false}
+                        />
                         
                         {/* Map hint badge */}
                         <div className="absolute top-2.5 left-2.5 z-10 bg-slate-900/85 backdrop-blur-md text-white text-[10px] font-bold px-3 py-1.5 rounded-xl shadow flex items-center gap-1.5 pointer-events-none border border-white/10">

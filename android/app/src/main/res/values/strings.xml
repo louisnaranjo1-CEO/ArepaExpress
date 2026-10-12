@@ -7,4 +7,5 @@
     <string name="default_web_client_id">549258124406-f5hsmurh0iafjak30108d88m6bqhmcvj.apps.googleusercontent.com</string>
     <string name="server_client_id">549258124406-f5hsmurh0iafjak30108d88m6bqhmcvj.apps.googleusercontent.com</string>
     <string name="google_maps_key" translatable="false">AIzaSyAT2_wZfYTBGDR7gEpLXRzG-BUQ9Cbu0aQ</string>
+    <string name="mapbox_token" translatable="false">pk.eyJ1IjoibG91aXMwMDc3IiwiYSI6ImNtdjRrcjcxZzB2Y2syeG9uZXp1ancxeXcifQ.34qW5Iod02FDp3MEQ64Hcw</string>
 </resources>

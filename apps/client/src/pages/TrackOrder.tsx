@@ -16,20 +16,7 @@ import OrderChatWindow from '../components/chat/OrderChatWindow';
 import RideChat from '../components/RideChat';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleMap, useJsApiLoader, Marker, DirectionsRenderer } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES, useGoogleMapsResilience } from '../lib/mapsConfig';
 import LiveTripMap from '../components/LiveTripMap';
-
-
-const mapOptions: google.maps.MapOptions = {
-    disableDefaultUI: true,
-    zoomControl: false,
-    streetViewControl: false,
-    mapTypeControl: false,
-    fullscreenControl: false,
-    clickableIcons: false,
-    gestureHandling: 'greedy'
-};
 
 // ─── Geo Distance Calculator ────────────────────────────────────────────────
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -130,13 +117,7 @@ const StepProgressHeader: React.FC<{ currentStep: number }> = ({ currentStep }) 
 );
 
 export default function TrackOrder() {
-    const { isLoaded, loadError } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-        libraries: GOOGLE_MAPS_LIBRARIES
-    });
     const mapContainerRef = useRef<HTMLDivElement>(null);
-    const hasMapError = useGoogleMapsResilience(mapContainerRef, loadError);
 
 
     const { orderId } = useParams();
@@ -193,7 +174,7 @@ export default function TrackOrder() {
     const [totalPrepSeconds, setTotalPrepSeconds] = useState<number>(1200);
 
     // ── Directions & Game-style Smooth Interpolation State (Pilar 4) ────────
-    const [directionsResult, setDirectionsResult] = useState<google.maps.DirectionsResult | null>(null);
+    const [directionsResult, setDirectionsResult] = useState<any>(null);
     const [interpolatedPos, setInterpolatedPos] = useState<{ lat: number; lng: number } | null>(null);
     const [vehicleBearing, setVehicleBearing] = useState<number>(0);
     const animFrameRef = useRef<number | null>(null);
@@ -1054,73 +1035,11 @@ export default function TrackOrder() {
 
     const pagoMovilMethod = paymentMethods.find((m: any) => m.type === 'Pago Móvil') || null;
 
-    const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
-
-    // Calcular distancia y coordenadas tienda -> cliente con fallbacks robustos
-    const rLat = Number(restaurant?.location?.coords?.lat ?? restaurant?.coords?.lat ?? restaurant?.lat ?? restaurant?.locations?.[0]?.coords?.lat);
-    const rLng = Number(restaurant?.location?.coords?.lng ?? restaurant?.coords?.lng ?? restaurant?.lng ?? restaurant?.locations?.[0]?.coords?.lng);
-    const hasRestCoords = !isNaN(rLat) && !isNaN(rLng) && rLat !== 0;
-
-    const dLat = Number(order?.delivery_coords?.lat ?? order?.deliveryCoords?.lat ?? order?.shipping_address?.lat ?? order?.address?.coords?.lat ?? userLocation?.lat);
-    const dLng = Number(order?.delivery_coords?.lng ?? order?.deliveryCoords?.lng ?? order?.shipping_address?.lng ?? order?.address?.coords?.lng ?? userLocation?.lng);
-    const hasDestCoords = !isNaN(dLat) && !isNaN(dLng) && dLat !== 0;
-
-    const originCoords: { lat: number; lng: number } = hasRestCoords 
-        ? { lat: rLat, lng: rLng } 
-        : (hasDestCoords ? { lat: dLat - 0.006, lng: dLng - 0.006 } : { lat: 8.9288, lng: -67.4253 });
-
-    const destCoords: { lat: number; lng: number } = hasDestCoords 
-        ? { lat: dLat, lng: dLng } 
-        : { lat: 8.9327, lng: -67.4268 };
-
     const calculatedDistance = calculateDistanceKm(originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng) || Number(order?.distance || 2.5);
 
     const mapCenter = (driverLocation && !isNaN(driverLocation.lat))
         ? driverLocation
         : destCoords;
-
-    const onMapLoad = useCallback((map: google.maps.Map) => {
-        setMapInstance(map);
-        if (window.google) {
-            const bounds = new window.google.maps.LatLngBounds();
-            bounds.extend(originCoords);
-            bounds.extend(destCoords);
-            if (driverLocation) bounds.extend(driverLocation);
-            map.fitBounds(bounds, { top: 90, bottom: 260, left: 40, right: 40 });
-        }
-    }, [originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng, driverLocation?.lat, driverLocation?.lng]);
-
-    // Re-centrar y ajustar bounds dinámicamente cuando el driver se mueve
-    useEffect(() => {
-        if (!mapInstance || !window.google) return;
-        const bounds = new window.google.maps.LatLngBounds();
-        bounds.extend(originCoords);
-        bounds.extend(destCoords);
-        if (driverLocation) bounds.extend(driverLocation);
-        mapInstance.fitBounds(bounds, { top: 90, bottom: 260, left: 40, right: 40 });
-    }, [mapInstance, driverLocation?.lat, driverLocation?.lng, directionsResult]);
-
-    // ── Single Route Calculation (google-maps-optimizer) ─────────────────────
-    useEffect(() => {
-        if (!isLoaded || !window.google || !originCoords || !destCoords || routeCalculatedRef.current) return;
-        routeCalculatedRef.current = true;
-
-        const directionsService = new window.google.maps.DirectionsService();
-        directionsService.route(
-            {
-                origin: originCoords,
-                destination: destCoords,
-                travelMode: window.google.maps.TravelMode.DRIVING,
-            },
-            (result, status) => {
-                if (status === window.google.maps.DirectionsStatus.OK && result) {
-                    setDirectionsResult(result);
-                } else {
-                    console.warn("Directions request error:", status);
-                }
-            }
-        );
-    }, [isLoaded, originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng]);
 
     // ── Helper: 3D Vehicle Marker SVG Generator with Headlight and Pulse ───
     const getVehicleSvgDataUri = (vType: string = 'moto', bearing: number = 0) => {
@@ -2130,88 +2049,16 @@ export default function TrackOrder() {
 
         return (
             <div className="fixed inset-0 z-40 w-full h-[100dvh] max-h-[100dvh] bg-slate-100 overflow-hidden flex flex-col select-none">
-                {/* 1. Full Screen Map (Google Maps with Zero-Downtime LiveTripMap Fallback) */}
+                {/* 1. Full Screen Mapbox Live Trip Map */}
                 <div className="absolute inset-0 z-0" style={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} ref={mapContainerRef}>
-                    {!hasMapError && isLoaded ? (
-                        <GoogleMap
-                            mapContainerStyle={{ width: '100%', height: '100%' }}
-                            center={interpolatedPos || mapCenter}
-                            zoom={16}
-                            onLoad={onMapLoad}
-                            options={{
-                                ...mapOptions,
-                                disableDefaultUI: true,
-                                zoomControl: false,
-                                streetViewControl: false,
-                                mapTypeControl: false,
-                                fullscreenControl: false
-                            }}
-                        >
-                            {/* Polyline Route Calculated ONCE (google-maps-optimizer) */}
-                            {directionsResult && (
-                                <DirectionsRenderer
-                                    directions={directionsResult}
-                                    options={{
-                                        suppressMarkers: true,
-                                        preserveViewport: true,
-                                        polylineOptions: {
-                                            strokeColor: '#F59E0B',
-                                            strokeWeight: 6,
-                                            strokeOpacity: 0.9,
-                                        }
-                                    }}
-                                />
-                            )}
-
-                            {/* Client Destination Marker */}
-                            {destCoords && (
-                                <Marker
-                                    position={destCoords}
-                                    icon={{
-                                        url: 'https://cdn-icons-png.flaticon.com/512/1004/1004285.png',
-                                        scaledSize: window.google ? new window.google.maps.Size(36, 36) : undefined
-                                    }}
-                                />
-                            )}
-
-                            {/* Store Origin Marker */}
-                            {originCoords && (
-                                <Marker
-                                    position={originCoords}
-                                    icon={{
-                                        url: 'https://cdn-icons-png.flaticon.com/512/3081/3081559.png',
-                                        scaledSize: window.google ? new window.google.maps.Size(34, 34) : undefined
-                                    }}
-                                />
-                            )}
-
-                            {/* Video-Game Interpolated 3D Vehicle Marker */}
-                            {(interpolatedPos || driverLocation) && (
-                                <Marker
-                                    position={interpolatedPos || driverLocation!}
-                                    icon={{
-                                        url: getVehicleSvgDataUri(vehicleType, vehicleBearing),
-                                        anchor: window.google ? new window.google.maps.Point(34, 34) : undefined,
-                                        scaledSize: window.google ? new window.google.maps.Size(68, 68) : undefined
-                                    }}
-                                />
-                            )}
-                        </GoogleMap>
-                    ) : hasMapError ? (
-                        <LiveTripMap
-                            origin={originCoords}
-                            destination={destCoords}
-                            driverLocation={interpolatedPos || driverLocation}
-                            vehicleType={vehicleType}
-                            driverName={driverName}
-                            showControls={false}
-                        />
-                    ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-2">
-                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                            <p className="text-xs font-bold text-slate-400">Iniciando satélite GPS...</p>
-                        </div>
-                    )}
+                    <LiveTripMap
+                        origin={originCoords}
+                        destination={destCoords}
+                        driverLocation={interpolatedPos || driverLocation}
+                        vehicleType={vehicleType}
+                        driverName={driverName}
+                        showControls={false}
+                    />
                 </div>
 
                 {/* 2. Top Floating Glass Header */}

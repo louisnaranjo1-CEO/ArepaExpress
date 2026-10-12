@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Car, Bike, Clock, CheckCircle2, XCircle, Search, Calendar, DollarSign, MapPin, User, ShieldCheck, Upload, Image as ImageIcon, MessageSquare, Star, Phone, MessageCircle, ShoppingBag, Store, Navigation, Map, SlidersHorizontal, Volume2, X } from 'lucide-react';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY } from '@shared/lib/mapsConfig';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -15,15 +13,6 @@ const formatDuration = (seconds: number) => {
     const m = Math.floor(absSeconds / 60);
     const s = absSeconds % 60;
     return `${seconds < 0 ? '-' : ''}${m}m ${s}s`;
-};
-
-const mapOptions: google.maps.MapOptions = {
-    disableDefaultUI: false,
-    zoomControl: true,
-    streetViewControl: false,
-    mapTypeControl: false,
-    fullscreenControl: true,
-    clickableIcons: false,
 };
 
 export default function TransportRequests() {

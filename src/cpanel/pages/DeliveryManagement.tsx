@@ -4,7 +4,6 @@ import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
 import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink, Plus, Trash2, Clock, Sun, Moon, Activity, MapPin, Map as MapIcon, Navigation, Search, CloudRain, Zap, Sparkles, Sliders, Bike, Car, ShieldCheck, Check, RefreshCw, Shield, CreditCard, Building2, Phone, Package, Percent, Store, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleMap, useJsApiLoader, Marker, InfoWindow } from '@react-google-maps/api';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
 import { DEFAULT_PRICING_SETTINGS, calculateDynamicFare, SmartPricingSettings } from '../../lib/pricing';
@@ -27,7 +26,7 @@ export default function DeliveryManagement() {
                 const { data, error } = await supabase
                     .from('orders')
                     .select('*')
-                    .eq('status', 'completed')
+                    .in('status', ['completed', 'delivered'])
                     .order('created_at', { ascending: false })
                     .limit(100);
                 if (!error && data) {
@@ -193,7 +192,7 @@ _Enviado desde Deliexpress App_`,
 
     const { isLoaded } = useJsApiLoader({
         id: 'google-map-script',
-        googleMapsApiKey: "AIzaSyAT2_wZfYTBGDR7gEpLXRzG-BUQ9Cbu0aQ",
+        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
         libraries: ['places', 'geometry'] as any
     });
 
@@ -491,7 +490,7 @@ _Enviado desde Deliexpress App_`,
                 .from('orders')
                 .select('*')
                 .eq('delivery_driver_id', driver.id)
-                .eq('status', 'completed');
+                .in('status', ['completed', 'delivered']);
 
             const pending = (snapshot || []).filter(doc => !doc.delivery_paid && !doc.deliveryPaid);
 
@@ -512,9 +511,9 @@ _Enviado desde Deliexpress App_`,
         try {
             await supabase
                 .from('orders')
-                .update({ delivery_paid: true, deliveryPaid: true })
+                .update({ delivery_paid: true })
                 .eq('delivery_driver_id', selectedDriverFinance.id)
-                .eq('status', 'completed');
+                .in('status', ['completed', 'delivered']);
 
             alert('¡Pago registrado con éxito! El historial del piloto ha sido actualizado.');
             setSelectedDriverFinance(null);

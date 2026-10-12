@@ -34,7 +34,19 @@ import {
     Zap,
     User as UserIcon
 } from 'lucide-react';
-import { useJsApiLoader } from '@react-google-maps/api';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import {
+    getMapboxToken,
+    MAPBOX_STYLE_DAY,
+    DEFAULT_MAP_CENTER_LNG_LAT,
+    getMapboxRoute,
+    searchMapboxPlaces,
+    reverseGeocodeMapbox,
+    createOriginPinElement,
+    createDestinationPinElement,
+    createDriverPinElement
+} from '../lib/mapboxConfig';
 import { UN2X3_LOGO } from '../lib/env';
 import toast from 'react-hot-toast';
 import { calculateDistance } from '../lib/geo';
@@ -42,15 +54,11 @@ import { vibrate } from '../utils/haptics';
 import { isDemoMode } from '../lib/env';
 import DemoAlertModal from '../components/DemoAlertModal';
 import { useCurrency } from '../context/CurrencyContext';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
 import { calculateDynamicFare, FareCalculationResult } from '../lib/pricing';
 import SpeedFleetAnimation from '../components/SpeedFleetAnimation';
 import {
     getWeatherByCoordinates,
     isNightTime,
-    yangoDayMapStyles,
-    yangoDarkMapStyles,
-    googleMapsDarkStyles,
     WeatherInfo
 } from '../lib/weather';
 import { Geolocation } from '@capacitor/geolocation';
@@ -103,8 +111,18 @@ interface NearbyDriver {
     registeredVehicles?: any[];
 }
 
+export interface PlacePrediction {
+    place_id: string;
+    description: string;
+    structured_formatting: {
+        main_text: string;
+        secondary_text: string;
+    };
+    center: [number, number]; // [lng, lat]
+}
+
 // Helper to get initial map render center from the user's known address or cache
-const getInitialMapCoordinates = (userAddresses?: any[]): google.maps.LatLngLiteral => {
+const getInitialMapCoordinates = (userAddresses?: any[]): { lat: number; lng: number } => {
     if (userAddresses && userAddresses.length > 0) {
         const def = userAddresses.find((a: any) => a.isDefault) || userAddresses[0];
         if (def?.lat && def?.lng) return { lat: def.lat, lng: def.lng };
@@ -116,11 +134,10 @@ const getInitialMapCoordinates = (userAddresses?: any[]): google.maps.LatLngLite
             if (parsed?.lat && parsed?.lng) return { lat: parsed.lat, lng: parsed.lng };
         }
     } catch (e) {}
-    // Technical fallback strictly for Google Maps canvas rendering initialization
-    return { lat: 8.9326, lng: -67.4264 };
+    return { lat: DEFAULT_MAP_CENTER_LNG_LAT[1], lng: DEFAULT_MAP_CENTER_LNG_LAT[0] };
 };
 
-const defaultCenter: google.maps.LatLngLiteral = { lat: 8.9326, lng: -67.4264 };
+const defaultCenter: { lat: number; lng: number } = { lat: DEFAULT_MAP_CENTER_LNG_LAT[1], lng: DEFAULT_MAP_CENTER_LNG_LAT[0] };
 
 const safeUUID = (): string => {
     if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -140,25 +157,15 @@ export default function Taxi() {
     const { bcvRate } = useCurrency();
     const navigate = useNavigate();
 
-    // 1. Google Maps JS API Loader
-    const { isLoaded, loadError } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-        libraries: GOOGLE_MAPS_LIBRARIES
-    });
-
-    // Native Map DOM reference (Official Google Maps instance)
+    // 1. Mapbox Map instance and markers
+    const [isMapLoaded, setIsMapLoaded] = useState(false);
     const mapDivRef = useRef<HTMLDivElement | null>(null);
-    const mapInstanceRef = useRef<google.maps.Map | null>(null);
-    const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-    const fallbackPolylineRef = useRef<google.maps.Polyline | null>(null);
-    const geocoderRef = useRef<google.maps.Geocoder | null>(null);
-    const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
-    const userMarkerRef = useRef<google.maps.Marker | null>(null);
-    const originMarkerRef = useRef<google.maps.Marker | null>(null);
-    const destinationMarkerRef = useRef<google.maps.Marker | null>(null);
-    const driverMarkersRef = useRef<google.maps.Marker[]>([]);
-    const userLocationRef = useRef<google.maps.LatLngLiteral | null>(null);
+    const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
+    const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
+    const originMarkerRef = useRef<mapboxgl.Marker | null>(null);
+    const destinationMarkerRef = useRef<mapboxgl.Marker | null>(null);
+    const driverMarkersRef = useRef<mapboxgl.Marker[]>([]);
+    const userLocationRef = useRef<{ lat: number; lng: number } | null>(null);
 
     // State Machine
     const [step, setStep] = useState<'categories' | 'destination' | 'vehicle' | 'payment' | 'searching'>('categories');
@@ -186,7 +193,7 @@ export default function Taxi() {
         originRef.current = origin;
     }, [origin]);
     const [destination, setDestination] = useState<Location | null>(null);
-    const [userLocation, setUserLocation] = useState<google.maps.LatLngLiteral | null>(null);
+    const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
     useEffect(() => {
         userLocationRef.current = userLocation;
     }, [userLocation]);
@@ -221,7 +228,7 @@ export default function Taxi() {
 
     // Places Search
     const [searchQuery, setSearchQuery] = useState('');
-    const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+    const [predictions, setPredictions] = useState<PlacePrediction[]>([]);
     const [isSearchingPlaces, setIsSearchingPlaces] = useState(false);
 
     // Nearby Drivers
@@ -665,71 +672,41 @@ export default function Taxi() {
         };
     }, [fetchNearbyDrivers]);
 
-    // 3. Initialize Google Maps DOM natively (Exclusively official Google Maps SDK)
+    // 3. Initialize Mapbox GL natively
     useEffect(() => {
-        if (!isLoaded || !mapDivRef.current) return;
-        if (mapInstanceRef.current) {
-            window.google?.maps?.event?.trigger(mapInstanceRef.current, 'resize');
-            return;
-        }
-        if (!window.google?.maps) return;
+        if (!mapDivRef.current || mapInstanceRef.current) return;
 
         try {
+            mapboxgl.accessToken = getMapboxToken();
             const initialMapCenter = getInitialMapCoordinates(userData?.addresses);
 
-            const map = new window.google.maps.Map(mapDivRef.current, {
-                center: initialMapCenter,
+            const map = new mapboxgl.Map({
+                container: mapDivRef.current,
+                style: MAPBOX_STYLE_DAY,
+                center: [initialMapCenter.lng, initialMapCenter.lat],
                 zoom: 16,
                 minZoom: 10,
                 maxZoom: 20,
-                disableDefaultUI: true,
-                zoomControl: false,
-                streetViewControl: false,
-                mapTypeControl: false,
-                fullscreenControl: false,
-                clickableIcons: false,
-                gestureHandling: 'greedy',
-                styles: yangoDayMapStyles
+                attributionControl: false
             });
 
-            mapInstanceRef.current = map;
-            geocoderRef.current = new window.google.maps.Geocoder();
-            autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService();
+            map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-left');
 
-            const renderer = new window.google.maps.DirectionsRenderer({
-                map,
-                suppressMarkers: true,
-                polylineOptions: {
-                    strokeColor: '#FF5D00',
-                    strokeWeight: 5,
-                    strokeOpacity: 0.95
-                }
+            map.on('load', () => {
+                setIsMapLoaded(true);
+                map.resize();
             });
-            directionsRendererRef.current = renderer;
 
             // Map Click to Pick Origin or Destination
-            map.addListener('click', (e: google.maps.MapMouseEvent) => {
-                if (!e.latLng) return;
+            map.on('click', async (e) => {
                 vibrate(30);
-                const clickPos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-
+                const clickPos = { lat: e.lngLat.lat, lng: e.lngLat.lng };
                 let addr = `${clickPos.lat.toFixed(5)}, ${clickPos.lng.toFixed(5)}`;
-                if (geocoderRef.current) {
-                    try {
-                        geocoderRef.current.geocode({ location: clickPos }, (res, status) => {
-                            if (status === 'OK' && res && res[0]) {
-                                addr = res[0].formatted_address;
-                                if (!originRef.current || originRef.current.lat === clickPos.lat) {
-                                    setOrigin(prev => prev ? { ...prev, address: addr } : null);
-                                    originRef.current = { lat: clickPos.lat, lng: clickPos.lng, address: addr };
-                                } else {
-                                    setDestination(prev => prev ? { ...prev, address: addr } : null);
-                                    setSearchQuery(addr);
-                                }
-                            }
-                        });
-                    } catch (gErr) {}
-                }
+
+                try {
+                    const rev = await reverseGeocodeMapbox(clickPos);
+                    if (rev) addr = rev;
+                } catch (gErr) {}
 
                 if (!originRef.current) {
                     const newOrigin = {
@@ -756,38 +733,37 @@ export default function Taxi() {
             });
 
             if (userLocationRef.current) {
-                map.panTo(userLocationRef.current);
+                map.flyTo({
+                    center: [userLocationRef.current.lng, userLocationRef.current.lat],
+                    zoom: 17,
+                    duration: 600
+                });
             }
-        } catch (e) {
-            console.error("Error initializing Google Map:", e);
-        }
 
-        return () => {
-            if (directionsRendererRef.current) {
-                directionsRendererRef.current.setMap(null);
-                directionsRendererRef.current = null;
-            }
-            if (fallbackPolylineRef.current) {
-                fallbackPolylineRef.current.setMap(null);
-                fallbackPolylineRef.current = null;
-            }
-            if (userMarkerRef.current) {
-                userMarkerRef.current.setMap(null);
-                userMarkerRef.current = null;
-            }
-            if (originMarkerRef.current) {
-                originMarkerRef.current.setMap(null);
-                originMarkerRef.current = null;
-            }
-            if (destinationMarkerRef.current) {
-                destinationMarkerRef.current.setMap(null);
-                destinationMarkerRef.current = null;
-            }
-            driverMarkersRef.current.forEach(m => m.setMap(null));
-            driverMarkersRef.current = [];
-            mapInstanceRef.current = null;
-        };
-    }, [isLoaded]);
+            mapInstanceRef.current = map;
+
+            // Auto resize observer for WebView and container sizing
+            const resizeObserver = new ResizeObserver(() => {
+                if (mapInstanceRef.current) {
+                    mapInstanceRef.current.resize();
+                }
+            });
+            resizeObserver.observe(mapDivRef.current);
+
+            return () => {
+                resizeObserver.disconnect();
+                if (userMarkerRef.current) userMarkerRef.current.remove();
+                if (originMarkerRef.current) originMarkerRef.current.remove();
+                if (destinationMarkerRef.current) destinationMarkerRef.current.remove();
+                driverMarkersRef.current.forEach(m => m.remove());
+                driverMarkersRef.current = [];
+                map.remove();
+                mapInstanceRef.current = null;
+            };
+        } catch (e) {
+            console.error("Error initializing Mapbox Map:", e);
+        }
+    }, []);
 
     // 4. Locate User Helper (Strictly finds the person's exact location, NEVER assigns a default point)
     const locateUser = useCallback(async (panTo = true) => {
@@ -907,32 +883,33 @@ export default function Taxi() {
 
         // Pan map
         if (mapInstanceRef.current && panTo) {
-            mapInstanceRef.current.panTo(coords);
-            mapInstanceRef.current.setZoom(17);
+            mapInstanceRef.current.flyTo({
+                center: [coords.lng, coords.lat],
+                zoom: 17,
+                duration: 600
+            });
         }
 
         fetchNearbyDrivers(coords);
 
-        // Reverse geocode asynchronously with Google Maps Geocoder to refine street address
+        // Reverse geocode asynchronously with Mapbox Geocoder to refine street address
         (async () => {
             try {
-                const geocoder = geocoderRef.current || (window.google?.maps?.Geocoder ? new window.google.maps.Geocoder() : null);
-                if (geocoder && coords) {
-                    geocoder.geocode({ location: coords }, (res, status) => {
-                        if (status === 'OK' && res && res[0]?.formatted_address) {
-                            const refined: Location = {
-                                lat: coords.lat,
-                                lng: coords.lng,
-                                address: res[0].formatted_address
-                            };
-                            setOrigin(refined);
-                            originRef.current = refined;
-                            localStorage.setItem('un2x3_exact_user_location', JSON.stringify(refined));
-                        }
-                    });
+                if (coords) {
+                    const rev = await reverseGeocodeMapbox(coords);
+                    if (rev) {
+                        const refined: Location = {
+                            lat: coords.lat,
+                            lng: coords.lng,
+                            address: rev
+                        };
+                        setOrigin(refined);
+                        originRef.current = refined;
+                        localStorage.setItem('un2x3_exact_user_location', JSON.stringify(refined));
+                    }
                 }
             } catch (gErr) {
-                console.warn('[Taxi] Google Geocoder lookup error:', gErr);
+                console.warn('[Taxi] Mapbox Reverse Geocoder error:', gErr);
             }
         })();
     }, [fetchNearbyDrivers, fetchWeather]);
@@ -987,92 +964,67 @@ export default function Taxi() {
         };
     }, [locateUser]);
 
-    // 5. Manage Markers on Map Updates
+    // 5. Manage Markers on Map Updates (Mapbox GL)
     useEffect(() => {
         const map = mapInstanceRef.current;
-        if (!map || !window.google?.maps) return;
+        if (!map || !isMapLoaded) return;
 
         // User GPS dot
         if (userLocation) {
             if (!userMarkerRef.current) {
-                userMarkerRef.current = new window.google.maps.Marker({
-                    position: userLocation,
-                    map,
-                    title: 'Tu ubicación',
-                    icon: {
-                        path: window.google.maps.SymbolPath.CIRCLE,
-                        scale: 7,
-                        fillColor: '#2563EB',
-                        fillOpacity: 1,
-                        strokeColor: '#FFFFFF',
-                        strokeWeight: 2.5
-                    },
-                    zIndex: 99
-                });
+                const el = document.createElement('div');
+                el.className = 'w-4 h-4 bg-blue-600 rounded-full border-2 border-white shadow-lg animate-pulse';
+                userMarkerRef.current = new mapboxgl.Marker({ element: el })
+                    .setLngLat([userLocation.lng, userLocation.lat])
+                    .addTo(map);
             } else {
-                userMarkerRef.current.setPosition(userLocation);
+                userMarkerRef.current.setLngLat([userLocation.lng, userLocation.lat]);
             }
         }
 
         // Origin Marker (Green Pin)
         if (origin) {
             if (!originMarkerRef.current) {
-                originMarkerRef.current = new window.google.maps.Marker({
-                    position: { lat: origin.lat, lng: origin.lng },
-                    map,
-                    title: 'Punto de partida',
-                    icon: {
-                        url: 'https://maps.google.com/mapfiles/ms/icons/green-dot.png'
-                    },
-                    zIndex: 90
-                });
+                const el = createOriginPinElement();
+                originMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+                    .setLngLat([origin.lng, origin.lat])
+                    .addTo(map);
             } else {
-                originMarkerRef.current.setPosition({ lat: origin.lat, lng: origin.lng });
+                originMarkerRef.current.setLngLat([origin.lng, origin.lat]);
             }
         } else if (originMarkerRef.current) {
-            originMarkerRef.current.setMap(null);
+            originMarkerRef.current.remove();
             originMarkerRef.current = null;
         }
 
         // Destination Marker (Red Pin)
         if (destination) {
             if (!destinationMarkerRef.current) {
-                destinationMarkerRef.current = new window.google.maps.Marker({
-                    position: { lat: destination.lat, lng: destination.lng },
-                    map,
-                    title: 'Destino',
-                    icon: {
-                        url: 'https://maps.google.com/mapfiles/ms/icons/red-dot.png'
-                    },
-                    zIndex: 95
-                });
+                const el = createDestinationPinElement();
+                destinationMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+                    .setLngLat([destination.lng, destination.lat])
+                    .addTo(map);
             } else {
-                destinationMarkerRef.current.setPosition({ lat: destination.lat, lng: destination.lng });
+                destinationMarkerRef.current.setLngLat([destination.lng, destination.lat]);
             }
         } else if (destinationMarkerRef.current) {
-            destinationMarkerRef.current.setMap(null);
+            destinationMarkerRef.current.remove();
             destinationMarkerRef.current = null;
         }
 
         // Nearby Drivers Markers
-        driverMarkersRef.current.forEach(m => m.setMap(null));
+        driverMarkersRef.current.forEach(m => m.remove());
         driverMarkersRef.current = nearbyDrivers
             .filter(d => !d.isBusy)
             .map(d => {
-            return new window.google.maps.Marker({
-                position: { lat: d.lat, lng: d.lng },
-                map,
-                title: `${d.fullName} (${d.vehicleType}) - ${d.etaMinutes} min`,
-                icon: {
-                    url: d.vehicleType === 'moto'
-                        ? 'https://maps.google.com/mapfiles/ms/icons/motorcycling.png'
-                        : 'https://maps.google.com/mapfiles/ms/icons/cabs.png'
-                }
+                const el = createDriverPinElement(d.vehicleType === 'moto' ? 'moto' : 'car');
+                return new mapboxgl.Marker({ element: el, anchor: 'center' })
+                    .setLngLat([d.lng, d.lat])
+                    .addTo(map);
             });
-        });
-    }, [userLocation, origin, destination, nearbyDrivers]);
+    }, [userLocation, origin, destination, nearbyDrivers, isMapLoaded]);
 
-    // 6. Calculate Route & Fit Bounds (Google Maps Directions API & Road Factor Polyline)
+    // 6. Calculate Route & Fit Bounds (Mapbox Directions API & GeoJSON Line)
     useEffect(() => {
         if (!origin || !destination) return;
 
@@ -1087,165 +1039,160 @@ export default function Taxi() {
             duration: estimatedDuration
         });
 
-        // Request official Google Maps Directions API
-        if (window.google?.maps && mapInstanceRef.current) {
-            setIsCalculatingRoute(true);
-            const directionsService = new window.google.maps.DirectionsService();
+        const map = mapInstanceRef.current;
+        if (!map || !isMapLoaded) return;
 
-            directionsService.route(
-                {
-                    origin: { lat: origin.lat, lng: origin.lng },
-                    destination: { lat: destination.lat, lng: destination.lng },
-                    travelMode: window.google.maps.TravelMode.DRIVING
-                },
-                (res, status) => {
-                    setIsCalculatingRoute(false);
-                    if (status === window.google.maps.DirectionsStatus.OK && res) {
-                        // Clear fallback polyline
-                        if (fallbackPolylineRef.current) {
-                            fallbackPolylineRef.current.setMap(null);
-                            fallbackPolylineRef.current = null;
-                        }
+        setIsCalculatingRoute(true);
+        let isCancelled = false;
 
-                        if (directionsRendererRef.current) {
-                            directionsRendererRef.current.setMap(mapInstanceRef.current);
-                            directionsRendererRef.current.setDirections(res);
-                        }
-                        const leg = res.routes[0]?.legs[0];
-                        if (leg && leg.distance) {
-                            const exactDistKm = Number((leg.distance.value / 1000).toFixed(1));
-                            setRouteInfo({
-                                distance: Math.max(0.8, exactDistKm),
-                                duration: leg.duration?.text || estimatedDuration
-                            });
-                        }
+        getMapboxRoute(origin, destination).then((routeResult) => {
+            setIsCalculatingRoute(false);
+            if (isCancelled || !mapInstanceRef.current) return;
 
-                        // Fit bounds to show route nicely on screen
-                        const bounds = new window.google.maps.LatLngBounds();
-                        bounds.extend({ lat: origin.lat, lng: origin.lng });
-                        bounds.extend({ lat: destination.lat, lng: destination.lng });
-                        mapInstanceRef.current?.fitBounds(bounds, {
-                            top: 80,
-                            bottom: 280,
-                            left: 35,
-                            right: 35
-                        });
-                    } else {
-                        console.warn('[DirectionsService] Status:', status, '- Using road factor polyline');
-                        if (directionsRendererRef.current) {
-                            directionsRendererRef.current.set('directions', null);
-                        }
+            if (routeResult) {
+                setRouteInfo({
+                    distance: routeResult.distanceKm,
+                    duration: `~${routeResult.durationMin} min`
+                });
 
-                        const linePath = [
-                            { lat: origin.lat, lng: origin.lng },
-                            { lat: destination.lat, lng: destination.lng }
-                        ];
-
-                        if (!fallbackPolylineRef.current && mapInstanceRef.current) {
-                            fallbackPolylineRef.current = new window.google.maps.Polyline({
-                                path: linePath,
-                                strokeColor: '#FF5D00',
-                                strokeOpacity: 0.95,
-                                strokeWeight: 5,
-                                map: mapInstanceRef.current
-                            });
-                        } else if (fallbackPolylineRef.current) {
-                            fallbackPolylineRef.current.setPath(linePath);
-                            fallbackPolylineRef.current.setMap(mapInstanceRef.current);
-                        }
-
-                        setRouteInfo({
-                            distance: roadEstimateKm,
-                            duration: estimatedDuration
-                        });
-
-                        const bounds = new window.google.maps.LatLngBounds();
-                        bounds.extend({ lat: origin.lat, lng: origin.lng });
-                        bounds.extend({ lat: destination.lat, lng: destination.lng });
-                        mapInstanceRef.current?.fitBounds(bounds, {
-                            top: 80,
-                            bottom: 280,
-                            left: 35,
-                            right: 35
-                        });
+                const geojsonData: GeoJSON.Feature<GeoJSON.LineString> = {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: routeResult.coordinates
                     }
-                }
-            );
-        }
-    }, [origin, destination]);
+                };
 
-    // 7. Autocomplete Search Handler
-    const handleSearchChange = (val: string) => {
+                if (!map.getSource('taxi-route')) {
+                    map.addSource('taxi-route', {
+                        type: 'geojson',
+                        data: geojsonData
+                    });
+
+                    map.addLayer({
+                        id: 'taxi-route-casing',
+                        type: 'line',
+                        source: 'taxi-route',
+                        layout: { 'line-join': 'round', 'line-cap': 'round' },
+                        paint: { 'line-color': '#FFFFFF', 'line-width': 8, 'line-opacity': 0.85 }
+                    });
+
+                    map.addLayer({
+                        id: 'taxi-route-line',
+                        type: 'line',
+                        source: 'taxi-route',
+                        layout: { 'line-join': 'round', 'line-cap': 'round' },
+                        paint: { 'line-color': '#FF5D00', 'line-width': 5.5, 'line-opacity': 0.95 }
+                    });
+                } else {
+                    (map.getSource('taxi-route') as mapboxgl.GeoJSONSource).setData(geojsonData);
+                }
+
+                // Fit bounds to show route nicely on screen
+                map.fitBounds(routeResult.bounds, {
+                    padding: { top: 80, bottom: 280, left: 35, right: 35 },
+                    duration: 900
+                });
+            } else {
+                const fallbackCoords: [number, number][] = [
+                    [origin.lng, origin.lat],
+                    [destination.lng, destination.lat]
+                ];
+                const fallbackGeoJson: GeoJSON.Feature<GeoJSON.LineString> = {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: { type: 'LineString', coordinates: fallbackCoords }
+                };
+
+                if (!map.getSource('taxi-route')) {
+                    map.addSource('taxi-route', { type: 'geojson', data: fallbackGeoJson });
+                    map.addLayer({
+                        id: 'taxi-route-line',
+                        type: 'line',
+                        source: 'taxi-route',
+                        layout: { 'line-join': 'round', 'line-cap': 'round' },
+                        paint: { 'line-color': '#FF5D00', 'line-width': 5 }
+                    });
+                } else {
+                    (map.getSource('taxi-route') as mapboxgl.GeoJSONSource).setData(fallbackGeoJson);
+                }
+
+                const bounds = new mapboxgl.LngLatBounds();
+                bounds.extend([origin.lng, origin.lat]);
+                bounds.extend([destination.lng, destination.lat]);
+                map.fitBounds(bounds, {
+                    padding: { top: 80, bottom: 280, left: 35, right: 35 },
+                    duration: 900
+                });
+            }
+        });
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [origin, destination, isMapLoaded]);
+
+    // 7. Autocomplete Search Handler (Mapbox Geocoding Places API)
+    const handleSearchChange = async (val: string) => {
         setSearchQuery(val);
         if (!val.trim() || val.length < 2) {
             setPredictions([]);
             return;
         }
 
-        if (!autocompleteServiceRef.current && window.google?.maps?.places) {
-            autocompleteServiceRef.current = new window.google.maps.places.AutocompleteService();
-        }
-
-        if (!autocompleteServiceRef.current) return;
-
         setIsSearchingPlaces(true);
-        const center = origin || userLocation || defaultCenter;
-
-        autocompleteServiceRef.current.getPlacePredictions(
-            {
-                input: val,
-                componentRestrictions: { country: 've' },
-                locationBias: new window.google.maps.LatLng(center.lat, center.lng)
-            },
-            (results, status) => {
-                setIsSearchingPlaces(false);
-                if (status === window.google.maps.places.PlacesServiceStatus.OK && results) {
-                    setPredictions(results);
-                } else {
-                    setPredictions([]);
-                }
-            }
-        );
+        try {
+            const center = origin || userLocation || defaultCenter;
+            const places = await searchMapboxPlaces(val, center);
+            const mapped: PlacePrediction[] = places.map((p) => {
+                const parts = p.place_name.split(',');
+                const main = p.text || parts[0] || p.place_name;
+                const secondary = parts.slice(1).join(',').trim() || '';
+                return {
+                    place_id: p.id,
+                    description: p.place_name,
+                    structured_formatting: {
+                        main_text: main,
+                        secondary_text: secondary
+                    },
+                    center: p.center // [lng, lat]
+                };
+            });
+            setPredictions(mapped);
+        } catch (err) {
+            console.error('Error searching places:', err);
+            setPredictions([]);
+        } finally {
+            setIsSearchingPlaces(false);
+        }
     };
 
     // 8. Select Autocomplete Prediction
-    const handleSelectPrediction = (p: google.maps.places.AutocompletePrediction) => {
+    const handleSelectPrediction = (p: PlacePrediction) => {
         vibrate(30);
         setSearchQuery(p.structured_formatting?.main_text || p.description);
         setPredictions([]);
 
-        if (!geocoderRef.current && window.google?.maps?.Geocoder) {
-            geocoderRef.current = new window.google.maps.Geocoder();
+        const destLoc: Location = {
+            lat: p.center[1], // latitude
+            lng: p.center[0], // longitude
+            address: p.structured_formatting?.main_text || p.description
+        };
+        setDestination(destLoc);
+
+        if (!originRef.current) {
+            const fallbackCoords = userLocationRef.current || defaultCenter;
+            const autoOrigin: Location = {
+                lat: fallbackCoords.lat,
+                lng: fallbackCoords.lng,
+                address: 'Mi ubicación actual'
+            };
+            setOrigin(autoOrigin);
+            originRef.current = autoOrigin;
         }
 
-        if (geocoderRef.current) {
-            geocoderRef.current.geocode({ placeId: p.place_id }, (results, status) => {
-                if (status === 'OK' && results && results[0]) {
-                    const loc = results[0].geometry.location;
-                    const destLoc = {
-                        lat: loc.lat(),
-                        lng: loc.lng(),
-                        address: p.structured_formatting?.main_text || results[0].formatted_address
-                    };
-                    setDestination(destLoc);
-
-                    if (!originRef.current) {
-                        const fallbackCoords = userLocationRef.current || defaultCenter;
-                        const autoOrigin: Location = {
-                            lat: fallbackCoords.lat,
-                            lng: fallbackCoords.lng,
-                            address: 'Mi ubicación actual'
-                        };
-                        setOrigin(autoOrigin);
-                        originRef.current = autoOrigin;
-                    }
-
-                    setStep('vehicle');
-                } else {
-                    toast.error("No se pudo obtener la ubicación exacta.");
-                }
-            });
-        }
+        setStep('vehicle');
     };
 
     // 9. Pricing Calculation (Algoritmo Dinámico Inteligente estilo Yango)
@@ -2129,10 +2076,10 @@ export default function Taxi() {
                 intensity={weather?.precipitationMm && weather.precipitationMm > 1 ? 'heavy' : 'moderate'}
             />
 
-            {!isLoaded && (
+            {!isMapLoaded && (
                 <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-100/90 backdrop-blur-sm">
                     <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin mb-3"></div>
-                    <p className="text-xs font-black uppercase tracking-widest text-slate-600">Iniciando Google Maps...</p>
+                    <p className="text-xs font-black uppercase tracking-widest text-slate-600">Iniciando Mapbox...</p>
                 </div>
             )}
 

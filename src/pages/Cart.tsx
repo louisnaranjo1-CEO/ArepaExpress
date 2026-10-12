@@ -12,9 +12,7 @@ import DemoAlertModal from '../components/DemoAlertModal';
 import DualPrice from '../components/DualPrice';
 import LocationRequiredModal from '../components/LocationRequiredModal';
 import { calculateDynamicFare } from '../lib/pricing';
-import { GoogleMap, useJsApiLoader, Marker } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY, GOOGLE_MAPS_LIBRARIES } from '../lib/mapsConfig';
-import { yangoDayMapStyles } from '../lib/weather';
+import LiveTripMap from '../components/LiveTripMap';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 
@@ -79,11 +77,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [showMapPicker, setShowMapPicker] = useState(false);
   const [showFullscreenDeliveryMap, setShowFullscreenDeliveryMap] = useState(false);
 
-  const { isLoaded: isMapLoaded, loadError } = useJsApiLoader({
-    id: 'google-map-script',
-    googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-    libraries: GOOGLE_MAPS_LIBRARIES
-  });
+  const isMapLoaded = true;
 
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocatingGps, setIsLocatingGps] = useState(false);
@@ -1321,42 +1315,12 @@ export default function Cart({ hideHeader = false }: CartProps) {
 
           {/* Map Area */}
           <div ref={cartMapContainerRef} className="flex-1 relative" style={{ minHeight: '300px' }}>
-            {!hasCartMapError && isMapLoaded ? (
-              <GoogleMap
-                mapContainerStyle={{ width: '100%', height: '100%', position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-                center={gpsCoords || { lat: selectedAddress?.lat || 8.9326, lng: selectedAddress?.lng || -67.4264 }}
-                zoom={17}
-                onClick={(e) => {
-                  if (e.latLng) {
-                    const newPos = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-                    setGpsCoords(newPos);
-                  }
-                }}
-                options={{
-                  disableDefaultUI: true,
-                  zoomControl: false,
-                  streetViewControl: false,
-                  mapTypeControl: false,
-                  fullscreenControl: false,
-                  styles: yangoDayMapStyles
-                }}
-              >
-                <Marker 
-                  position={gpsCoords || { lat: selectedAddress?.lat || 8.9326, lng: selectedAddress?.lng || -67.4264 }}
-                  draggable={true}
-                  onDragEnd={(e) => {
-                    if (e.latLng) {
-                      setGpsCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
-                    }
-                  }}
-                />
-              </GoogleMap>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-white gap-3">
-                <Loader2 className="w-8 h-8 animate-spin text-amber-400" />
-                <p className="text-xs font-bold text-slate-400">Iniciando Google Maps...</p>
-              </div>
-            )}
+            <LiveTripMap
+              origin={gpsCoords || { lat: selectedAddress?.lat || 8.9326, lng: selectedAddress?.lng || -67.4264 }}
+              interactive={true}
+              onMapClick={(coords) => setGpsCoords(coords)}
+              showControls={false}
+            />
           </div>
 
           {/* Bottom Floating Control: Reference Input & Confirm Button */}

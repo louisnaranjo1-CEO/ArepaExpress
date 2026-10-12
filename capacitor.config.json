@@ -7,6 +7,9 @@
     "hostname": "localhost",
     "cleartext": true,
     "allowNavigation": [
+      "*.mapbox.com",
+      "api.mapbox.com",
+      "events.mapbox.com",
       "maps.googleapis.com",
       "*.googleapis.com",
       "*.gstatic.com",
