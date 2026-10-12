@@ -116,45 +116,100 @@ export async function getMapboxRoute(
     }
 }
 
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
+
 /**
- * Busca lugares o autocompleta direcciones cerca de la ubicación del usuario
+ * Busca lugares o autocompleta direcciones restringido estrictamente a la ubicación local del usuario
  */
 export async function searchMapboxPlaces(
     query: string,
     proximity?: { lat: number; lng: number },
-    country: string = 've'
+    country: string = 've',
+    options?: {
+        bbox?: [number, number, number, number];
+        maxDistanceKm?: number;
+        cityName?: string;
+    }
 ): Promise<MapboxPlace[]> {
     const token = getMapboxToken();
     if (!query || query.trim().length < 2) return [];
 
     try {
-        const proximityParam = proximity && proximity.lat && proximity.lng 
-            ? `&proximity=${proximity.lng},${proximity.lat}` 
-            : `&proximity=${DEFAULT_MAP_CENTER_LNG_LAT[0]},${DEFAULT_MAP_CENTER_LNG_LAT[1]}`;
+        const prox = (proximity && proximity.lat && proximity.lng)
+            ? proximity
+            : DEFAULT_MAP_CENTER;
 
-        const countryParam = country ? `&country=${country}` : '';
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query.trim())}.json?access_token=${token}&autocomplete=true&types=poi,address,place,neighborhood,locality${proximityParam}${countryParam}&limit=8`;
+        const proximityParam = `&proximity=${prox.lng},${prox.lat}`;
+        const countryParam = country ? `&country=${country}` : '&country=ve';
+        const cleanQuery = query.trim();
+
+        // Calcular Bounding Box local de la ciudad / proximidad (~20 km a la redonda)
+        const radiusLng = 0.20;
+        const radiusLat = 0.18;
+        const localBbox = options?.bbox || [
+            Number((prox.lng - radiusLng).toFixed(4)),
+            Number((prox.lat - radiusLat).toFixed(4)),
+            Number((prox.lng + radiusLng).toFixed(4)),
+            Number((prox.lat + radiusLat).toFixed(4))
+        ];
+        const bboxParam = `&bbox=${localBbox.join(',')}`;
+
+        // 1. Primer intento: búsqueda acotada dentro de la ciudad/área local (bbox + country=ve)
+        let url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanQuery)}.json?access_token=${token}&autocomplete=true&types=poi,address,place,neighborhood,locality${proximityParam}${countryParam}${bboxParam}&limit=8`;
 
         let res = await fetch(url);
         let data = await res.json();
 
-        // Si con restricción de país no hay suficientes resultados, hacer fallback global
-        if ((!data.features || data.features.length === 0) && country) {
-            const fallbackUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query.trim())}.json?access_token=${token}&autocomplete=true&types=poi,address,place,neighborhood,locality${proximityParam}&limit=8`;
-            res = await fetch(fallbackUrl);
+        // 2. Si dentro del bbox no hubo resultados pero se especificó ciudad, intentar con nombre de ciudad en query dentro de Venezuela
+        if ((!data.features || data.features.length === 0) && options?.cityName) {
+            const queryWithCity = `${cleanQuery}, ${options.cityName}`;
+            const cityUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(queryWithCity)}.json?access_token=${token}&autocomplete=true&types=poi,address,place,neighborhood,locality${proximityParam}${countryParam}&limit=8`;
+            res = await fetch(cityUrl);
+            data = await res.json();
+        }
+
+        // 3. Fallback: búsqueda general con proximidad estricta dentro de Venezuela (NUNCA global a otros países)
+        if (!data.features || data.features.length === 0) {
+            const fallbackVeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(cleanQuery)}.json?access_token=${token}&autocomplete=true&types=poi,address,place,neighborhood,locality${proximityParam}&country=ve&limit=8`;
+            res = await fetch(fallbackVeUrl);
             data = await res.json();
         }
 
         if (!data.features) return [];
 
-        return data.features.map((f: any) => ({
-            id: f.id,
-            name: f.text || f.place_name,
-            place_name: f.place_name,
-            lng: f.center[0],
-            lat: f.center[1],
-            relevance: f.relevance
-        }));
+        const maxDist = options?.maxDistanceKm || 35; // Máximo 35 km de radio respecto a la ciudad / usuario
+
+        return data.features
+            .map((f: any) => {
+                const lng = f.center?.[0];
+                const lat = f.center?.[1];
+                const distanceKm = (lat && lng) ? haversineKm(prox.lat, prox.lng, lat, lng) : 999;
+                return {
+                    id: f.id,
+                    name: f.text || f.place_name,
+                    place_name: f.place_name,
+                    lng,
+                    lat,
+                    relevance: f.relevance,
+                    distanceKm
+                };
+            })
+            // Descartar estrictamente resultados fuera del país o a más de maxDist de la ciudad
+            .filter((p: any) => {
+                const isVenezuela = p.place_name.toLowerCase().includes('venezuela');
+                const isWithinRange = p.distanceKm <= maxDist;
+                return isVenezuela && isWithinRange;
+            });
     } catch (e) {
         console.error('[Mapbox Geocoding] Error searching places:', e);
         return [];

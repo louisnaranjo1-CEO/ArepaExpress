@@ -133,28 +133,65 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
       .filter((item): item is ValidatedStore => item !== null);
   }, [restaurants, userLocation]);
 
+// Helper to reliably check if a store matches the search term
+function matchesStore(store: Restaurant, rawQuery: string): boolean {
+  if (!rawQuery) return false;
+  const norm = (s: string) => 
+    s ? s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim() : "";
+  
+  const q = norm(rawQuery);
+  if (!q) return false;
+
+  const name = norm(store.name || '');
+  const cat = norm(store.category || '');
+  const addr = norm(store.location?.address || '');
+  const desc = norm((store as any).description || '');
+
+  // 1. Direct text match
+  if (name.includes(q) || cat.includes(q) || addr.includes(q) || desc.includes(q)) {
+    return true;
+  }
+
+  // 2. Singular and Plural match (farmacia <-> farmacias, etc.)
+  const qSinS = q.endsWith('s') ? q.slice(0, -1) : q;
+  const qConS = q.endsWith('s') ? q : `${q}s`;
+  if (name.includes(qSinS) || cat.includes(qSinS) || name.includes(qConS) || cat.includes(qConS)) {
+    return true;
+  }
+
+  // 3. Semantic category mapping (e.g. farmacias / salud / medicinas)
+  const isPharma = q.includes('farma') || q.includes('medic') || q.includes('salud') || q.includes('botic') || q.includes('droguer');
+  if (isPharma) {
+    if (cat.includes('farma') || cat.includes('salud') || cat.includes('medic') ||
+        name.includes('farma') || name.includes('salud') || name.includes('medic') || name.includes('droguer')) {
+      return true;
+    }
+  }
+
+  // 4. Products check
+  if (Array.isArray(store.products) && store.products.length > 0) {
+    return store.products.some(p => {
+      const pName = norm(p.name);
+      const pCat = norm(p.category);
+      return pName.includes(q) || pCat.includes(q) || pName.includes(qSinS) || pCat.includes(qSinS);
+    });
+  }
+
+  return false;
+}
+
   // Matching stores based on search query
   const matchingStores = useMemo(() => {
     if (!searchQuery.trim()) return [];
-    const q = searchQuery.toLowerCase().trim();
-    return validatedStores.filter(item => {
-      const name = (item.restaurant.name || '').toLowerCase();
-      const cat = (item.restaurant.category || '').toLowerCase();
-      const addr = (item.restaurant.location?.address || '').toLowerCase();
-      return name.includes(q) || cat.includes(q) || addr.includes(q);
-    }).slice(0, 5);
+    return validatedStores
+      .filter(item => matchesStore(item.restaurant, searchQuery))
+      .slice(0, 6);
   }, [validatedStores, searchQuery]);
 
   // Filtered stores on the map
   const filteredStores = useMemo(() => {
     if (!searchQuery.trim()) return validatedStores;
-    const q = searchQuery.toLowerCase().trim();
-    return validatedStores.filter(item => {
-      const name = (item.restaurant.name || '').toLowerCase();
-      const cat = (item.restaurant.category || '').toLowerCase();
-      const addr = (item.restaurant.location?.address || '').toLowerCase();
-      return name.includes(q) || cat.includes(q) || addr.includes(q);
-    });
+    return validatedStores.filter(item => matchesStore(item.restaurant, searchQuery));
   }, [validatedStores, searchQuery]);
 
   // Determine starting center
@@ -168,7 +205,7 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
     return DEFAULT_MAP_CENTER;
   }, [userLocation, cityName, validatedStores]);
 
-  // Query Mapbox Geocoding for places recommendations in the city
+  // Query Mapbox Geocoding for places recommendations strictly in the current city
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.trim().length < 2) {
       setPlaceSuggestions([]);
@@ -184,7 +221,13 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
     searchTimeoutRef.current = setTimeout(async () => {
       try {
         const proximity = userLocation || initialCenter;
-        const results = await searchMapboxPlaces(searchQuery, proximity, 've');
+        const currentCity = cityName || 'Calabozo';
+        const results = await searchMapboxPlaces(
+          searchQuery, 
+          proximity, 
+          've',
+          { cityName: currentCity, maxDistanceKm: 25 }
+        );
         setPlaceSuggestions(results.slice(0, 5));
       } catch (err) {
         console.error('Error fetching search places:', err);
@@ -199,7 +242,7 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
         clearTimeout(searchTimeoutRef.current);
       }
     };
-  }, [searchQuery, userLocation, initialCenter]);
+  }, [searchQuery, userLocation, initialCenter, cityName]);
 
   // Initialize Mapbox map
   useEffect(() => {
@@ -486,7 +529,7 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
               <div className="p-2">
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 py-1 flex items-center gap-1">
                   <Store className="w-3 h-3 text-amber-500" />
-                  Comercios en tu zona
+                  Comercios en {cityName || 'tu zona'}
                 </p>
                 {matchingStores.map((store) => {
                   const logo = store.restaurant.logoUrl || (store.restaurant as any).logo || store.restaurant.image;
@@ -532,7 +575,7 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
               <div className="p-2">
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 py-1 flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-blue-500" />
-                  Lugares y Direcciones
+                  Lugares en {cityName || 'tu zona'}
                 </p>
                 {placeSuggestions.map((place) => (
                   <button
@@ -559,10 +602,10 @@ export const ExploreMapModal: React.FC<ExploreMapModalProps> = ({
             {!hasSuggestions && !isSearchingPlaces && (
               <div className="p-4 text-center">
                 <p className="text-xs font-bold text-slate-500">
-                  No se encontraron resultados para "{searchQuery}"
+                  No se encontraron resultados en {cityName || 'tu ciudad'} para "{searchQuery}"
                 </p>
                 <p className="text-[10px] text-slate-400 mt-0.5">
-                  Prueba buscando por nombre del local, comida o calle
+                  Prueba buscando un nombre de local o calle dentro de tu ciudad
                 </p>
               </div>
             )}
