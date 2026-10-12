@@ -1792,34 +1792,6 @@ export default function Taxi() {
         setTimeout(() => setCopiedField(null), 2000);
     };
 
-    // Google Maps Load Error Screen
-    if (loadError) {
-        return (
-            <div className="flex-1 flex flex-col items-center justify-center bg-slate-50 min-h-full p-6 text-center">
-                <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-3xl flex items-center justify-center mb-4 shadow-lg shadow-rose-500/10">
-                    <MapPin className="w-8 h-8" />
-                </div>
-                <h3 className="text-xl font-black text-slate-900 mb-2">No se pudo cargar Google Maps</h3>
-                <p className="text-xs text-slate-500 max-w-sm mb-6 font-medium">
-                    Google está propagando la configuración de la clave de API. Puede tardar un momento.
-                </p>
-                <div className="flex gap-3">
-                    <button
-                        onClick={() => window.location.reload()}
-                        className="px-6 py-3 bg-primary text-slate-950 font-black rounded-2xl shadow-lg shadow-primary/20 active:scale-95 text-xs uppercase tracking-wider"
-                    >
-                        Reintentar
-                    </button>
-                    <button
-                        onClick={() => navigate('/')}
-                        className="px-6 py-3 bg-slate-200 text-slate-700 font-bold rounded-2xl active:scale-95 text-xs uppercase tracking-wider"
-                    >
-                        Ir al Inicio
-                    </button>
-                </div>
-            </div>
-        );
-    }
 
     // Searching Screen (Radar Animation style YANGO & Muchacho e' Mandado Bids)
     if (step === 'searching') {
