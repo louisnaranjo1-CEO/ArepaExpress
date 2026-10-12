@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Gift, Coins, Share2, Ticket, ChevronRight, Award, Copy, CheckCircle, Globe, Map as MapIcon, Home, X } from 'lucide-react';
+import { Gift, Coins, Share2, Ticket, ChevronRight, Award, Copy, CheckCircle, Globe, Map as MapIcon, Home, X, Sparkles } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';

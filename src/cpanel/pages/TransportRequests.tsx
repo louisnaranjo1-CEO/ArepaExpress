@@ -6,6 +6,14 @@ import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
+import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY } from '../../lib/mapsConfig';
+
+const mapOptions = {
+    disableDefaultUI: false,
+    zoomControl: true,
+    streetViewControl: false
+};
 
 const formatDuration = (seconds: number) => {
     if (!seconds && seconds !== 0) return '--';

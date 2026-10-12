@@ -222,7 +222,7 @@ export default function LiquidationsManager() {
 
     const handleApproveCommissionPayment = async (payment: any) => {
         const driverObj = drivers.find(d => d.id === payment.driver_id);
-        const driverName = payment.driver_name || driverObj?.fullName || 'Piloto';
+        const driverName = driverObj?.fullName || driverObj?.full_name || payment.driver_name || 'Piloto';
         const amountUsd = Number(payment.amount_usd || 0);
 
         if (!window.confirm(`¿Confirmas la APROBACIÓN del Pago Móvil de $${amountUsd.toFixed(2)} (${payment.amount_bs || (amountUsd * bcvRate).toFixed(2)} Bs) de ${driverName}?\nReferencia: ${payment.reference_number}`)) return;
@@ -235,7 +235,8 @@ export default function LiquidationsManager() {
                 .from('driver_commission_payments')
                 .update({
                     status: 'approved',
-                    approved_at: new Date().toISOString()
+                    approved_at: new Date().toISOString(),
+                    verified_at: new Date().toISOString()
                 })
                 .eq('id', payment.id);
             if (pErr) throw pErr;
@@ -284,7 +285,7 @@ export default function LiquidationsManager() {
 
     const handleRejectCommissionPayment = async (payment: any) => {
         const driverObj = drivers.find(d => d.id === payment.driver_id);
-        const driverName = payment.driver_name || driverObj?.fullName || 'Piloto';
+        const driverName = driverObj?.fullName || driverObj?.full_name || payment.driver_name || 'Piloto';
         const reason = window.prompt(`Indica el motivo de rechazo del pago de ${driverName} (Ref: ${payment.reference_number}):`, 'Comprobante no coincide con la cuenta bancaria o referencia no localizada');
         if (!reason) return;
 
@@ -637,7 +638,7 @@ export default function LiquidationsManager() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {filteredCommissionPayments.map(payment => {
                                     const driverObj = drivers.find(d => d.id === payment.driver_id);
-                                    const driverName = payment.driver_name || driverObj?.fullName || 'Piloto';
+                                    const driverName = driverObj?.fullName || driverObj?.full_name || payment.driver_name || 'Piloto';
                                     const driverPhone = driverObj?.phone || payment.driver_phone || 'N/A';
                                     const isProcessing = processingPaymentId === payment.id;
 

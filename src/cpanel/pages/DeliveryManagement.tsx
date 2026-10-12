@@ -6,6 +6,8 @@ import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink,
 import { motion, AnimatePresence } from 'motion/react';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
+import { useJsApiLoader, GoogleMap, Marker, InfoWindow } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY } from '../../lib/mapsConfig';
 import { DEFAULT_PRICING_SETTINGS, calculateDynamicFare, SmartPricingSettings } from '../../lib/pricing';
 import { getWeatherByCoordinates, WeatherInfo } from '../../lib/weather';
 
