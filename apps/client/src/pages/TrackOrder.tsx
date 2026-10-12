@@ -278,13 +278,17 @@ export default function TrackOrder() {
                     const ids = data.map((d: any) => d.id);
                     const { data: profs } = await supabase
                         .from('profiles')
-                        .select('id, photo_url')
+                        .select('id, photo_url, full_name')
                         .in('id', ids);
-                    const profMap = new Map((profs || []).map((p: any) => [p.id, p.photo_url]));
-                    setAvailableDrivers(data.map((d: any) => ({
-                        ...d,
-                        photo_url: profMap.get(d.id) || d.vehicle_image_url || null
-                    })));
+                    const profMap = new Map((profs || []).map((p: any) => [p.id, p]));
+                    setAvailableDrivers(data.map((d: any) => {
+                        const prof = profMap.get(d.id);
+                        return {
+                            ...d,
+                            full_name: prof?.full_name?.trim() || d.full_name,
+                            photo_url: prof?.photo_url || d.vehicle_image_url || null
+                        };
+                    }));
                 }
             } catch (e) {
                 console.warn("Could not fetch available drivers for client:", e);
@@ -2271,13 +2275,43 @@ export default function TrackOrder() {
                                 </div>
                             </div>
                         ) : (
-                            <button
-                                onClick={() => setShowReviewModal(true)}
-                                className="w-full bg-primary text-slate-950 font-black py-3.5 rounded-2xl hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-primary/30"
-                            >
-                                <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                                {isDelivered ? 'Calificar Tienda y Repartidor' : '¿Recibiste tu pedido? Confirmar y Calificar'}
-                            </button>
+                            <div className="space-y-2">
+                                <button
+                                    onClick={() => setShowReviewModal(true)}
+                                    className="w-full bg-primary text-slate-950 font-black py-3.5 rounded-2xl hover:scale-[1.01] active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm shadow-xl shadow-primary/30"
+                                >
+                                    <CheckCircle2 className="w-4 h-4 text-slate-950" />
+                                    {isDelivered ? 'Calificar Tienda y Repartidor' : '¿Recibiste tu pedido? Confirmar y Calificar'}
+                                </button>
+                                {!isDelivered && (
+                                    <div className="flex gap-2 pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (window.confirm('¿Deseas cancelar el delivery e ir a buscar el pedido tú mismo al negocio? Se notificará a la tienda inmediatamente.')) {
+                                                    await handleSwitchToPickup();
+                                                }
+                                            }}
+                                            className="flex-1 bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold py-2 rounded-xl text-[10px] transition-all flex items-center justify-center gap-1.5 border border-white/10"
+                                            title="Ir a buscar el pedido personalmente al negocio"
+                                        >
+                                            <Store className="w-3.5 h-3.5 text-amber-400" /> Ir a buscarlo yo mismo
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={async () => {
+                                                if (window.confirm('¿Deseas cancelar a este repartidor por demora? Se notificará al negocio y podrás seleccionar otro repartidor o radar.')) {
+                                                    await handleCancelDriverSearchAndRetry();
+                                                }
+                                            }}
+                                            className="flex-1 bg-red-500/20 hover:bg-red-500/30 active:scale-95 text-red-300 font-bold py-2 rounded-xl text-[10px] transition-all flex items-center justify-center gap-1.5 border border-red-500/30"
+                                            title="Cancelar conductor por demora"
+                                        >
+                                            <X className="w-3.5 h-3.5 text-red-400" /> Cancelar conductor
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </div>
                 </div>

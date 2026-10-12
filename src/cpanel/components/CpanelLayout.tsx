@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useBranding } from '../../context/BrandingContext';
@@ -90,6 +90,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
         { path: '/', icon: LayoutDashboard, label: 'Resumen' },
         { path: '/app-orders', icon: ShoppingBag, label: 'Pedidos App en Vivo' },
         { path: '/restaurants', icon: Store, label: 'Restaurantes' },
+        { path: '/common-products', icon: Package, label: 'Productos Comunes' },
         { path: '/verifications', icon: ShieldCheck, label: 'Verificación de Negocios', badge: pendingVerifications },
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
@@ -101,7 +102,6 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
         { path: '/finances', icon: Wallet, label: 'Finanzas' },
         { path: '/liquidations', icon: Wallet, label: 'Liquidaciones', badge: pendingPayouts },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
-        { path: '/raffles', icon: Ticket, label: 'Sorteos y Rifas' },
         { path: '/achievements', icon: Trophy, label: 'Logros de Pilotos' },
         { path: '/marketing', icon: Megaphone, label: 'Marketing & Push' },
         { path: '/icons', icon: Share2, label: 'Iconos' },

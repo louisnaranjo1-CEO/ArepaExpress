@@ -343,15 +343,24 @@ export default function TransportTracker() {
             } as DeliveryDriver;
         };
 
-        // 1. Cargar datos iniciales desde la tabla física 'drivers'
+        // 1. Cargar datos iniciales desde la tabla física 'drivers' y sincronizar nombre con el perfil registrado
         supabase.from('drivers').select('*').eq('id', driverId).maybeSingle().then(async ({ data }) => {
-            if (data) {
-                setDriver(mapDriverData(data));
-            } else {
+            let driverInfo = data;
+            if (!driverInfo) {
                 const { data: fallbackData } = await supabase.from('delivery_drivers').select('*').eq('id', driverId).maybeSingle();
-                if (fallbackData) {
-                    setDriver(mapDriverData(fallbackData));
+                driverInfo = fallbackData;
+            }
+            if (driverInfo) {
+                try {
+                    const { data: prof } = await supabase.from('profiles').select('full_name').eq('id', driverId).maybeSingle();
+                    if (prof?.full_name && prof.full_name.trim()) {
+                        driverInfo.full_name = prof.full_name;
+                        driverInfo.fullName = prof.full_name;
+                    }
+                } catch (pe) {
+                    console.warn("Could not fetch profile full_name for driver:", pe);
                 }
+                setDriver(mapDriverData(driverInfo));
             }
         });
 
@@ -362,11 +371,19 @@ export default function TransportTracker() {
                 schema: 'public',
                 table: 'drivers',
                 filter: `id=eq.${driverId}`
-            }, (payload) => {
+            }, async (payload) => {
                 if (payload.new) {
+                    let updatedDriver = { ...payload.new };
+                    try {
+                        const { data: prof } = await supabase.from('profiles').select('full_name').eq('id', driverId).maybeSingle();
+                        if (prof?.full_name && prof.full_name.trim()) {
+                            updatedDriver.full_name = prof.full_name;
+                            updatedDriver.fullName = prof.full_name;
+                        }
+                    } catch (e) {}
                     setDriver(prev => ({
                         ...(prev || {}),
-                        ...mapDriverData(payload.new)
+                        ...mapDriverData(updatedDriver)
                     }));
                 }
             })

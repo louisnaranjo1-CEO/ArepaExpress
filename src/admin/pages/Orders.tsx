@@ -684,22 +684,38 @@ export default function Orders() {
             };
 
             if (driverObj) {
-                // Asignación directa y exclusiva al conductor seleccionado (Requerimiento 6)
+                // Obtener nombre real del perfil del conductor si existe
+                let realDriverName = driverObj.full_name || chosenDriverName || 'Conductor';
+                try {
+                    const { data: prof } = await supabase.from('profiles').select('full_name').eq('id', driverObj.id).maybeSingle();
+                    if (prof?.full_name) {
+                        realDriverName = prof.full_name;
+                    }
+                } catch (e) {
+                    console.warn("Error fetching driver profile name:", e);
+                }
+
+                // Asignación directa y exclusiva al conductor seleccionado
                 updates.driver_id = driverObj.id;
                 updates.delivery_driver_id = driverObj.id;
-                updates.driver_name = driverObj.full_name || chosenDriverName || 'Conductor';
+                updates.driver_name = realDriverName;
                 updates.preferred_driver_id = driverObj.id;
-                updates.preferred_driver_name = driverObj.full_name || chosenDriverName;
+                updates.preferred_driver_name = realDriverName;
                 updates.eligible_drivers = [driverObj.id];
-                updates.assigned_driver_id = driverObj.id;
                 updates.driver_payout = payout;
                 updates.dispatched_at = new Date().toISOString();
-                updates.preferred_driver_expires_at = new Date(Date.now() + 120000).toISOString();
 
-                // Enlazar transport_requests exclusivo para este repartidor con manifiesto unificado (Fase 5)
+                // Enlazar transport_requests exclusivo evitando DUPLICADOS
                 try {
                     const itemsSummary = selectedOrderForDispatch.items?.map((i: any) => `${i.quantity}x ${i.name}`).join(', ') || 'Productos del comercio';
-                    await supabase.from('transport_requests').upsert({
+                    
+                    const { data: existingTr } = await supabase
+                        .from('transport_requests')
+                        .select('id, status')
+                        .eq('order_id', selectedOrderForDispatch.id)
+                        .maybeSingle();
+
+                    const trData: any = {
                         order_id: selectedOrderForDispatch.id,
                         restaurant_id: rid,
                         restaurant_name: (selectedOrderForDispatch as any).restaurantName || restaurantConfig?.name || 'Comercio',
@@ -708,8 +724,7 @@ export default function Orders() {
                         user_phone: selectedOrderForDispatch.userPhone || '',
                         user_cedula: selectedOrderForDispatch.clientDNI || '',
                         driver_id: driverObj.id,
-                        assigned_driver_id: driverObj.id,
-                        driver_name: driverObj.full_name || chosenDriverName,
+                        driver_name: realDriverName,
                         driver_phone: driverObj.phone,
                         driver_photo: driverObj.photo_url,
                         vehicle_type: driverObj.vehicle_type || selectedVehicleCategory || 'moto',
@@ -727,21 +742,27 @@ export default function Orders() {
                             lng: restaurantConfig?.location?.lng
                         },
                         destination: selectedOrderForDispatch.deliveryCoords || { address: selectedOrderForDispatch.deliveryAddress },
-                        created_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
-                    });
+                    };
+
+                    if (existingTr?.id) {
+                        await supabase.from('transport_requests').update(trData).eq('id', existingTr.id);
+                    } else {
+                        trData.created_at = new Date().toISOString();
+                        await supabase.from('transport_requests').insert(trData);
+                    }
                 } catch (trErr) {
                     console.warn("Transport request link err:", trErr);
                 }
 
-                // Chat message
+                // Chat message & notificación inmediata al usuario de que el pedido ya salió
                 try {
                     await supabase.from('messages').insert({
                         order_id: selectedOrderForDispatch.id,
                         sender_id: user?.uid,
                         sender_name: 'Restaurante',
                         sender_role: 'restaurant',
-                        text: `🛵 *¡Pedido despachado!* El repartidor *${driverObj.full_name || chosenDriverName}* ya va en camino con tu comida.`,
+                        text: `🛵 *¡Pedido despachado!* El repartidor *${realDriverName}* ya va en camino con tu comida a tu dirección.`,
                         created_at: new Date().toISOString()
                     });
                 } catch (mErr) {
@@ -752,7 +773,11 @@ export default function Orders() {
                 setRadarOrderId(selectedOrderForDispatch.id);
             }
 
-            await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
+            const { error: ordUpdateErr } = await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
+            if (ordUpdateErr) {
+                console.error("Error updating order status in handleConfirmDispatch:", ordUpdateErr);
+                throw ordUpdateErr;
+            }
 
             vibrateSelection();
             toast.success(driverObj ? `¡Notificación enviada a ${driverObj.full_name}!` : "Despacho abierto al radar.");

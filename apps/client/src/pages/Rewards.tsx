@@ -237,111 +237,28 @@ export default function Rewards() {
                 </div>
 
                 {/* Active Campaigns / Raffles */}
+                {/* Sección de Sorpresas & Recompensas */}
                 <div className="bg-white rounded-[2rem] p-6 shadow-xl shadow-slate-200/50 border border-slate-100">
-                    <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center justify-between mb-4">
                         <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 bg-primary/10 text-slate-900 rounded-2xl flex items-center justify-center shrink-0">
-                                <Ticket className="w-6 h-6" />
+                            <div className="w-12 h-12 bg-amber-500/10 text-amber-600 rounded-2xl flex items-center justify-center shrink-0">
+                                <Sparkles className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="font-black text-slate-800 text-lg">Activaciones y Sorteos</h3>
-                                <p className="text-xs text-slate-500 font-bold">Participa por grandes premios</p>
+                                <h3 className="font-black text-slate-800 text-lg">Recompensas por Puntos</h3>
+                                <p className="text-xs text-slate-500 font-bold">Acumula puntos con cada compra o viaje</p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="space-y-4">
-                        {loading && (
-                            <div className="flex justify-center py-8">
-                                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                            </div>
-                        )}
-
-                        {!loading && contests.filter(isItemInUserZone).length === 0 && raffles.filter(isItemInUserZone).length === 0 && (
-                            <div className="text-center py-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
-                                <p className="text-slate-400 font-black text-xs uppercase tracking-widest">No hay sorteos ni concursos activos en tu zona</p>
-                            </div>
-                        )}
-
-                        {/* Contests */}
-                        {contests.filter(isItemInUserZone).map((contest) => (
-                            <div key={contest.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-orange-500 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
-                                <div className="flex items-center gap-2 mb-2">
-                                    {contest.scope === 'national' ? <Globe className="w-4 h-4 text-white/90" /> :
-                                        contest.scope === 'regional' ? <MapIcon className="w-4 h-4 text-white/90" /> : <Home className="w-4 h-4 text-white/90" />}
-                                    <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/90">
-                                        {contest.location_name || contest.locationName || (contest.scope === 'national' ? 'Nacional' : contest.scope)}
-                                    </span>
-                                </div>
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="flex-1 relative z-10">
-                                        <h4 className="font-black text-xl mb-1 drop-shadow-sm">{contest.title}</h4>
-                                        <p className="text-sm text-white/90 font-medium mb-3 leading-snug">Premio: {contest.prize}</p>
-                                    </div>
-                                    {(contest.prize_image_url || contest.prizeImageUrl) && (
-                                        <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-white/30 bg-black/10 relative z-10 shadow-md">
-                                            <img src={contest.prize_image_url || contest.prizeImageUrl} alt={contest.prize} className="w-full h-full object-cover" />
-                                        </div>
-                                    )}
-                                </div>
-                                <div className="flex flex-wrap items-center justify-between gap-2 relative z-10 mt-1">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-                                            Meta: {contest.target_count || contest.targetCount} {contest.type === 'referral_count' ? 'amigos' : 'veces'}
-                                        </span>
-                                        {contest.points_cost || contest.pointsCost ? (
-                                            <span className="text-[10px] font-black uppercase tracking-widest bg-amber-400 text-slate-950 px-2.5 py-1 rounded-full font-bold">
-                                                {contest.points_cost || contest.pointsCost} Pts
-                                            </span>
-                                        ) : null}
-                                    </div>
-                                    <ChevronRight className="w-5 h-5 opacity-50" />
-                                </div>
-                            </div>
-                        ))}
-
-                        {/* Raffles */}
-                        {raffles.filter(isItemInUserZone).map((raffle) => {
-                            const prizeImg = raffle.prizes?.[0]?.imageUrl || raffle.banner_url || raffle.bannerUrl;
-                            const pointsCost = raffle.points_cost !== undefined ? raffle.points_cost : raffle.pointsCost;
-                            return (
-                                <div key={raffle.id} className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-600 to-primary p-5 text-white shadow-lg cursor-pointer active:scale-[0.98] transition-all">
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -mr-16 -mt-16"></div>
-                                    <div className="flex items-center gap-2 mb-2">
-                                        {raffle.scope === 'national' ? <Globe className="w-4 h-4 text-white/90" /> :
-                                            raffle.scope === 'regional' ? <MapIcon className="w-4 h-4 text-white/90" /> : <Home className="w-4 h-4 text-white/90" />}
-                                        <span className="text-[9px] font-black uppercase tracking-[0.2em] text-white/90">
-                                            {raffle.location_name || raffle.locationName || (raffle.scope === 'national' ? 'Nacional' : raffle.scope)}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="flex-1 relative z-10">
-                                            <h4 className="font-black text-xl mb-1 drop-shadow-sm">{raffle.title}</h4>
-                                            <p className="text-sm text-white/90 font-medium mb-3 leading-snug">Premio: {raffle.prize}</p>
-                                        </div>
-                                        {prizeImg && (
-                                            <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 border border-white/30 bg-black/10 relative z-10 shadow-md">
-                                                <img src={prizeImg} alt={raffle.prize} className="w-full h-full object-cover" />
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex flex-wrap items-center justify-between gap-2 relative z-10 mt-1">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] font-black uppercase tracking-widest bg-black/20 px-3 py-1 rounded-full backdrop-blur-sm">
-                                                Sorteo: {raffle.draw_date || raffle.drawDate}
-                                            </span>
-                                            {pointsCost ? (
-                                                <span className="text-[10px] font-black uppercase tracking-widest bg-amber-400 text-slate-950 px-2.5 py-1 rounded-full font-bold">
-                                                    {pointsCost} Pts / ticket
-                                                </span>
-                                            ) : null}
-                                        </div>
-                                        <ChevronRight className="w-5 h-5 opacity-50" />
-                                    </div>
-                                </div>
-                            );
-                        })}
+                    <div className="text-center py-8 px-4 bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 rounded-2xl border border-amber-200/60 space-y-2">
+                        <div className="w-14 h-14 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center mx-auto shadow-md">
+                            <Gift className="w-7 h-7" />
+                        </div>
+                        <h4 className="font-black text-lg text-slate-900">Próximamente sorpresas</h4>
+                        <p className="text-xs text-slate-600 font-medium max-w-sm mx-auto leading-relaxed">
+                            Sigue acumulando puntos con tus pedidos y carreras en un 2x3. Muy pronto podrás disfrutarlos con increíbles sorpresas.
+                        </p>
                     </div>
                 </div>
 

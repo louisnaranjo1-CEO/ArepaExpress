@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List, Sparkles } from 'lucide-react';
-import { db, storage } from '../../lib/firebase';
-import { collection, query, getDocs, doc, deleteDoc, updateDoc, addDoc, getDoc, writeBatch } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List, Package, Sparkles } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS, DEVELOPER_WHATSAPP } from '../../lib/constants';
 import { ProductModifier, ModifierType } from '../../lib/seed';
-import { compressClientImage, processProductStudioImage } from '../../utils/imageOptimizer';
+import CommonProductsPickerModal, { SelectedCommonProductPayload } from '../components/CommonProductsPickerModal';
 
-interface ProductVariant {
+export interface ProductVariant {
     name: string;
     price: number;
+    is_available?: boolean;
 }
 
 interface Product {
@@ -46,6 +45,7 @@ export default function ProductManagement() {
     const [activeCategory, setActiveCategory] = useState('Todos');
     const [stations, setStations] = useState<{ id: string, name: string }[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isCommonPickerOpen, setIsCommonPickerOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -73,9 +73,6 @@ export default function ProductManagement() {
     const [existingImages, setExistingImages] = useState<string[]>([]);
     const [newImageFiles, setNewImageFiles] = useState<File[]>([]);
     const [previewUrls, setPreviewUrls] = useState<string[]>([]);
-    const [studioMode, setStudioMode] = useState<boolean>(true);
-    const [processingImages, setProcessingImages] = useState<boolean>(false);
-    const [processingStatus, setProcessingStatus] = useState<string>('');
 
     useEffect(() => {
         if (!user) return;
@@ -87,11 +84,13 @@ export default function ProductManagement() {
     const fetchRestaurantLogo = async () => {
         if (!rid) return;
         try {
-            const docRef = doc(db, 'restaurants', rid);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                setRestaurantLogo(data.logoUrl || data.image || '');
+            const { data } = await supabase
+                .from('comercios')
+                .select('logo_url, image')
+                .eq('id', rid)
+                .single();
+            if (data) {
+                setRestaurantLogo(data.logo_url || data.image || '');
             }
         } catch (error) {
             console.error("Error fetching restaurant logo:", error);
@@ -101,10 +100,13 @@ export default function ProductManagement() {
     const fetchStations = async () => {
         if (!rid) return;
         try {
-            const stationsRef = collection(db, 'restaurants', rid, 'printers');
-            const snapshot = await getDocs(stationsRef);
-            const items = snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name }));
-            setStations(items);
+            const { data } = await supabase
+                .from('printers')
+                .select('id, name')
+                .eq('restaurant_id', rid);
+            if (data) {
+                setStations(data);
+            }
         } catch (error) {
             console.error("Error fetching stations:", error);
         }
@@ -113,14 +115,39 @@ export default function ProductManagement() {
     const fetchProducts = async () => {
         if (!rid) return;
         try {
-            const productsRef = collection(db, 'restaurants', rid, 'products');
-            const q = query(productsRef);
-            const querySnapshot = await getDocs(q);
-            const items: Product[] = [];
-            querySnapshot.forEach((doc) => {
-                items.push({ id: doc.id, ...doc.data() } as Product);
-            });
-            setProducts(items);
+            const { data, error } = await supabase
+                .from('products')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                console.error("Error fetching products:", error);
+            } else if (data) {
+                const items: Product[] = data.map((p: any) => ({
+                    id: p.id,
+                    name: p.name,
+                    description: p.description || '',
+                    price: Number(p.price) || 0,
+                    promoPrice: Number(p.promo_price) || 0,
+                    category: p.category_name || p.category || '',
+                    subcategory: p.subcategory || '',
+                    image: p.image_url || p.image || '',
+                    images: Array.isArray(p.images) ? p.images : (p.image_url ? [p.image_url] : []),
+                    isActive: p.is_active ?? true,
+                    isAvailable: p.is_available ?? true,
+                    investment: Number(p.investment) || 0,
+                    variants: p.variants || [],
+                    modifiers: p.modifiers || [],
+                    printerId: p.printer_id || '',
+                    consultPrice: p.consult_price ?? false,
+                    pointsPrice: Number(p.points_price) || 0,
+                    socialMediaLink: p.social_media_link || '',
+                    tiktokLink: p.tiktok_link || '',
+                    youtubeLink: p.youtube_link || ''
+                }));
+                setProducts(items);
+            }
         } catch (error) {
             console.error("Error fetching products:", error);
         } finally {
@@ -152,8 +179,6 @@ export default function ProductManagement() {
             setExistingImages(product.images || (product.image ? [product.image] : []));
             setNewImageFiles([]);
             setPreviewUrls([]);
-            setProcessingImages(false);
-            setProcessingStatus('');
         } else {
             setEditingProduct(null);
             setFormData({
@@ -177,8 +202,6 @@ export default function ProductManagement() {
             setExistingImages([]);
             setNewImageFiles([]);
             setPreviewUrls([]);
-            setProcessingImages(false);
-            setProcessingStatus('');
         }
         setIsModalOpen(true);
     };
@@ -189,17 +212,16 @@ export default function ProductManagement() {
         setSubmitting(true);
 
         try {
-            // 1. Upload new images if any
+            // 1. Upload new images if any to Supabase Storage
             const uploadedUrls: string[] = [];
             for (const file of newImageFiles) {
                 try {
-                    console.log(`Uploading file: ${file.name}`);
                     const sanitizedName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
-                    const storageRef = ref(storage, `restaurants/${rid}/products/${Date.now()}_${sanitizedName}`);
-                    const snapshot = await uploadBytes(storageRef, file);
-                    const url = await getDownloadURL(snapshot.ref);
-                    uploadedUrls.push(url);
-                    console.log(`File uploaded: ${url}`);
+                    const filePath = `${rid}/products/${Date.now()}_${sanitizedName}`;
+                    const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+                    if (upErr) throw upErr;
+                    const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                    uploadedUrls.push(urlData.publicUrl);
                 } catch (uploadError) {
                     console.error(`Error uploading ${file.name}:`, uploadError);
                     throw new Error(`Error al subir la imagen ${file.name}`);
@@ -226,53 +248,65 @@ export default function ProductManagement() {
             if (editingProduct && !isNaN(newPriceInput)) {
                 const oldBasePrice = editingProduct.price;
                 if (newPriceInput < oldBasePrice && newPriceInput > 0) {
-                    // It's a discount
                     finalPrice = oldBasePrice;
                     finalPromoPrice = newPriceInput;
                 } else {
-                    // It's a new normal price or higher
                     finalPrice = newPriceInput;
                     finalPromoPrice = 0;
                 }
             } else if (!editingProduct && !isNaN(newPriceInput)) {
-                // New product, price is base
                 finalPrice = newPriceInput;
                 finalPromoPrice = 0;
             }
 
             const pointsPriceValue = formData.pointsPrice ? parseFloat(formData.pointsPrice) : 0;
 
-            const productData = {
-                ...formData,
+            const productData: any = {
+                restaurant_id: rid,
+                name: formData.name,
+                description: formData.description,
                 price: formData.consultPrice ? 0 : finalPrice,
+                promo_price: formData.consultPrice ? 0 : finalPromoPrice,
+                category_name: formData.category,
+                subcategory: formData.subcategory || '',
                 investment,
-                promoPrice: formData.consultPrice ? 0 : finalPromoPrice,
-                pointsPrice: pointsPriceValue,
+                is_active: formData.isActive,
+                is_available: formData.isAvailable,
+                social_media_link: formData.socialMediaLink || '',
+                tiktok_link: formData.tiktokLink || '',
+                youtube_link: formData.youtubeLink || '',
+                variants: formData.variants || [],
+                modifiers: formData.modifiers || [],
+                printer_id: formData.printerId || null,
+                consult_price: formData.consultPrice,
+                points_price: pointsPriceValue,
                 images: allImages.length > 0 ? allImages : (restaurantLogo ? [restaurantLogo] : []),
-                image: allImages[0] || restaurantLogo || '', // Principal image
-                updatedAt: new Date()
+                image_url: allImages[0] || restaurantLogo || '',
+                updated_at: new Date().toISOString()
             };
 
-            console.log("Saving product data:", productData);
+            console.log("Saving product data to Supabase:", productData);
 
             if (editingProduct) {
-                const productRef = doc(db, 'restaurants', rid, 'products', editingProduct.id);
-                await updateDoc(productRef, productData);
+                const { error: updErr } = await supabase
+                    .from('products')
+                    .update(productData)
+                    .eq('id', editingProduct.id);
+                if (updErr) throw updErr;
 
                 // Notification for price drop
-                if (productData.promoPrice && productData.promoPrice > 0 &&
-                    (!editingProduct.promoPrice || productData.promoPrice < editingProduct.promoPrice)) {
+                if (finalPromoPrice > 0 && (!editingProduct.promoPrice || finalPromoPrice < editingProduct.promoPrice)) {
                     notifyFollowers(
                         "¡Bajó de precio!",
-                        `El producto "${productData.name}" ahora está en oferta por solo $${productData.promoPrice.toFixed(2)}.`
+                        `El producto "${productData.name}" ahora está en oferta por solo $${finalPromoPrice.toFixed(2)}.`
                     );
                 }
             } else {
-                const productsRef = collection(db, 'restaurants', rid, 'products');
-                await addDoc(productsRef, {
-                    ...productData,
-                    createdAt: new Date()
-                });
+                productData.created_at = new Date().toISOString();
+                const { error: insErr } = await supabase
+                    .from('products')
+                    .insert(productData);
+                if (insErr) throw insErr;
 
                 // Notification for new product
                 notifyFollowers(
@@ -281,7 +315,7 @@ export default function ProductManagement() {
                 );
             }
 
-            console.log("Product saved successfully");
+            console.log("Product saved successfully in Supabase");
             setIsModalOpen(false);
             setEditingProduct(null);
             setFormData({
@@ -316,7 +350,8 @@ export default function ProductManagement() {
     const handleDelete = async (id: string) => {
         if (!user || !rid || !window.confirm('¿Estás seguro de eliminar este producto?')) return;
         try {
-            await deleteDoc(doc(db, 'restaurants', rid, 'products', id));
+            const { error } = await supabase.from('products').delete().eq('id', id);
+            if (error) throw error;
             fetchProducts();
         } catch (error) {
             console.error("Error deleting product:", error);
@@ -326,8 +361,11 @@ export default function ProductManagement() {
     const toggleAvailability = async (product: Product) => {
         if (!user || !rid) return;
         try {
-            const productRef = doc(db, 'restaurants', rid, 'products', product.id);
-            await updateDoc(productRef, { isAvailable: !product.isAvailable });
+            const { error } = await supabase
+                .from('products')
+                .update({ is_available: !product.isAvailable })
+                .eq('id', product.id);
+            if (error) throw error;
             fetchProducts();
         } catch (error) {
             console.error("Error toggling availability:", error);
@@ -337,7 +375,7 @@ export default function ProductManagement() {
     const addVariant = () => {
         setFormData(prev => ({
             ...prev,
-            variants: [...prev.variants, { name: '', price: 0 }]
+            variants: [...prev.variants, { name: '', price: 0, is_available: true }]
         }));
     };
 
@@ -348,7 +386,7 @@ export default function ProductManagement() {
         }));
     };
 
-    const updateVariant = (index: number, field: keyof ProductVariant, value: string | number) => {
+    const updateVariant = (index: number, field: keyof ProductVariant, value: any) => {
         const newVariants = [...formData.variants];
         newVariants[index] = {
             ...newVariants[index],
@@ -358,6 +396,31 @@ export default function ProductManagement() {
             ...prev,
             variants: newVariants
         }));
+    };
+
+    const handleSelectCommonProduct = (commonData: SelectedCommonProductPayload) => {
+        // Auto-fill form data with standardized common product
+        setEditingProduct(null);
+        setFormData(prev => ({
+            ...prev,
+            name: commonData.name,
+            category: commonData.category,
+            subcategory: commonData.subcategory || '',
+            description: commonData.description || '',
+            price: commonData.basePrice > 0 ? commonData.basePrice.toString() : '',
+            variants: commonData.variants || [],
+            isAvailable: true,
+            isActive: true,
+            consultPrice: false
+        }));
+
+        // Reuse canonical common product image URL - ZERO storage duplication!
+        setExistingImages([commonData.image_url]);
+        setNewImageFiles([]);
+        setPreviewUrls([]);
+
+        // Open main product modal so merchant can review and save
+        setIsModalOpen(true);
     };
 
     const addModifier = (type: ModifierType) => {
@@ -402,73 +465,20 @@ export default function ProductManagement() {
         setFormData({ ...formData, modifiers: newModifiers });
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const rawFiles = Array.from(e.target.files || []) as File[];
-        e.target.value = '';
-
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = Array.from(e.target.files || []) as File[];
         const totalAllowed = 6 - (existingImages.length + newImageFiles.length);
-        if (totalAllowed <= 0) {
-            alert('Has alcanzado el límite máximo de 6 imágenes.');
+
+        if (files.length > totalAllowed) {
+            alert(`Solo puedes añadir ${totalAllowed} imágenes más.`);
             return;
         }
 
-        if (rawFiles.length > totalAllowed) {
-            alert(`Solo puedes añadir ${totalAllowed} imágenes más.`);
-        }
+        const newFiles = files.slice(0, totalAllowed);
+        setNewImageFiles(prev => [...prev, ...newFiles]);
 
-        const filesToProcess = rawFiles.slice(0, totalAllowed);
-        if (filesToProcess.length === 0) return;
-
-        setProcessingImages(true);
-
-        // Pre-visualización inmediata de los archivos crudos seleccionados
-        const tempUrls = filesToProcess.map(file => URL.createObjectURL(file));
-        const startIndex = previewUrls.length;
-        setPreviewUrls(prev => [...prev, ...tempUrls]);
-
-        try {
-            for (let i = 0; i < filesToProcess.length; i++) {
-                const file = filesToProcess[i];
-                const currentIndex = startIndex + i;
-
-                if (studioMode) {
-                    setProcessingStatus(`Procesando foto ${i + 1} de ${filesToProcess.length}...`);
-                    const result = await processProductStudioImage(file, (msg) => setProcessingStatus(msg));
-
-                    // Reemplazo suave con la imagen WebP de estudio 1000x1000
-                    setPreviewUrls(prev => {
-                        const updated = [...prev];
-                        if (updated[currentIndex]) {
-                            URL.revokeObjectURL(updated[currentIndex]);
-                        }
-                        updated[currentIndex] = result.dataUrl;
-                        return updated;
-                    });
-
-                    setNewImageFiles(prev => [...prev, result.file]);
-                } else {
-                    setProcessingStatus(`Comprimiendo foto ${i + 1}...`);
-                    const compressed = await compressClientImage(file, 1200, 0.85);
-
-                    setPreviewUrls(prev => {
-                        const updated = [...prev];
-                        if (updated[currentIndex]) {
-                            URL.revokeObjectURL(updated[currentIndex]);
-                        }
-                        updated[currentIndex] = compressed.dataUrl;
-                        return updated;
-                    });
-
-                    setNewImageFiles(prev => [...prev, compressed.file]);
-                }
-            }
-        } catch (error) {
-            console.error('Error procesando imágenes:', error);
-            alert('Hubo un inconveniente procesando una de las imágenes.');
-        } finally {
-            setProcessingImages(false);
-            setProcessingStatus('');
-        }
+        const newPreviewUrls = newFiles.map(file => URL.createObjectURL(file));
+        setPreviewUrls(prev => [...prev, ...newPreviewUrls]);
     };
 
     const removeExistingImage = (index: number) => {
@@ -487,29 +497,31 @@ export default function ProductManagement() {
         if (!user || !rid) return;
         try {
             // Fetch restaurant name
-            const resSnap = await getDoc(doc(db, 'restaurants', rid));
-            const restaurantName = resSnap.data()?.name || 'Un restaurante que sigues';
+            const { data: resData } = await supabase
+                .from('comercios')
+                .select('name')
+                .eq('id', rid)
+                .single();
+            const restaurantName = resData?.name || 'Un restaurante que sigues';
 
-            const followersRef = collection(db, 'restaurants', rid, 'followers');
-            const followersSnap = await getDocs(followersRef);
+            const { data: followers } = await supabase
+                .from('restaurant_followers')
+                .select('user_id')
+                .eq('restaurant_id', rid);
 
-            if (followersSnap.empty) return;
+            if (!followers || followers.length === 0) return;
 
-            const batch = writeBatch(db);
-            followersSnap.docs.forEach(followerDoc => {
-                const userId = followerDoc.id;
-                const notifRef = doc(collection(db, 'notifications'));
-                batch.set(notifRef, {
-                    userId,
-                    restaurantId: rid,
-                    restaurantName,
-                    title,
-                    body,
-                    read: false,
-                    createdAt: new Date()
-                });
-            });
-            await batch.commit();
+            const notifs = followers.map(follower => ({
+                user_id: follower.user_id,
+                restaurant_id: rid,
+                restaurant_name: restaurantName,
+                title,
+                body,
+                read: false,
+                created_at: new Date().toISOString()
+            }));
+
+            await supabase.from('notifications').insert(notifs);
         } catch (e) {
             console.error("Error notifying followers:", e);
         }
@@ -534,58 +546,72 @@ export default function ProductManagement() {
     }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-700 pb-20">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="space-y-3 sm:space-y-6 animate-in fade-in duration-700 pb-20">
+            <div className="flex items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900">Carta de Productos</h1>
-                    <p className="text-slate-500 font-medium">Gestiona tu menú, precios y disponibilidad.</p>
+                    <h1 className="text-xl sm:text-3xl font-black text-slate-900">Carta de Productos</h1>
+                    <p className="text-xs sm:text-sm text-slate-500 font-medium">Gestiona tu menú, precios y disponibilidad.</p>
                 </div>
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="bg-primary text-slate-900 px-6 py-4 rounded-2xl font-black shadow-lg shadow-primary/20 flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all group"
-                >
-                    <Plus className="w-5 h-5 transition-transform group-hover:rotate-90" />
-                    <span>Añadir Producto</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setIsCommonPickerOpen(true)}
+                        className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300/60 px-3 py-2.5 sm:px-5 sm:py-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-base flex items-center justify-center gap-1.5 sm:gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all group shrink-0 shadow-sm"
+                        title="Seleccionar de productos comunes precargados"
+                    >
+                        <Package className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 group-hover:scale-110 transition-transform" />
+                        <span className="hidden sm:inline">📦 Productos Comunes</span>
+                        <span className="sm:hidden">📦 Comunes</span>
+                    </button>
+                    <button
+                        onClick={() => handleOpenModal()}
+                        className="bg-primary text-slate-900 px-3.5 py-2.5 sm:px-6 sm:py-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-base shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 sm:gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all group shrink-0"
+                    >
+                        <Plus className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:rotate-90" />
+                        <span>Añadir</span>
+                    </button>
+                </div>
             </div>
 
-            <div className="flex flex-col md:flex-row gap-4">
-                <div className="relative flex-1 shrink-0">
-                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                    <input
-                        type="text"
-                        placeholder="Buscar en el menú..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        className="w-full bg-white border border-slate-200 p-4 pl-12 rounded-2xl outline-none focus:border-primary transition-all font-bold text-slate-700 shadow-sm"
-                    />
-                </div>
+            <div className="flex flex-col gap-2.5">
+                <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                        <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <input
+                            type="text"
+                            placeholder="Buscar en el menú..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-white border border-slate-200 p-2.5 sm:p-3.5 pl-10 rounded-xl sm:rounded-2xl outline-none focus:border-primary transition-all font-bold text-xs sm:text-sm text-slate-700 shadow-sm"
+                        />
+                    </div>
 
-                <div className="flex items-center gap-2 bg-white p-1 rounded-2xl border border-slate-200 shrink-0 w-max self-start md:self-auto order-first md:order-none">
-                     <button
-                        onClick={() => setViewMode('grid')}
-                        className={`px-4 py-3 rounded-xl transition-all focus:outline-none flex items-center gap-2 ${viewMode === 'grid' ? 'bg-primary text-slate-900 shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
-                        title="Cuadrícula Grande"
-                     >
-                        <LayoutGrid className="w-5 h-5" />
-                     </button>
-                     <button
-                        onClick={() => setViewMode('list')}
-                        className={`px-4 py-3 rounded-xl transition-all focus:outline-none flex items-center gap-2 ${viewMode === 'list' ? 'bg-primary text-slate-900 shadow-md' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
-                        title="Lista Compacta"
-                     >
-                        <List className="w-5 h-5" />
-                     </button>
+                    <div className="flex items-center bg-white p-0.5 sm:p-1 rounded-xl sm:rounded-2xl border border-slate-200 shrink-0">
+                         <button
+                            onClick={() => setViewMode('grid')}
+                            className={`p-2 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl transition-all ${viewMode === 'grid' ? 'bg-primary text-slate-900 shadow-sm font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                            title="Cuadrícula"
+                         >
+                            <LayoutGrid className="w-4 h-4" />
+                         </button>
+                         <button
+                            onClick={() => setViewMode('list')}
+                            className={`p-2 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl transition-all ${viewMode === 'list' ? 'bg-primary text-slate-900 shadow-sm font-bold' : 'text-slate-400 hover:text-slate-600'}`}
+                            title="Lista"
+                         >
+                            <List className="w-4 h-4" />
+                         </button>
+                    </div>
                 </div>
 
                 {/* Categories Tabs */}
-                <div className="flex overflow-x-auto gap-2 pb-2 md:pb-0 scrollbar-hide w-full max-w-full">
+                <div className="flex overflow-x-auto gap-1.5 pb-1 no-scrollbar w-full">
                     {activeCategories.map((cat) => (
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
-                            className={`px-5 py-3 md:px-6 md:py-4 rounded-2xl font-bold whitespace-nowrap transition-all border ${activeCategory === cat
-                                ? 'bg-primary text-slate-900 border-primary shadow-lg shadow-primary/20'
+                            className={`px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all border shrink-0 ${activeCategory === cat
+                                ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
                                 : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50'
                                 }`}
                         >
@@ -681,103 +707,105 @@ export default function ProductManagement() {
                     ))}
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3">
                     {filteredProducts.map((p) => (
-                        <div key={p.id} className="bg-white rounded-[35px] overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all duration-300 group">
-                            <div className="h-48 bg-slate-100 relative overflow-hidden">
+                        <div
+                            key={p.id}
+                            className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col group"
+                        >
+                            {/* Thumbnail Container */}
+                            <div className="relative w-full aspect-square bg-slate-100 overflow-hidden">
                                 {p.image ? (
-                                    <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                                    <img
+                                        src={p.image}
+                                        alt={p.name}
+                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                    />
                                 ) : (
                                     <div className="absolute inset-0 flex items-center justify-center text-slate-300">
-                                        <ImageIcon className="w-12 h-12" />
+                                        <ImageIcon className="w-7 h-7 sm:w-8 sm:h-8" />
                                     </div>
                                 )}
-                                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-sm font-black text-slate-900 shadow-sm flex items-center gap-2">
-                                    {p.pointsPrice && p.pointsPrice > 0 ? (
-                                        <span className="text-amber-500 font-bold flex items-center gap-1 border-r border-slate-200 pr-2">
-                                            <Tag className="w-3 h-3" /> {p.pointsPrice} pts
-                                        </span>
-                                    ) : null}
-                                    <span>
-                                        {p.consultPrice ? (
-                                            "Cotización"
-                                        ) : p.variants && p.variants.length > 0 ? (
-                                            `Desde $${Math.min(...p.variants.map(v => v.price)).toFixed(2)}`
-                                        ) : (
-                                            `$${p.price.toFixed(2)}`
-                                        )}
-                                    </span>
-                                </div>
-                                {!p.isActive && (
-                                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center">
-                                        <span className="bg-white text-slate-900 px-4 py-2 rounded-xl font-black text-xs uppercase tracking-widest shadow-xl">Agotado / Inactivo</span>
-                                    </div>
-                                )}
-                            </div>
-                            <div className="p-6 space-y-4">
-                                <div>
-                                    <div className="flex items-center justify-between gap-2 mb-1">
-                                        <div className="flex flex-wrap gap-1">
-                                            <span className="bg-slate-50 text-slate-500 text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider">{p.category}</span>
-                                            {p.subcategory && (
-                                                <span className="bg-primary/5 text-slate-900 text-[10px] font-black px-2 py-1 rounded-lg uppercase tracking-wider border border-primary/10">{p.subcategory}</span>
-                                            )}
-                                        </div>
-                                        <button
-                                            onClick={() => toggleAvailability(p)}
-                                            className={`p-1.5 rounded-lg transition-all ${p.isAvailable ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
-                                            title={p.isAvailable ? 'Disponible' : 'No disponible'}
-                                        >
-                                            <Check className={`w-3.5 h-3.5 ${p.isAvailable ? 'opacity-100' : 'opacity-40'}`} />
-                                        </button>
-                                    </div>
-                                    <h3 className="text-lg font-black text-slate-900 line-clamp-1">{p.name}</h3>
-                                    <p className="text-sm text-slate-400 line-clamp-2 mt-1">{p.description}</p>
-                                    {p.variants && p.variants.length > 0 && !p.consultPrice && (
-                                        <div className="mt-2 flex items-center gap-1.5">
-                                            <span className="bg-blue-50 text-blue-500 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
-                                                {p.variants.length} Presentaciones
-                                            </span>
-                                        </div>
-                                    )}
-                                    {p.consultPrice && (
-                                        <div className="mt-2 flex items-center gap-1.5">
-                                            <span className="bg-orange-50 text-orange-500 text-[10px] font-black px-2 py-0.5 rounded-md uppercase tracking-wider">
-                                                Precio a consultar
-                                            </span>
-                                        </div>
+
+                                {/* Price Chip on bottom-right of image */}
+                                <div className="absolute bottom-1 right-1 bg-slate-900/85 backdrop-blur-xs text-white text-[10px] sm:text-xs font-black px-1.5 py-0.5 rounded-md shadow-sm">
+                                    {p.consultPrice ? (
+                                        "Cotizar"
+                                    ) : p.variants && p.variants.length > 0 ? (
+                                        `$${Math.min(...p.variants.map(v => v.price)).toFixed(1)}`
+                                    ) : (
+                                        `$${p.price.toFixed(1)}`
                                     )}
                                 </div>
 
-                                <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
+                                {/* Availability Toggle on top-left of image */}
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleAvailability(p);
+                                    }}
+                                    className={`absolute top-1 left-1 p-1 rounded-md shadow-xs transition-all ${
+                                        p.isAvailable
+                                            ? 'bg-emerald-500 text-white'
+                                            : 'bg-slate-200 text-slate-500'
+                                    }`}
+                                    title={p.isAvailable ? 'Disponible' : 'Pausado'}
+                                >
+                                    <Check className={`w-3 h-3 ${p.isAvailable ? 'opacity-100' : 'opacity-40'}`} />
+                                </button>
+
+                                {/* Points Badge on top-right if present */}
+                                {p.pointsPrice && p.pointsPrice > 0 ? (
+                                    <div className="absolute top-1 right-1 bg-amber-400 text-slate-950 text-[9px] font-black px-1 rounded shadow-xs flex items-center gap-0.5">
+                                        <Tag className="w-2.5 h-2.5" />
+                                        <span>{p.pointsPrice}p</span>
+                                    </div>
+                                ) : null}
+
+                                {/* Inactive / Exhausted Overlay */}
+                                {!p.isActive && (
+                                    <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-[1px] flex items-center justify-center p-1">
+                                        <span className="bg-red-600 text-white px-1.5 py-0.5 rounded font-black text-[8px] uppercase tracking-wider text-center">
+                                            Inactivo
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Info Section */}
+                            <div className="p-1.5 sm:p-2.5 flex-1 flex flex-col justify-between">
+                                <div>
+                                    <h3 className="text-[11px] sm:text-xs font-black text-slate-900 line-clamp-1 leading-snug">
+                                        {p.name}
+                                    </h3>
+                                    <p className="text-[9px] font-bold text-slate-400 truncate mt-0.5">
+                                        {p.subcategory || p.category}
+                                    </p>
+                                </div>
+
+                                {/* Micro-Actions */}
+                                <div className="mt-1.5 pt-1 border-t border-slate-50 flex items-center justify-between gap-1">
+                                    <div className="flex items-center gap-1">
                                         <button
                                             onClick={() => handleOpenModal(p)}
-                                            className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"
+                                            className="p-1 rounded-md bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                                            title="Editar"
                                         >
-                                            <Edit2 className="w-4 h-4" />
+                                            <Edit2 className="w-3 h-3" />
                                         </button>
                                         <button
                                             onClick={() => handleDelete(p.id)}
-                                            className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 transition-colors"
+                                            className="p-1 rounded-md bg-red-50 text-red-600 hover:bg-red-100 transition-colors"
+                                            title="Eliminar"
                                         >
-                                            <Trash2 className="w-4 h-4" />
+                                            <Trash2 className="w-3 h-3" />
                                         </button>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Utilidad</p>
-                                        <p className="text-sm font-black text-green-500">
-                                            {p.consultPrice ? '--' : `+$${((p.promoPrice && p.promoPrice > 0 ? p.promoPrice : p.price) - (p.investment || 0)).toFixed(2)}`}
-                                        </p>
-                                        {p.promoPrice && p.promoPrice > 0 && !p.consultPrice && (
-                                            <div className="flex items-center gap-1.5 mt-0.5">
-                                                <p className="text-[10px] font-black text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded-md">
-                                                    -{Math.round((1 - p.promoPrice / p.price) * 100)}%
-                                                </p>
-                                                <p className="text-[9px] font-bold text-slate-400 line-through">${p.price.toFixed(2)}</p>
-                                            </div>
-                                        )}
-                                    </div>
+                                    {!p.consultPrice && (
+                                        <span className="text-[9px] font-black text-emerald-600 truncate">
+                                            +${((p.promoPrice && p.promoPrice > 0 ? p.promoPrice : p.price) - (p.investment || 0)).toFixed(1)}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -800,6 +828,32 @@ export default function ProductManagement() {
                         </div>
 
                         <form onSubmit={handleSave} className="p-8 space-y-4 max-h-[70vh] overflow-y-auto">
+                            {/* Quick selector banner for Common Products */}
+                            {!editingProduct && (
+                                <div 
+                                    onClick={() => setIsCommonPickerOpen(true)}
+                                    className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-2xl flex items-center justify-between cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform shrink-0">
+                                            <Package className="w-5 h-5" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-black text-slate-900 flex items-center gap-1.5 truncate">
+                                                <span>¿Es un producto genérico o común?</span>
+                                                <span className="text-[9px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase">Catálogo</span>
+                                            </p>
+                                            <p className="text-[10px] text-slate-500 font-medium truncate">
+                                                Auto-rellena fotos oficiales, presentaciones y datos en 1 clic.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className="text-xs font-black text-amber-800 bg-white/90 px-3 py-1 rounded-xl border border-amber-200 group-hover:bg-amber-500 group-hover:text-white transition-colors shrink-0">
+                                        Seleccionar
+                                    </span>
+                                </div>
+                            )}
+
                             <div className="space-y-1">
                                 <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
                                     <Tag className="w-3 h-3" /> Nombre
@@ -915,7 +969,7 @@ export default function ProductManagement() {
                                                 <div key={index} className="flex gap-2 items-center animate-in slide-in-from-left-2 duration-300">
                                                     <input
                                                         type="text"
-                                                        placeholder="Ej: Mediana"
+                                                        placeholder="Ej: 250gr o Mediana"
                                                         required
                                                         value={variant.name}
                                                         onChange={(e) => updateVariant(index, 'name', e.target.value)}
@@ -933,6 +987,19 @@ export default function ProductManagement() {
                                                             className="w-full bg-white border border-slate-200 p-2.5 pl-6 rounded-xl outline-none font-bold text-sm text-slate-700"
                                                         />
                                                     </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateVariant(index, 'is_available', variant.is_available === false ? true : false)}
+                                                        className={`px-2.5 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1 shrink-0 ${
+                                                            variant.is_available !== false
+                                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                : 'bg-red-50 text-red-600 border border-red-200'
+                                                        }`}
+                                                        title="Alternar entre Disponible y Agotada"
+                                                    >
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${variant.is_available !== false ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                                        {variant.is_available !== false ? 'Disp.' : 'Agot.'}
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => removeVariant(index)}
@@ -1065,31 +1132,10 @@ export default function ProductManagement() {
                                 )}
                             </div>
 
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between ml-2">
-                                    <label className="text-xs font-black text-slate-400 uppercase flex items-center gap-1">
-                                        <ImageIcon className="w-3 h-3" /> Imágenes ({existingImages.length + newImageFiles.length}/6)
-                                    </label>
-                                    <button
-                                        type="button"
-                                        onClick={() => setStudioMode(!studioMode)}
-                                        className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black transition-all ${
-                                            studioMode
-                                                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md shadow-orange-500/20'
-                                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                        }`}
-                                    >
-                                        <Sparkles className="w-3.5 h-3.5" />
-                                        <span>Estudio IA {studioMode ? 'Activo' : 'Desactivado'}</span>
-                                    </button>
-                                </div>
-
-                                {studioMode && (
-                                    <div className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-2.5 flex items-center gap-2 text-[11px] text-amber-900 font-medium">
-                                        <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
-                                        <span>Pipeline de catálogo: pre-compresión, centrado en lienzo blanco 1000x1000 y WebP ultra-ligero (&lt;90KB).</span>
-                                    </div>
-                                )}
+                            <div className="space-y-2">
+                                <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
+                                    <ImageIcon className="w-3 h-3" /> Imágenes ({existingImages.length + newImageFiles.length}/6)
+                                </label>
 
                                 <div className="grid grid-cols-3 gap-3">
                                     {existingImages.map((url, i) => (
@@ -1104,62 +1150,26 @@ export default function ProductManagement() {
                                             </button>
                                         </div>
                                     ))}
-                                    {previewUrls.map((url, i) => {
-                                        const isSlotProcessing = processingImages && i >= newImageFiles.length;
-                                        return (
-                                            <div key={`new-${i}`} className="relative group aspect-square rounded-2xl overflow-hidden bg-white border-2 border-slate-200 shadow-sm flex items-center justify-center">
-                                                <img src={url} className="w-full h-full object-contain transition-opacity duration-300" />
-                                                
-                                                {/* Efecto de Escaneo Láser mientras procesa */}
-                                                {isSlotProcessing && (
-                                                    <div className="absolute inset-0 bg-slate-900/65 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-center overflow-hidden z-20">
-                                                        {/* Haz de luz animado vertical */}
-                                                        <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent shadow-[0_0_15px_#22d3ee] animate-laser-scan"></div>
-                                                        <Loader2 className="w-6 h-6 text-cyan-300 animate-spin mb-1 z-30" />
-                                                        <span className="text-[10px] font-black text-white uppercase tracking-wider z-30">
-                                                            Estudio IA
-                                                        </span>
-                                                        <span className="text-[9px] text-cyan-200 font-bold z-30 line-clamp-1">
-                                                            {processingStatus || 'Escaneando...'}
-                                                        </span>
-                                                    </div>
-                                                )}
-
-                                                {!isSlotProcessing && (
-                                                    <>
-                                                        <span className="absolute bottom-1 left-1 bg-slate-900/80 backdrop-blur-sm text-white text-[9px] font-black px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
-                                                            <Sparkles className="w-2.5 h-2.5 text-amber-400" /> 1000x1000 WebP
-                                                        </span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeNewImage(i)}
-                                                            className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                                        >
-                                                            <X className="w-4 h-4" />
-                                                        </button>
-                                                    </>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                    {(existingImages.length + previewUrls.length) < 6 && (
-                                        <label className={`aspect-square rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-primary/30 transition-all text-slate-400 hover:text-slate-900 ${processingImages ? 'opacity-50 pointer-events-none' : ''}`}>
-                                            {processingImages ? (
-                                                <>
-                                                    <Loader2 className="w-6 h-6 mb-1 text-primary animate-spin" />
-                                                    <span className="text-[10px] font-black uppercase">Procesando</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <Plus className="w-6 h-6 mb-1" />
-                                                    <span className="text-[10px] font-black uppercase">Subir</span>
-                                                </>
-                                            )}
+                                    {previewUrls.map((url, i) => (
+                                        <div key={`new-${i}`} className="relative group aspect-square rounded-2xl overflow-hidden bg-slate-100 border-2 border-primary/20">
+                                            <img src={url} className="w-full h-full object-cover" />
+                                            <button
+                                                type="button"
+                                                onClick={() => removeNewImage(i)}
+                                                className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {(existingImages.length + newImageFiles.length) < 6 && (
+                                        <label className="aspect-square rounded-2xl bg-slate-50 border-2 border-dashed border-slate-200 flex flex-col items-center justify-center cursor-pointer hover:bg-slate-100 hover:border-primary/30 transition-all text-slate-400 hover:text-slate-900">
+                                            <Plus className="w-6 h-6 mb-1" />
+                                            <span className="text-[10px] font-black uppercase">Subir</span>
                                             <input
                                                 type="file"
                                                 multiple
                                                 accept="image/*"
-                                                disabled={processingImages}
                                                 className="hidden"
                                                 onChange={handleFileChange}
                                             />
@@ -1277,6 +1287,13 @@ export default function ProductManagement() {
                     </div>
                 </div>
             )}
+
+            {/* Common Products Catalog Selector Modal */}
+            <CommonProductsPickerModal
+                isOpen={isCommonPickerOpen}
+                onClose={() => setIsCommonPickerOpen(false)}
+                onSelectProduct={handleSelectCommonProduct}
+            />
         </div>
     );
 }

@@ -434,12 +434,9 @@ export default function Services() {
         };
     }, []);
 
-    // Prioritize superadmin database entries; fallback to default if empty
+    // Únicamente se muestran los servicios registrados por el superadministrador en la base de datos
     const allServices = useMemo(() => {
-        if (dbServices.length > 0) {
-            return dbServices;
-        }
-        return DEFAULT_SERVICES;
+        return dbServices;
     }, [dbServices]);
 
     // Categories list: Emergencias, Clínicas de Salud, Ambulancias, Auxilio Vial y Oficios 24 horas
@@ -452,19 +449,13 @@ export default function Services() {
         { id: 'oficios', label: '🛠️ Oficios 24 horas', icon: Wrench },
     ];
 
-    // Filter services according to user zone and active filters (Only national + user's current city/state)
+    // Filtrar contactos estrictamente por la zona detectada del usuario (Ciudad / Estado) o Emergencias Nacionales
     const filteredServices = useMemo(() => {
         const normUserState = (userState || '').trim().toLowerCase();
         const normUserCity = (userCity || '').trim().toLowerCase();
 
         return allServices.filter((item) => {
-            // 1. National numbers are ALWAYS visible everywhere in Venezuela
             const isNational = item.scope === 'nacional';
-
-            // Respect zone filter toggle if set to local or nacional
-            if (zoneFilter === 'local' && isNational) return false;
-            if (zoneFilter === 'nacional' && !isNational) return false;
-
             const itemState = (item.state || '').trim().toLowerCase();
             const itemCity = (item.city || '').trim().toLowerCase();
             const itemZone = (item.zone || '').trim().toLowerCase();
@@ -473,15 +464,7 @@ export default function Services() {
             if (isNational) {
                 isLocationMatch = true;
             } else {
-                // Check state match
-                const matchesState = Boolean(normUserState && (
-                    itemState === normUserState ||
-                    itemState.includes(normUserState) ||
-                    normUserState.includes(itemState) ||
-                    itemZone.includes(normUserState)
-                ));
-
-                // Check city match
+                // Coincidencia por ciudad
                 const matchesCity = Boolean(normUserCity && (
                     itemCity === normUserCity ||
                     itemCity.includes(normUserCity) ||
@@ -489,20 +472,23 @@ export default function Services() {
                     itemZone.includes(normUserCity)
                 ));
 
-                isLocationMatch = matchesState || matchesCity;
+                // Coincidencia por estado
+                const matchesState = Boolean(normUserState && (
+                    itemState === normUserState ||
+                    itemState.includes(normUserState) ||
+                    normUserState.includes(itemState) ||
+                    itemZone.includes(normUserState)
+                ));
 
-                // Fallback if neither state nor city is detected
-                if (!normUserState && !normUserCity) {
-                    isLocationMatch = true;
-                }
+                isLocationMatch = matchesCity || matchesState;
             }
 
             if (!isLocationMatch) return false;
 
-            // Category filter
+            // Filtro por categoría
             const matchesCategory = selectedCategory === 'todos' || item.category === selectedCategory;
 
-            // Search query filter
+            // Filtro por término de búsqueda
             const q = searchQuery.toLowerCase().trim();
             const matchesQuery = !q || 
                 item.name.toLowerCase().includes(q) || 
@@ -513,7 +499,7 @@ export default function Services() {
 
             return matchesCategory && matchesQuery;
         });
-    }, [allServices, userCity, userState, selectedCategory, searchQuery, zoneFilter]);
+    }, [allServices, userCity, userState, selectedCategory, searchQuery]);
 
     const handleCall = (phone: string) => {
         vibrate(40);
@@ -635,35 +621,19 @@ export default function Services() {
 
             {/* Services List */}
             <div className="px-5 pt-3 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-slate-500 px-1">
+                <div className="flex items-center justify-between gap-2 text-xs font-bold text-slate-500 px-1">
                     <span>{filteredServices.length} contactos de emergencia</span>
-                    <div className="flex items-center gap-1 bg-slate-200/70 p-1 rounded-xl">
-                        {(['all', 'local', 'nacional'] as const).map((z) => (
-                            <button
-                                key={z}
-                                type="button"
-                                onClick={() => {
-                                    vibrate(15);
-                                    setZoneFilter(z);
-                                }}
-                                className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-lg transition-all ${
-                                    zoneFilter === z
-                                        ? 'bg-rose-600 text-white shadow-xs'
-                                        : 'text-slate-600 hover:text-slate-900'
-                                }`}
-                            >
-                                {z === 'local' ? (userCity || 'Local') : z === 'nacional' ? 'Venezuela' : 'Total'}
-                            </button>
-                        ))}
-                    </div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-50 px-3 py-1 rounded-full border border-rose-200">
+                        📍 {userCity ? `${userCity}, ${userState || 'Venezuela'}` : 'Tu Zona'}
+                    </span>
                 </div>
 
                 {filteredServices.length === 0 ? (
-                    <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center shadow-sm space-y-2 mt-4">
+                    <div className="bg-white rounded-3xl p-8 border border-slate-200 text-center shadow-sm space-y-3 mt-4">
                         <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto" />
-                        <h3 className="text-sm font-black text-slate-800">No encontramos servicios con este filtro</h3>
+                        <h3 className="text-sm font-black text-slate-800">No hay contactos registrados para {userCity || 'tu zona'}</h3>
                         <p className="text-xs text-slate-500 leading-relaxed max-w-xs mx-auto">
-                            Prueba cambiando el filtro de zona o el término de búsqueda.
+                            Solo se muestran los números verificados y cargados por el superadministrador para esta zona.
                         </p>
                     </div>
                 ) : (

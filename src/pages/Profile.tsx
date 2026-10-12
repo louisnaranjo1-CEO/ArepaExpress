@@ -1541,36 +1541,19 @@ export default function Profile() {
                             </div>
                         </div>
 
-                        {/* Tarjeta del Próximo Sorteo Activo o Próximamente */}
+                        {/* Tarjeta de Próximamente Sorpresas */}
                         <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-50 border border-amber-200/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
                             <div className="flex items-center gap-3">
                                 <div className="w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-sm font-black text-xl">
                                     🎁
                                 </div>
                                 <div>
-                                    {activeRaffle ? (
-                                        <>
-                                            <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider block">
-                                                {activeRaffle.sundde_permit ? `Sorteo Oficial • SUNDDE ${activeRaffle.sundde_permit}` : 'Gran Sorteo Activo 🎉'}
-                                            </span>
-                                            <h4 className="text-sm font-black text-slate-900 leading-snug">
-                                                {activeRaffle.title}
-                                            </h4>
-                                            <p className="text-[11px] text-slate-600 font-medium mt-0.5">
-                                                Premio: <strong className="text-amber-800">{activeRaffle.prize_name || activeRaffle.description || 'Premios Especiales'}</strong>
-                                                {activeRaffle.draw_date && ` • ${new Date(activeRaffle.draw_date).toLocaleDateString()}`}
-                                            </p>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <h4 className="text-sm font-black text-slate-900 leading-snug">
-                                                ¡Muy pronto una gran noticia!
-                                            </h4>
-                                            <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                                                Acumula puntos con cada viaje o compra para participar en los próximos sorteos.
-                                            </p>
-                                        </>
-                                    )}
+                                    <h4 className="text-sm font-black text-slate-900 leading-snug">
+                                        Próximamente sorpresas
+                                    </h4>
+                                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                                        Acumula puntos con cada viaje o compra para disfrutar de increíbles sorpresas.
+                                    </p>
                                 </div>
                             </div>
                             <button
@@ -2843,10 +2826,10 @@ export default function Profile() {
                                 <div className="bg-amber-50 border border-amber-200/80 p-4 rounded-2xl text-xs text-amber-900 leading-relaxed space-y-2">
                                     <p className="font-black text-xs flex items-center gap-1.5 text-amber-950">
                                         <Gift className="w-4 h-4 text-amber-600 shrink-0" />
-                                        ¡Tus puntos valen grandes premios!
+                                        Tus puntos acumulan beneficios
                                     </p>
                                     <p className="text-[11px] text-amber-800 leading-relaxed">
-                                        Pagas directo al conductor o comercio. Con cada compra y viaje acumulas puntos para participar en los Sorteos Oficiales y Concursos de la plataforma.
+                                        Pagas directo al conductor o comercio. Con cada compra y viaje acumulas puntos. ¡Próximamente sorpresas!
                                     </p>
                                 </div>
 
@@ -2857,8 +2840,8 @@ export default function Profile() {
                                     }}
                                     className="w-full py-3.5 bg-primary hover:bg-amber-400 text-slate-900 font-black text-xs rounded-2xl shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center justify-center gap-2 cursor-pointer"
                                 >
-                                    <Ticket className="w-4 h-4" />
-                                    Ver Sorteos y Activaciones Disponibles
+                                    <Sparkles className="w-4 h-4" />
+                                    Ver Mis Puntos y Recompensas
                                 </button>
                             </div>
                         </motion.div>

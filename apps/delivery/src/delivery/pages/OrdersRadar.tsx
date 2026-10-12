@@ -1302,12 +1302,13 @@ export default function OrdersRadar() {
                 console.error("Error updating driver commission debt:", e);
             }
 
-            if (activeTransport.type === 'food_delivery' && activeTransport.id) {
+            const orderTargetId = activeTransport.order_id || activeTransport.id;
+            if (activeTransport.type === 'food_delivery' && orderTargetId) {
                 try {
                     await supabase.from('orders').update({
                         status: 'delivered',
                         delivered_at: new Date().toISOString()
-                    }).eq('id', activeTransport.id);
+                    }).eq('id', orderTargetId);
                 } catch (orderError) {
                     console.error("Error al actualizar estado de orden:", orderError);
                 }

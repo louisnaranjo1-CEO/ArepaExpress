@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List } from 'lucide-react';
+import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List, Package, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS, DEVELOPER_WHATSAPP } from '../../lib/constants';
 import { ProductModifier, ModifierType } from '../../lib/seed';
+import CommonProductsPickerModal, { SelectedCommonProductPayload } from '../components/CommonProductsPickerModal';
 
-interface ProductVariant {
+export interface ProductVariant {
     name: string;
     price: number;
+    is_available?: boolean;
 }
 
 interface Product {
@@ -43,6 +45,7 @@ export default function ProductManagement() {
     const [activeCategory, setActiveCategory] = useState('Todos');
     const [stations, setStations] = useState<{ id: string, name: string }[]>([]);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isCommonPickerOpen, setIsCommonPickerOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
     const [submitting, setSubmitting] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -372,7 +375,7 @@ export default function ProductManagement() {
     const addVariant = () => {
         setFormData(prev => ({
             ...prev,
-            variants: [...prev.variants, { name: '', price: 0 }]
+            variants: [...prev.variants, { name: '', price: 0, is_available: true }]
         }));
     };
 
@@ -383,7 +386,7 @@ export default function ProductManagement() {
         }));
     };
 
-    const updateVariant = (index: number, field: keyof ProductVariant, value: string | number) => {
+    const updateVariant = (index: number, field: keyof ProductVariant, value: any) => {
         const newVariants = [...formData.variants];
         newVariants[index] = {
             ...newVariants[index],
@@ -393,6 +396,31 @@ export default function ProductManagement() {
             ...prev,
             variants: newVariants
         }));
+    };
+
+    const handleSelectCommonProduct = (commonData: SelectedCommonProductPayload) => {
+        // Auto-fill form data with standardized common product
+        setEditingProduct(null);
+        setFormData(prev => ({
+            ...prev,
+            name: commonData.name,
+            category: commonData.category,
+            subcategory: commonData.subcategory || '',
+            description: commonData.description || '',
+            price: commonData.basePrice > 0 ? commonData.basePrice.toString() : '',
+            variants: commonData.variants || [],
+            isAvailable: true,
+            isActive: true,
+            consultPrice: false
+        }));
+
+        // Reuse canonical common product image URL - ZERO storage duplication!
+        setExistingImages([commonData.image_url]);
+        setNewImageFiles([]);
+        setPreviewUrls([]);
+
+        // Open main product modal so merchant can review and save
+        setIsModalOpen(true);
     };
 
     const addModifier = (type: ModifierType) => {
@@ -524,13 +552,25 @@ export default function ProductManagement() {
                     <h1 className="text-xl sm:text-3xl font-black text-slate-900">Carta de Productos</h1>
                     <p className="text-xs sm:text-sm text-slate-500 font-medium">Gestiona tu menú, precios y disponibilidad.</p>
                 </div>
-                <button
-                    onClick={() => handleOpenModal()}
-                    className="bg-primary text-slate-900 px-3.5 py-2.5 sm:px-6 sm:py-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-base shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 sm:gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all group shrink-0"
-                >
-                    <Plus className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:rotate-90" />
-                    <span>Añadir</span>
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setIsCommonPickerOpen(true)}
+                        className="bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300/60 px-3 py-2.5 sm:px-5 sm:py-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-base flex items-center justify-center gap-1.5 sm:gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all group shrink-0 shadow-sm"
+                        title="Seleccionar de productos comunes precargados"
+                    >
+                        <Package className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 group-hover:scale-110 transition-transform" />
+                        <span className="hidden sm:inline">📦 Productos Comunes</span>
+                        <span className="sm:hidden">📦 Comunes</span>
+                    </button>
+                    <button
+                        onClick={() => handleOpenModal()}
+                        className="bg-primary text-slate-900 px-3.5 py-2.5 sm:px-6 sm:py-4 rounded-xl sm:rounded-2xl font-black text-xs sm:text-base shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 sm:gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all group shrink-0"
+                    >
+                        <Plus className="w-4 h-4 sm:w-5 sm:h-5 transition-transform group-hover:rotate-90" />
+                        <span>Añadir</span>
+                    </button>
+                </div>
             </div>
 
             <div className="flex flex-col gap-2.5">
@@ -788,6 +828,32 @@ export default function ProductManagement() {
                         </div>
 
                         <form onSubmit={handleSave} className="p-8 space-y-4 max-h-[70vh] overflow-y-auto">
+                            {/* Quick selector banner for Common Products */}
+                            {!editingProduct && (
+                                <div 
+                                    onClick={() => setIsCommonPickerOpen(true)}
+                                    className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-2xl flex items-center justify-between cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform shrink-0">
+                                            <Package className="w-5 h-5" />
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-xs font-black text-slate-900 flex items-center gap-1.5 truncate">
+                                                <span>¿Es un producto genérico o común?</span>
+                                                <span className="text-[9px] bg-amber-500 text-white font-black px-1.5 py-0.5 rounded-full uppercase">Catálogo</span>
+                                            </p>
+                                            <p className="text-[10px] text-slate-500 font-medium truncate">
+                                                Auto-rellena fotos oficiales, presentaciones y datos en 1 clic.
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <span className="text-xs font-black text-amber-800 bg-white/90 px-3 py-1 rounded-xl border border-amber-200 group-hover:bg-amber-500 group-hover:text-white transition-colors shrink-0">
+                                        Seleccionar
+                                    </span>
+                                </div>
+                            )}
+
                             <div className="space-y-1">
                                 <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
                                     <Tag className="w-3 h-3" /> Nombre
@@ -903,7 +969,7 @@ export default function ProductManagement() {
                                                 <div key={index} className="flex gap-2 items-center animate-in slide-in-from-left-2 duration-300">
                                                     <input
                                                         type="text"
-                                                        placeholder="Ej: Mediana"
+                                                        placeholder="Ej: 250gr o Mediana"
                                                         required
                                                         value={variant.name}
                                                         onChange={(e) => updateVariant(index, 'name', e.target.value)}
@@ -921,6 +987,19 @@ export default function ProductManagement() {
                                                             className="w-full bg-white border border-slate-200 p-2.5 pl-6 rounded-xl outline-none font-bold text-sm text-slate-700"
                                                         />
                                                     </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => updateVariant(index, 'is_available', variant.is_available === false ? true : false)}
+                                                        className={`px-2.5 py-2 rounded-xl text-[10px] font-black uppercase transition-all flex items-center gap-1 shrink-0 ${
+                                                            variant.is_available !== false
+                                                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                                                : 'bg-red-50 text-red-600 border border-red-200'
+                                                        }`}
+                                                        title="Alternar entre Disponible y Agotada"
+                                                    >
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${variant.is_available !== false ? 'bg-emerald-500' : 'bg-red-500'}`} />
+                                                        {variant.is_available !== false ? 'Disp.' : 'Agot.'}
+                                                    </button>
                                                     <button
                                                         type="button"
                                                         onClick={() => removeVariant(index)}
@@ -1208,6 +1287,13 @@ export default function ProductManagement() {
                     </div>
                 </div>
             )}
+
+            {/* Common Products Catalog Selector Modal */}
+            <CommonProductsPickerModal
+                isOpen={isCommonPickerOpen}
+                onClose={() => setIsCommonPickerOpen(false)}
+                onSelectProduct={handleSelectCommonProduct}
+            />
         </div>
     );
 }

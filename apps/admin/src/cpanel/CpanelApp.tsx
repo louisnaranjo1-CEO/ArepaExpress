@@ -26,6 +26,7 @@ import MarketingManager from './pages/MarketingManager';
 import PilotAchievements from './pages/PilotAchievements';
 import DesignManager from './pages/DesignManager';
 import EmergenciesManager from './pages/EmergenciesManager';
+import CommonProductsManager from './pages/CommonProductsManager';
 
 export default function CpanelApp() {
     const isDevAdminPath = window.location.pathname.startsWith('/cpanel');
@@ -263,7 +264,7 @@ export default function CpanelApp() {
                     <Route path="/finances" element={<FinancesManager />} />
                     <Route path="/liquidations" element={<LiquidationsManager />} />
                     <Route path="/fidelization" element={<FidelizationManager />} />
-                    <Route path="/raffles" element={<RafflesManager />} />
+                    <Route path="/common-products" element={<CommonProductsManager />} />
                     <Route path="/achievements" element={<PilotAchievements />} />
                     <Route path="/marketing" element={<MarketingManager />} />
                     <Route path="/icons" element={<IconsManager />} />
