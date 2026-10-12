@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock, Plus, Radio, Edit2 } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, CheckCircle2, Save, Image as ImageIcon, Key, Trash2, ArrowLeft, Camera, Truck, ShieldCheck, Smartphone, Fingerprint, ScanFace, Car, Bike, Star, Calendar, Sparkles, AlertTriangle, Wifi, Music, Wind, Check, Lock, Plus, Radio, Edit2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
@@ -15,11 +15,19 @@ import { sendAppNotification, playDriverAlertSound } from '../../services/native
 export default function DriverProfile() {
     const { user, userData } = useAuth();
     const navigate = useNavigate();
+    const isIOS = Capacitor.getPlatform() === 'ios' || (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent));
     const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location' | 'payment_method' | 'guidelines' | 'payout_frequency' | 'comfort_features' | 'my_vehicles'>('profile');
     const [driverProfile, setDriverProfile] = useState<any>(null);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
     const [updatingLocation, setUpdatingLocation] = useState(false);
+    const [activeRaffle, setActiveRaffle] = useState<any>(null);
+    const [footerText, setFooterText] = useState('Deliexpress Driver v2.0 · Estilo Yango');
+    const [warningModalConfig, setWarningModalConfig] = useState<{
+        title: string;
+        description: string;
+        onConfirm: () => void;
+    } | null>(null);
 
     // Multi-vehicle Fleet & Thermal Bag states
     const [registeredVehicles, setRegisteredVehicles] = useState<any[]>([]);
@@ -64,11 +72,22 @@ export default function DriverProfile() {
                 const data = await driversApi.getDriver(user.uid);
                 if (!isMounted) return;
 
-                // Query real orders & transport requests to calculate genuine dynamic metrics
-                const [ordersRes, transportRes] = await Promise.all([
+                // Query real orders, transport requests, points, active raffle & branding
+                const [ordersRes, transportRes, profRes, raffleRes, brandingRes] = await Promise.all([
                     supabase.from('orders').select('id, rating, status').eq('delivery_driver_id', user.uid),
-                    supabase.from('transport_requests').select('id, rating, status').eq('driver_id', user.uid)
+                    supabase.from('transport_requests').select('id, rating, status').eq('driver_id', user.uid),
+                    supabase.from('profiles').select('points').eq('id', user.uid).maybeSingle(),
+                    supabase.from('raffles').select('*').eq('status', 'active').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+                    supabase.from('app_branding').select('driver_footer_text').eq('id', 'current').maybeSingle()
                 ]);
+
+                if (brandingRes?.data?.driver_footer_text && isMounted) {
+                    setFooterText(brandingRes.data.driver_footer_text);
+                }
+
+                if (raffleRes?.data && isMounted) {
+                    setActiveRaffle(raffleRes.data);
+                }
 
                 const ordersData = ordersRes.data || [];
                 const transportData = transportRes.data || [];
@@ -95,6 +114,7 @@ export default function DriverProfile() {
 
                 const mergedProfile = {
                     ...data,
+                    points: profRes?.data?.points ?? data.points ?? 0,
                     rating: realRating,
                     acceptance_rate: realAcceptance,
                     acceptanceRate: realAcceptance,
@@ -721,6 +741,102 @@ export default function DriverProfile() {
         }
     };
 
+    // Delete vehicle from fleet (Audio 7)
+    const handleDeleteVehicle = async (vehToDelete?: any) => {
+        const target = vehToDelete || editingVehicle;
+        if (!user || !target) return;
+
+        const confirmMsg = `¿Estás seguro de que deseas eliminar este vehículo (${target.brand || ''} ${target.model || ''} - ${target.plate || ''}) de tu flota?`;
+        if (!window.confirm(confirmMsg)) return;
+
+        setLoading(true);
+        try {
+            const currentList = registeredVehicles.length > 0 ? registeredVehicles : (driverProfile?.registered_vehicles || []);
+            const updatedList = currentList.filter((v: any) => v.id !== target.id);
+
+            const isDeletedActive = target.id === activeVehicleId || target.is_active;
+
+            const auditEntry = {
+                id: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+                vehicle_id: target.id,
+                action: 'vehicle_deleted',
+                previous_data: {
+                    brand: target.brand,
+                    model: target.model,
+                    plate: target.plate,
+                    year: target.year,
+                    color: target.color
+                },
+                new_data: null
+            };
+
+            const currentHistory = Array.isArray(driverProfile?.vehicle_history) ? driverProfile.vehicle_history : [];
+            const updatedHistory = [auditEntry, ...currentHistory];
+
+            const updatePayload: any = {
+                registered_vehicles: updatedList,
+                vehicle_history: updatedHistory,
+                updated_at: new Date().toISOString()
+            };
+
+            // If the deleted vehicle was the active one, pick the next available vehicle if any
+            if (isDeletedActive) {
+                if (updatedList.length > 0) {
+                    const nextActive = { ...updatedList[0], is_active: true };
+                    updatedList[0] = nextActive;
+                    setActiveVehicleId(nextActive.id);
+                    updatePayload.registered_vehicles = updatedList;
+                    updatePayload.vehicle_brand = nextActive.brand || '';
+                    updatePayload.vehicle_model = nextActive.model || '';
+                    updatePayload.vehicle_year = nextActive.year || '';
+                    updatePayload.vehicle_color = nextActive.color || '';
+                    updatePayload.vehicle_plate = nextActive.plate || '';
+                    updatePayload.vehicle_type = nextActive.type || 'moto';
+                    updatePayload.has_ac = Boolean(nextActive.has_ac);
+                    updatePayload.has_thermal_bag = Boolean(nextActive.has_thermal_bag);
+                    updatePayload.is_comfort_eligible = Boolean(nextActive.is_comfort);
+                    if (nextActive.photo_url) {
+                        updatePayload.vehicle_image_url = nextActive.photo_url;
+                    }
+                } else {
+                    setActiveVehicleId(null);
+                    updatePayload.vehicle_brand = '';
+                    updatePayload.vehicle_model = '';
+                    updatePayload.vehicle_plate = '';
+                }
+            }
+
+            const { error: updErr } = await supabase.from('drivers').update(updatePayload).eq('id', user.uid);
+            if (updErr) throw updErr;
+
+            try {
+                await supabase.from('driver_vehicle_history').insert({
+                    driver_id: user.uid,
+                    vehicle_id: target.id,
+                    previous_data: auditEntry.previous_data,
+                    new_data: { action: 'deleted' },
+                    changed_at: new Date().toISOString()
+                });
+            } catch(e) {}
+
+            setRegisteredVehicles(updatedList);
+            setDriverProfile((prev: any) => ({
+                ...prev,
+                ...updatePayload
+            }));
+
+            setShowEditVehicleModal(false);
+            setEditingVehicle(null);
+            alert('Vehículo eliminado de tu flota correctamente.');
+        } catch (err: any) {
+            console.error("Error deleting vehicle:", err);
+            alert("No se pudo eliminar el vehículo: " + (err.message || 'Error'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleLogout = async () => {
         try {
             await supabase.auth.signOut();
@@ -788,24 +904,40 @@ export default function DriverProfile() {
 
     const handleToggleNotifications = async () => {
         if (!user) return;
+        const isEnabled = userData?.notificationsEnabled !== false;
+        if (isEnabled) {
+            setWarningModalConfig({
+                title: '¿Desactivar Notificaciones?',
+                description: 'Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.',
+                onConfirm: async () => {
+                    setUpdatingNotifications(true);
+                    try {
+                        await disableNotifications(user.uid);
+                        await supabase.from('profiles').update({ notifications_enabled: false }).eq('id', user.uid);
+                        alert("Notificaciones desactivadas.");
+                    } catch (err) {
+                        console.error("Error toggling notifications", err);
+                    } finally {
+                        setUpdatingNotifications(false);
+                    }
+                }
+            });
+            return;
+        }
+
         setUpdatingNotifications(true);
         try {
-            const isEnabled = userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0);
-            if (isEnabled) {
-                await disableNotifications(user.uid);
-                alert("Notificaciones desactivadas.");
-            } else {
-                const result = await requestNotificationPermission(user.uid);
-                if (result.success) {
-                    sendAppNotification({
-                        title: '🚨 ¡Alertas de Conductor Activadas!',
-                        body: 'Recibirás sonido de alta prioridad, vibración y avisos en tu barra de notificaciones para nuevas solicitudes y viajes.',
-                        soundType: 'driver'
-                    });
-                    alert("Notificaciones activadas con éxito! 🎉");
-                } else if (result.error) {
-                    alert(result.error);
-                }
+            const result = await requestNotificationPermission(user.uid);
+            if (result.success) {
+                await supabase.from('profiles').update({ notifications_enabled: true }).eq('id', user.uid);
+                sendAppNotification({
+                    title: '🚨 ¡Alertas de Conductor Activadas!',
+                    body: 'Recibirás sonido de alta prioridad, vibración y avisos en tu barra de notificaciones para nuevas solicitudes y viajes.',
+                    soundType: 'driver'
+                });
+                alert("Notificaciones activadas con éxito! 🎉");
+            } else if (result.error) {
+                alert(result.error);
             }
         } catch (err) {
             console.error("Error toggling notifications", err);
@@ -1130,6 +1262,14 @@ export default function DriverProfile() {
                                         >
                                             <Edit2 className="w-3.5 h-3.5" />
                                             <span>Editar</span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteVehicle(veh)}
+                                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all active:scale-95 border border-red-100"
+                                            title="Eliminar este vehículo"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" />
                                         </button>
                                         {isCurrent ? (
                                             <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 font-black text-[11px] rounded-xl border border-emerald-200">
@@ -1467,8 +1607,18 @@ export default function DriverProfile() {
                                 <div className="pt-2 border-t border-slate-100 flex gap-2">
                                     <button
                                         type="button"
+                                        onClick={() => handleDeleteVehicle()}
+                                        disabled={loading}
+                                        className="px-3.5 py-3 bg-red-50 hover:bg-red-100 text-red-600 font-black rounded-xl text-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-red-200"
+                                        title="Eliminar este vehículo de tu flota"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        <span>Eliminar</span>
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => { setShowEditVehicleModal(false); setEditingVehicle(null); }}
-                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs"
+                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-200 transition-colors"
                                     >
                                         Cancelar
                                     </button>
@@ -1478,7 +1628,7 @@ export default function DriverProfile() {
                                         className="flex-1 py-3 bg-primary text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5"
                                     >
                                         <Save className="w-4 h-4" />
-                                        <span>Guardar Cambios</span>
+                                        <span>Guardar</span>
                                     </button>
                                 </div>
                             </form>
@@ -1507,7 +1657,7 @@ export default function DriverProfile() {
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors duration-300 ${
-                                    userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0)
+                                    userData?.notificationsEnabled !== false
                                         ? 'bg-emerald-100 text-emerald-600'
                                         : 'bg-white text-slate-400'
                                 }`}>
@@ -1520,7 +1670,7 @@ export default function DriverProfile() {
                             </div>
                             <div
                                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none ${
-                                    userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0)
+                                    userData?.notificationsEnabled !== false
                                         ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
                                         : 'bg-slate-300'
                                 }`}
@@ -1530,7 +1680,7 @@ export default function DriverProfile() {
                                 ) : (
                                     <span
                                         className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
-                                            userData?.notificationsEnabled || (userData?.fcmTokens && userData.fcmTokens.length > 0)
+                                            userData?.notificationsEnabled !== false
                                                 ? 'translate-x-6'
                                                 : 'translate-x-1'
                                         }`}
@@ -1544,30 +1694,52 @@ export default function DriverProfile() {
                     <div className="space-y-3 pb-6 border-b border-slate-100">
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Alertas Sonoras</label>
                         <div
-                            onClick={async () => {
+                            onClick={() => {
                                 if (!user) return;
-                                setUpdatingNotifications(true);
-                                try {
-                                    const newValue = !(driverProfile?.audioAlertsEnabled ?? true);
-                                    const { error } = await supabase.from('drivers').update({
-                                        audio_alerts_enabled: newValue
-                                    }).eq('id', user.uid);
-                                    if (error) throw error;
-                                    setDriverProfile((prev: any) => ({ ...prev, audioAlertsEnabled: newValue, audio_alerts_enabled: newValue }));
-                                    if (newValue) {
-                                        playDriverAlertSound();
-                                    }
-                                } catch (err) {
-                                    console.error("Error toggling audio alerts", err);
-                                } finally {
-                                    setUpdatingNotifications(false);
+                                const isCurrentlyActive = (driverProfile?.audioAlertsEnabled ?? driverProfile?.audio_alerts_enabled) !== false;
+                                if (isCurrentlyActive) {
+                                    setWarningModalConfig({
+                                        title: '¿Desactivar Alertas Sonoras?',
+                                        description: 'Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.',
+                                        onConfirm: async () => {
+                                            setUpdatingNotifications(true);
+                                            try {
+                                                const { error } = await supabase.from('drivers').update({
+                                                    audio_alerts_enabled: false
+                                                }).eq('id', user.uid);
+                                                if (error) throw error;
+                                                setDriverProfile((prev: any) => ({ ...prev, audioAlertsEnabled: false, audio_alerts_enabled: false }));
+                                            } catch (err) {
+                                                console.error("Error toggling audio alerts", err);
+                                            } finally {
+                                                setUpdatingNotifications(false);
+                                            }
+                                        }
+                                    });
+                                    return;
                                 }
+
+                                (async () => {
+                                    setUpdatingNotifications(true);
+                                    try {
+                                        const { error } = await supabase.from('drivers').update({
+                                            audio_alerts_enabled: true
+                                        }).eq('id', user.uid);
+                                        if (error) throw error;
+                                        setDriverProfile((prev: any) => ({ ...prev, audioAlertsEnabled: true, audio_alerts_enabled: true }));
+                                        playDriverAlertSound();
+                                    } catch (err) {
+                                        console.error("Error toggling audio alerts", err);
+                                    } finally {
+                                        setUpdatingNotifications(false);
+                                    }
+                                })();
                             }}
                             className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors duration-300 ${
-                                    (driverProfile?.audioAlertsEnabled ?? true)
+                                    (driverProfile?.audioAlertsEnabled ?? driverProfile?.audio_alerts_enabled) !== false
                                         ? 'bg-emerald-100 text-emerald-600'
                                         : 'bg-white text-slate-400'
                                 }`}>
@@ -1580,7 +1752,7 @@ export default function DriverProfile() {
                             </div>
                             <div
                                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none ${
-                                    (driverProfile?.audioAlertsEnabled ?? true)
+                                    (driverProfile?.audioAlertsEnabled ?? driverProfile?.audio_alerts_enabled) !== false
                                         ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
                                         : 'bg-slate-300'
                                 }`}
@@ -1590,7 +1762,7 @@ export default function DriverProfile() {
                                 ) : (
                                     <span
                                         className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
-                                            (driverProfile?.audioAlertsEnabled ?? true)
+                                            (driverProfile?.audioAlertsEnabled ?? driverProfile?.audio_alerts_enabled) !== false
                                                 ? 'translate-x-6'
                                                 : 'translate-x-1'
                                         }`}
@@ -1602,56 +1774,77 @@ export default function DriverProfile() {
 
                     {/* Biometric Toggle */}
                     <div className="space-y-3 pb-6 border-b border-slate-100">
-                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Seguridad Biométrica</label>
+                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">
+                            {isIOS ? 'Seguridad Face ID' : 'Seguridad Biométrica'}
+                        </label>
                         <div
-                            onClick={async () => {
+                            onClick={() => {
                                 if (!user) return;
-                                setUpdatingBiometrics(true);
-                                try {
-                                    if (userData?.biometricLockEnabled) {
-                                        // Disable
-                                        await supabase.from('profiles').update({
-                                            biometric_lock_enabled: false
-                                        }).eq('id', user.uid);
-                                        alert('Bloqueo biométrico desactivado');
-                                    } else {
-                                        // Enable
+                                const isCurrentlyActive = userData?.biometricLockEnabled !== false;
+                                if (isCurrentlyActive) {
+                                    setWarningModalConfig({
+                                        title: isIOS ? '¿Desactivar Face ID?' : '¿Desactivar Bloqueo Biométrico?',
+                                        description: 'Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.',
+                                        onConfirm: async () => {
+                                            setUpdatingBiometrics(true);
+                                            try {
+                                                await supabase.from('profiles').update({
+                                                    biometric_lock_enabled: false
+                                                }).eq('id', user.uid);
+                                                alert(isIOS ? 'Face ID desactivado' : 'Bloqueo biométrico desactivado');
+                                            } catch (err: any) {
+                                                console.error(err);
+                                            } finally {
+                                                setUpdatingBiometrics(false);
+                                            }
+                                        }
+                                    });
+                                    return;
+                                }
+
+                                (async () => {
+                                    setUpdatingBiometrics(true);
+                                    try {
                                         const biometricData = await registerBiometric(user.uid, user.email || '');
                                         if (biometricData) {
                                             await supabase.from('profiles').update({
                                                 biometric_lock_enabled: true,
                                                 biometric_credential_id: biometricData.id
                                             }).eq('id', user.uid);
-                                            alert('Bloqueo biométrico activado');
+                                            alert(isIOS ? 'Bloqueo con Face ID activado con éxito' : 'Bloqueo biométrico activado');
                                         } else {
-                                            alert('No se pudo activar la biometría');
+                                            alert(isIOS ? 'No se pudo activar Face ID' : 'No se pudo activar la biometría');
                                         }
+                                    } catch (err: any) {
+                                        console.error(err);
+                                        alert(`Error: ${err.message || 'Error al configurar biometría'}`);
+                                    } finally {
+                                        setUpdatingBiometrics(false);
                                     }
-                                } catch (err: any) {
-                                    console.error(err);
-                                    alert(`Error: ${err.message || 'Error al configurar biometría'}`);
-                                } finally {
-                                    setUpdatingBiometrics(false);
-                                }
+                                })();
                             }}
                             className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingBiometrics ? 'opacity-70 pointer-events-none' : ''}`}
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors duration-300 ${
-                                    userData?.biometricLockEnabled
+                                    userData?.biometricLockEnabled !== false
                                         ? 'bg-emerald-100 text-emerald-600'
                                         : 'bg-white text-slate-400'
                                 }`}>
-                                    <Fingerprint className="w-5 h-5" />
+                                    {isIOS ? <ScanFace className="w-5 h-5" /> : <Fingerprint className="w-5 h-5" />}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="font-bold text-slate-700">Bloqueo de App</span>
-                                    <span className="text-[10px] text-slate-400 font-medium">Usar huella para ingresar</span>
+                                    <span className="font-bold text-slate-700">
+                                        {isIOS ? 'Face ID' : 'Bloqueo de App'}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 font-medium">
+                                        {isIOS ? 'Usar Face ID para ingresar' : 'Usar huella para ingresar'}
+                                    </span>
                                 </div>
                             </div>
                             <div
                                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none ${
-                                    userData?.biometricLockEnabled
+                                    userData?.biometricLockEnabled !== false
                                         ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
                                         : 'bg-slate-300'
                                 }`}
@@ -1661,7 +1854,7 @@ export default function DriverProfile() {
                                 ) : (
                                     <span
                                         className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
-                                            userData?.biometricLockEnabled
+                                            userData?.biometricLockEnabled !== false
                                                 ? 'translate-x-6'
                                                 : 'translate-x-1'
                                         }`}
@@ -1675,18 +1868,33 @@ export default function DriverProfile() {
                     <div className="space-y-3 pb-6 border-b border-slate-100">
                         <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Geolocalización</label>
                         <div
-                            onClick={async () => {
+                            onClick={() => {
                                 if (!user) return;
-                                setUpdatingLocation(true);
-                                try {
-                                    if (userData?.locationPermissionsAllowed) {
-                                        // Disable
-                                        await supabase.from('profiles').update({
-                                            location_permissions_allowed: false
-                                        }).eq('id', user.uid);
-                                        alert('Ubicación en tiempo real desactivada');
-                                    } else {
-                                        // Enable
+                                const isCurrentlyActive = userData?.locationPermissionsAllowed !== false;
+                                if (isCurrentlyActive) {
+                                    setWarningModalConfig({
+                                        title: '¿Desactivar Ubicación en Tiempo Real?',
+                                        description: 'Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.',
+                                        onConfirm: async () => {
+                                            setUpdatingLocation(true);
+                                            try {
+                                                await supabase.from('profiles').update({
+                                                    location_permissions_allowed: false
+                                                }).eq('id', user.uid);
+                                                alert('Ubicación en tiempo real desactivada');
+                                            } catch (err) {
+                                                console.error(err);
+                                            } finally {
+                                                setUpdatingLocation(false);
+                                            }
+                                        }
+                                    });
+                                    return;
+                                }
+
+                                (async () => {
+                                    setUpdatingLocation(true);
+                                    try {
                                         let granted = false;
                                         if (Capacitor.isNativePlatform()) {
                                             try {
@@ -1720,19 +1928,19 @@ export default function DriverProfile() {
                                         } else {
                                             alert('Se requiere permiso de ubicación para activar esta función');
                                         }
+                                    } catch (err) {
+                                        console.error(err);
+                                        alert('Error al configurar ubicación');
+                                    } finally {
+                                        setUpdatingLocation(false);
                                     }
-                                } catch (err) {
-                                    console.error(err);
-                                    alert('Error al configurar ubicación');
-                                } finally {
-                                    setUpdatingLocation(false);
-                                }
+                                })();
                             }}
                             className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingLocation ? 'opacity-70 pointer-events-none' : ''}`}
                         >
                             <div className="flex items-center gap-3">
                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm transition-colors duration-300 ${
-                                    userData?.locationPermissionsAllowed
+                                    userData?.locationPermissionsAllowed !== false
                                         ? 'bg-emerald-100 text-emerald-600'
                                         : 'bg-white text-slate-400'
                                 }`}>
@@ -1745,7 +1953,7 @@ export default function DriverProfile() {
                             </div>
                             <div
                                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none ${
-                                    userData?.locationPermissionsAllowed
+                                    userData?.locationPermissionsAllowed !== false
                                         ? 'bg-emerald-500 shadow-md shadow-emerald-500/30'
                                         : 'bg-slate-300'
                                 }`}
@@ -1755,7 +1963,7 @@ export default function DriverProfile() {
                                 ) : (
                                     <span
                                         className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ease-in-out ${
-                                            userData?.locationPermissionsAllowed
+                                            userData?.locationPermissionsAllowed !== false
                                                 ? 'translate-x-6'
                                                 : 'translate-x-1'
                                         }`}
@@ -1806,6 +2014,41 @@ export default function DriverProfile() {
                         </button>
                     </div>
                 </div>
+
+                {/* Warning Modal before disabling critical features */}
+                {warningModalConfig && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+                        <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 text-center animate-scale-up">
+                            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-4">
+                                <AlertTriangle className="w-7 h-7" />
+                            </div>
+                            <h3 className="text-lg font-black text-slate-900 mb-2">{warningModalConfig.title}</h3>
+                            <p className="text-xs text-slate-600 font-medium leading-relaxed mb-6">
+                                {warningModalConfig.description}
+                            </p>
+                            <div className="grid grid-cols-2 gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setWarningModalConfig(null)}
+                                    className="py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
+                                >
+                                    Mantener Activado
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const action = warningModalConfig.onConfirm;
+                                        setWarningModalConfig(null);
+                                        action();
+                                    }}
+                                    className="py-3 px-4 bg-rose-500 hover:bg-rose-600 text-white font-black text-xs rounded-xl shadow-md transition-all"
+                                >
+                                    Desactivar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         );
     }
@@ -2598,24 +2841,54 @@ export default function DriverProfile() {
                 </div>
 
                 {/* Yango Metrics Bar */}
-                <div className="grid grid-cols-3 gap-2 mt-5 pt-4 border-t border-white/10 text-center">
-                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2.5">
+                <div className="grid grid-cols-4 gap-2 mt-5 pt-4 border-t border-white/10 text-center">
+                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2">
                         <div className="flex items-center justify-center gap-1 text-amber-400 font-black text-sm">
                             <Star className="w-3.5 h-3.5 fill-amber-400" />
                             <span>{Number(driverProfile?.rating || 5.0).toFixed(1)}</span>
                         </div>
                         <p className="text-[10px] text-slate-300 font-semibold mt-0.5">Calificación</p>
                     </div>
-                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2.5">
+                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2">
                         <p className="text-emerald-400 font-black text-sm">{driverProfile?.acceptance_rate || 100}%</p>
                         <p className="text-[10px] text-slate-300 font-semibold mt-0.5">Aceptación</p>
                     </div>
-                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2.5">
+                    <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-2">
                         <p className="text-primary font-black text-sm">{driverProfile?.total_trips || 0}</p>
                         <p className="text-[10px] text-slate-300 font-semibold mt-0.5">Viajes</p>
                     </div>
+                    <div className="bg-amber-400/20 border border-amber-400/40 backdrop-blur-sm rounded-2xl p-2">
+                        <div className="flex items-center justify-center gap-1 text-yellow-300 font-black text-sm">
+                            <Sparkles className="w-3.5 h-3.5 fill-yellow-400" />
+                            <span>{driverProfile?.points || 0}</span>
+                        </div>
+                        <p className="text-[10px] text-yellow-200 font-semibold mt-0.5">Puntos</p>
+                    </div>
                 </div>
             </div>
+
+            {/* Active Raffle Promo Card */}
+            {activeRaffle && (
+                <div className="bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 rounded-[28px] p-5 text-slate-950 shadow-lg relative overflow-hidden flex items-center justify-between gap-4">
+                    <div className="relative z-10">
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-950/20 rounded-full text-[10px] font-black uppercase tracking-wider mb-1">
+                            <span>🎁</span> Gran Sorteo Activo
+                        </div>
+                        <h4 className="text-base font-black leading-tight">{activeRaffle.title}</h4>
+                        <p className="text-xs font-semibold opacity-90 mt-0.5">
+                            Canjea tus puntos por boletos en la sección de Logros.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/achievements')}
+                        className="shrink-0 px-4 py-2.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all relative z-10"
+                    >
+                        Ver Boletos
+                    </button>
+                    <div className="absolute -right-6 -bottom-6 w-28 h-28 bg-white/20 rounded-full blur-xl pointer-events-none" />
+                </div>
+            )}
 
             {/* Active Vehicle Card with Direct Vehicle Photo */}
             <div className="bg-white rounded-[24px] p-4 sm:p-5 border border-slate-100 shadow-sm space-y-3.5">
@@ -2869,7 +3142,7 @@ export default function DriverProfile() {
             >
                 <LogOut className="w-5 h-5 text-slate-500" /> Cerrar Sesión
             </button>
-            <p className="text-center text-xs font-medium text-slate-400 mt-4">Deliexpress Driver v2.0 · Estilo Yango</p>
+            <p className="text-center text-xs font-medium text-slate-400 mt-4">{footerText}</p>
         </div>
     );
 }

@@ -244,8 +244,26 @@ export default function TransportTracker() {
             })
             .subscribe();
 
+        // Polling de respaldo cada 3 segundos para garantizar sincronización inmediata de tarifa y estado
+        const pollInterval = setInterval(async () => {
+            const { data } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .eq('id', requestId)
+                .maybeSingle();
+            if (data) {
+                setRequest((prev: any) => {
+                    if (prev && Number(prev.price) !== Number(data.price) && Number(data.price) > 0) {
+                        toast.success(`Tarifa acordada actualizada a $${Number(data.price).toFixed(2)} USD`, { icon: '💵' });
+                    }
+                    return data;
+                });
+            }
+        }, 3000);
+
         return () => {
             supabase.removeChannel(channel);
+            clearInterval(pollInterval);
         };
     }, [requestId]);
 
@@ -506,6 +524,19 @@ export default function TransportTracker() {
                     setIncomingOffer(null);
                 }
             })
+            .on('broadcast', { event: 'fare_updated' }, ({ payload }) => {
+                if (payload?.fare || payload?.price) {
+                    const newPrice = Number(payload.fare || payload.price);
+                    setRequest((prev: any) => prev ? ({
+                        ...prev,
+                        price: newPrice,
+                        total: newPrice,
+                        fare: newPrice,
+                        status: 'in_progress'
+                    }) : prev);
+                    toast.success(`¡Tarifa acordada actualizada a $${newPrice.toFixed(2)} USD!`, { icon: '💵' });
+                }
+            })
             .subscribe();
 
         return () => {
@@ -659,22 +690,43 @@ export default function TransportTracker() {
         setCancellingTrip(true);
         try {
             const isArriving = request.status === 'arriving';
+            const isQuickTransport = Boolean(
+                request.notes?.includes('Transporte Rápido') || 
+                (request as any).is_quick_transport || 
+                request.destination?.address?.includes('convenir')
+            );
             const numPrice = parseFloat(request.price || request.total || 0);
             const numComm = parseFloat(request.commission_amount || 0);
 
-            if (isArriving) {
+            // Audio 6: Si es Transporte Rápido y el conductor llegó pero el usuario cancela porque no acordaron tarifa,
+            // no se le cobra ninguna penalidad ($0) y se cierra automáticamente el servicio sin deudas.
+            if (isArriving && !isQuickTransport) {
                 const penaltyPrice = Math.round((numPrice * 0.5) * 100) / 100;
                 const penaltyCommission = Math.round((numComm * 0.5) * 100) / 100;
                 await supabase.from('transport_requests').update({
                     status: 'cancelled',
                     cancellation_penalty_applied: true,
                     price: penaltyPrice,
+                    total: penaltyPrice,
                     commission_amount: penaltyCommission,
                     cancellation_reason: 'Cancelado por cliente con chofer en sitio (penalidad 50%)',
                     cancelled_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 }).eq('id', requestId);
                 toast.error("Viaje cancelado con penalidad del 50% por cancelación con conductor en punto de partida.");
+            } else if (isQuickTransport) {
+                await supabase.from('transport_requests').update({
+                    status: 'cancelled',
+                    cancellation_penalty_applied: false,
+                    price: 0,
+                    total: 0,
+                    fare: 0,
+                    commission_amount: 0,
+                    cancellation_reason: 'Cancelado en punto de recogida (Transporte Rápido - Tarifa no acordada)',
+                    cancelled_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).eq('id', requestId);
+                toast.success("Solicitud de Transporte Rápido cancelada sin penalidad.");
             } else {
                 await supabase.from('transport_requests').update({
                     status: 'cancelled',
@@ -683,6 +735,18 @@ export default function TransportTracker() {
                     updated_at: new Date().toISOString()
                 }).eq('id', requestId);
                 toast.success("Viaje cancelado.");
+            }
+
+            // Notificar inmediatamente al canal del viaje para que la app del conductor se libere en tiempo real
+            try {
+                const cancelChan = supabase.channel(`call_${requestId}`);
+                cancelChan.send({
+                    type: 'broadcast',
+                    event: 'trip_cancelled',
+                    payload: { requestId, reason: isQuickTransport ? 'quick_transport_cancelled' : 'client_cancelled' }
+                });
+            } catch (broadcastErr) {
+                console.warn("Could not broadcast cancellation:", broadcastErr);
             }
 
             // If mandado, remove bids
@@ -1310,6 +1374,86 @@ export default function TransportTracker() {
                     </div>
                 )}
 
+                {/* ── ESTADO DEL PAGO & CONCILIACIÓN CON EL CONDUCTOR (Audio 2) ── */}
+                {request.status === 'completed' && (() => {
+                    const isPaymentConfirmed = request.payment_status === 'confirmed' || request.payment_status === 'paid';
+                    const amountUsd = parseFloat(request.price || request.total || 0).toFixed(2);
+                    const amountBs = (parseFloat(request.price || request.total || 0) * (bcvRate || 1)).toFixed(2);
+
+                    if (!isPaymentConfirmed) {
+                        return (
+                            <div className="bg-gradient-to-br from-amber-500/10 via-amber-50 to-orange-50 border-2 border-amber-400 rounded-3xl p-4.5 mb-4 shadow-md space-y-3 animate-in fade-in">
+                                <div className="flex items-start gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-sm font-black">
+                                        <AlertTriangle className="w-5 h-5 text-slate-950" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <div className="flex items-center justify-between">
+                                            <h3 className="text-sm font-black text-amber-950 leading-tight">
+                                                Pago Pendiente de Confirmación
+                                            </h3>
+                                            <span className="text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-mono shadow-xs">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
+                                                En espera
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-amber-900/90 font-medium mt-1 leading-relaxed">
+                                            El conductor aún debe confirmar la recepción del pago en su aplicación. Por favor, asegúrate de entregarle el efectivo o realizar el Pago Móvil.
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Montos Exactos */}
+                                <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-3 border border-amber-200/80 flex items-center justify-between shadow-xs">
+                                    <div>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Monto Total</span>
+                                        <span className="text-lg font-black text-slate-900">${amountUsd} USD</span>
+                                    </div>
+                                    {bcvRate > 0 && (
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-bold text-slate-400 block">En Bolívares (BCV)</span>
+                                            <span className="text-sm font-black text-emerald-600">{amountBs} Bs</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex items-center gap-2 text-[11px] font-bold text-amber-900 bg-amber-100/80 p-2.5 rounded-xl border border-amber-200/60">
+                                    <Clock className="w-4 h-4 shrink-0 text-amber-700 animate-spin" />
+                                    <span>Esperando confirmación del conductor en su app...</span>
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border-2 border-emerald-400 rounded-3xl p-4.5 mb-4 shadow-md space-y-3 animate-in fade-in">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm font-black">
+                                    <CheckCircle2 className="w-6 h-6 text-white" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-sm font-black text-emerald-950 leading-tight">
+                                        ¡Pago Confirmado por el Conductor!
+                                    </h3>
+                                    <p className="text-xs text-emerald-800 font-medium mt-0.5">
+                                        El conductor ha validado la recepción de tu pago. El ciclo del viaje ha concluido satisfactoriamente.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    localStorage.removeItem('active_transport_req_id');
+                                    navigate('/');
+                                }}
+                                className="w-full py-3 bg-slate-900 hover:bg-slate-800 active:scale-95 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
+                            >
+                                <span>Finalizar y Salir</span>
+                                <ArrowRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    );
+                })()}
+
                 {/* ── RATING SECTION ── */}
                 {request.status === 'completed' && !request.rating && !hasRated && (
                     <div className="bg-gradient-to-b from-indigo-50 to-white border border-indigo-100 rounded-2xl p-4 mb-4 shadow-sm">
@@ -1849,53 +1993,73 @@ export default function TransportTracker() {
                     </button>
                 )}
 
-                {/* Cancellation Modal with 50% penalty warning if arriving */}
-                {showCancelModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
-                        <div className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl space-y-3.5">
-                            <div className="flex items-center gap-2.5 text-red-600">
-                                <AlertTriangle className="w-6 h-6 shrink-0" />
-                                <h3 className="text-base font-black text-slate-900">¿Cancelar viaje?</h3>
-                            </div>
+                {/* Cancellation Modal with 50% penalty warning if arriving, or 0% penalty for quick transport */}
+                {showCancelModal && (() => {
+                    const isQuick = Boolean(
+                        request.notes?.includes('Transporte Rápido') || 
+                        (request as any).is_quick_transport || 
+                        request.destination?.address?.includes('convenir')
+                    );
+                    const isArriving = request.status === 'arriving';
 
-                            {request.status === 'arriving' ? (
-                                <div className="bg-red-50 border border-red-200 rounded-2xl p-3 space-y-1.5 text-xs text-red-900">
-                                    <p className="font-black text-red-700">⚠️ Conductor ya en el sitio</p>
-                                    <p className="text-[11px] text-red-800 leading-snug">
-                                        El conductor ya ha llegado al punto de recogida. Si confirmas la cancelación, se aplicará una penalidad del <b>50% (${(parseFloat(request.price || request.total || 0) * 0.5).toFixed(2)})</b> para compensar el gasto de traslado del conductor.
-                                    </p>
+                    return (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+                            <div className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl space-y-3.5">
+                                <div className="flex items-center gap-2.5 text-red-600">
+                                    <AlertTriangle className="w-6 h-6 shrink-0" />
+                                    <h3 className="text-base font-black text-slate-900">¿Cancelar viaje?</h3>
                                 </div>
-                            ) : (
-                                <p className="text-xs text-slate-600 font-medium">
-                                    ¿Estás seguro de que deseas cancelar este servicio? Se liberará la búsqueda o asignación.
-                                </p>
-                            )}
 
-                            <div className="flex gap-2 pt-1">
-                                <button
-                                    onClick={() => setShowCancelModal(false)}
-                                    disabled={cancellingTrip}
-                                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-black text-xs rounded-xl hover:bg-slate-200 active:scale-95 transition-all"
-                                >
-                                    Volver
-                                </button>
-                                <button
-                                    onClick={handleConfirmCancelTrip}
-                                    disabled={cancellingTrip}
-                                    className="flex-1 py-2.5 bg-red-600 text-white font-black text-xs rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-red-600/30"
-                                >
-                                    {cancellingTrip ? (
-                                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                    ) : request.status === 'arriving' ? (
-                                        'Confirmar (-50%)'
-                                    ) : (
-                                        'Confirmar'
-                                    )}
-                                </button>
+                                {isArriving && !isQuick ? (
+                                    <div className="bg-red-50 border border-red-200 rounded-2xl p-3 space-y-1.5 text-xs text-red-900">
+                                        <p className="font-black text-red-700">⚠️ Conductor ya en el sitio</p>
+                                        <p className="text-[11px] text-red-800 leading-snug">
+                                            El conductor ya ha llegado al punto de recogida. Si confirmas la cancelación, se aplicará una penalidad del <b>50% (${(parseFloat(request.price || request.total || 0) * 0.5).toFixed(2)})</b> para compensar el gasto de traslado del conductor.
+                                        </p>
+                                    </div>
+                                ) : isQuick ? (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-1.5 text-xs text-amber-950">
+                                        <p className="font-black text-amber-800 flex items-center gap-1">
+                                            ⚡ Transporte Rápido (Sin penalidad)
+                                        </p>
+                                        <p className="text-[11px] text-amber-900 leading-snug">
+                                            Puedes cancelar sin costo adicional ($0.00). Al tratarse de un Transporte Rápido donde no se acordó la tarifa final, no se cobrará penalidad alguna.
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <p className="text-xs text-slate-600 font-medium">
+                                        ¿Estás seguro de que deseas cancelar este servicio? Se liberará la búsqueda o asignación.
+                                    </p>
+                                )}
+
+                                <div className="flex gap-2 pt-1">
+                                    <button
+                                        onClick={() => setShowCancelModal(false)}
+                                        disabled={cancellingTrip}
+                                        className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-black text-xs rounded-xl hover:bg-slate-200 active:scale-95 transition-all"
+                                    >
+                                        Volver
+                                    </button>
+                                    <button
+                                        onClick={handleConfirmCancelTrip}
+                                        disabled={cancellingTrip}
+                                        className="flex-1 py-2.5 bg-red-600 text-white font-black text-xs rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-md shadow-red-600/30"
+                                    >
+                                        {cancellingTrip ? (
+                                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        ) : isArriving && !isQuick ? (
+                                            'Confirmar (-50%)'
+                                        ) : isQuick ? (
+                                            'Confirmar ($0)'
+                                        ) : (
+                                            'Confirmar'
+                                        )}
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {/* Vehicle Photo Modal */}
                 {showVehicleModal && (() => {

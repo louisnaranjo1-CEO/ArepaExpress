@@ -182,6 +182,7 @@ export default function Taxi() {
     const [packageDescription, setPackageDescription] = useState('');
     const [recipientName, setRecipientName] = useState('');
     const [recipientPhone, setRecipientPhone] = useState('');
+    const [recipientPhoneDigits, setRecipientPhoneDigits] = useState('');
     const [driverNotes, setDriverNotes] = useState('');
     const [showNotesModal, setShowNotesModal] = useState(false);
     // Transporte Rápido (1 Toque)
@@ -1507,8 +1508,9 @@ export default function Taxi() {
                 toast.error("Por favor ingresa el nombre de quién recibe (Destinatario)");
                 return;
             }
-            if (!recipientPhone.trim()) {
-                toast.error("Por favor ingresa el teléfono del destinatario");
+            const rawDigits = (recipientPhoneDigits || recipientPhone).replace(/\D/g, '');
+            if (!rawDigits || (rawDigits.startsWith('58') ? rawDigits.slice(2).length < 10 : rawDigits.length < 10)) {
+                toast.error("Por favor ingresa un número de teléfono válido de 10 dígitos (Ej: 412 123 4567)");
                 return;
             }
             if (!packageDescription.trim()) {
@@ -1677,7 +1679,8 @@ export default function Taxi() {
 
         } catch (error: any) {
             console.error("Error creating transport request:", error);
-            toast.error("No se pudo procesar la solicitud. Revisa tu conexión.");
+            const errMsg = error?.message || error?.error_description || "No se pudo procesar la solicitud. Verifica los datos e intenta nuevamente.";
+            toast.error(errMsg);
             setStep('vehicle');
         } finally {
             setIsUploading(false);
@@ -3158,13 +3161,28 @@ export default function Taxi() {
                                                 onChange={(e) => setRecipientName(e.target.value)}
                                                 className="w-full bg-white border border-blue-200 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400"
                                             />
-                                            <input
-                                                type="tel"
-                                                placeholder="Teléfono del destinatario (Ej: 04121234567) *"
-                                                value={recipientPhone}
-                                                onChange={(e) => setRecipientPhone(e.target.value)}
-                                                className="w-full bg-white border border-blue-200 px-3 py-2.5 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-blue-400 placeholder:text-slate-400 font-mono"
-                                            />
+                                            {/* Locked +58 country code input */}
+                                            <div className="flex items-center w-full bg-white border border-blue-200 rounded-xl overflow-hidden focus-within:border-blue-400 focus-within:ring-2 focus-within:ring-blue-100 transition-all">
+                                                <div className="flex items-center gap-1.5 bg-blue-100/70 border-r border-blue-200 px-3 py-2.5 text-xs font-black text-blue-950 shrink-0 select-none">
+                                                    <span>🇻🇪</span>
+                                                    <span className="font-mono text-blue-900 font-black">+58</span>
+                                                </div>
+                                                <input
+                                                    type="tel"
+                                                    placeholder="412 1234567 (10 dígitos) *"
+                                                    value={recipientPhoneDigits}
+                                                    onChange={(e) => {
+                                                        let digits = e.target.value.replace(/\D/g, '');
+                                                        if (digits.startsWith('58')) digits = digits.slice(2);
+                                                        if (digits.startsWith('0')) digits = digits.slice(1);
+                                                        digits = digits.slice(0, 10);
+                                                        setRecipientPhoneDigits(digits);
+                                                        setRecipientPhone(digits ? `+58${digits}` : '');
+                                                    }}
+                                                    maxLength={11}
+                                                    className="w-full bg-transparent px-3 py-2.5 text-xs font-bold text-slate-800 outline-none placeholder:text-slate-400 font-mono"
+                                                />
+                                            </div>
                                         </div>
                                     </div>
 

@@ -162,13 +162,16 @@ export default function RideChat({
 
     const chatPath = `transport_requests/${requestId}`;
 
-    // 48-Hour Retention Logic: Chat stays COMPLETELY OPEN for messages/media/voice notes for 48 hours post-completion
-    const isCompleted = requestStatus === 'completed';
-    const completedTimestamp = completedAt ? new Date(completedAt).getTime() : Date.now();
-    const hoursSinceCompletion = isCompleted ? (Date.now() - completedTimestamp) / (1000 * 60 * 60) : 0;
-    const isExpired = isCompleted && hoursSinceCompletion > 48;
-    const isChatLocked = readOnly || isExpired;
-    const hoursRemaining = Math.max(0, Math.ceil(48 - hoursSinceCompletion));
+    // Emergency / Lost Item Chat State (Audio 3)
+    const emergencyActivatedMsg = messages.find(m => m.action === 'lost_item_emergency');
+    const emergencyResolvedMsg = messages.find(m => m.action === 'lost_item_resolved');
+    const isEmergencyActive = Boolean(emergencyActivatedMsg && !emergencyResolvedMsg);
+    const isEmergencyExhausted = Boolean(emergencyResolvedMsg);
+
+    // Audio 3: En viajes/pedidos completados el chat está cerrado por defecto (modo solo lectura),
+    // a menos que se active la emergencia por objeto olvidado (que solo puede usarse 1 vez).
+    const isCompleted = requestStatus === 'completed' || requestStatus === 'delivered';
+    const isChatLocked = readOnly || (isCompleted && !isEmergencyActive);
 
     // Vehicle Category Meta
     const getVehicleMeta = () => {
@@ -496,6 +499,53 @@ export default function RideChat({
         }
     };
 
+    // Reactivar chat temporal por objeto olvidado o emergencia (Audio 3)
+    const handleReactivateEmergency = async () => {
+        if (!requestId) return;
+        try {
+            const emergencyText = isDriver
+                ? '🚨 ¡EMERGENCIA ACTIVADA! El piloto ha reabierto el chat para coordinar un objeto olvidado o novedad.'
+                : '🚨 ¡EMERGENCIA / OBJETO OLVIDADO! El cliente ha reactivado el chat para coordinar la recuperación de un objeto o novedad del servicio.';
+            
+            await supabase.from('messages').insert({
+                order_id: requestId,
+                chat_path: chatPath,
+                text: emergencyText,
+                sender_id: user?.uid || (user as any)?.id || 'client',
+                sender_name: isDriver ? 'Conductor' : (user?.displayName || 'Cliente'),
+                sender_role: isDriver ? 'driver' : 'client',
+                action: 'lost_item_emergency',
+                created_at: new Date().toISOString()
+            });
+            toast.success("¡Chat reactivado por emergencia! Puedes enviar mensajes, audios o llamar.", { icon: '🚨' });
+        } catch (e) {
+            console.error(e);
+            toast.error("No se pudo reactivar la emergencia");
+        }
+    };
+
+    // Finalizar emergencia definitivamente (Audio 3)
+    const handleResolveEmergency = async () => {
+        if (!requestId) return;
+        if (!window.confirm("¿Deseas finalizar la emergencia? Una vez finalizada, el chat se cerrará definitivamente en modo solo lectura.")) return;
+        try {
+            await supabase.from('messages').insert({
+                order_id: requestId,
+                chat_path: chatPath,
+                text: '✅ EMERGENCIA FINALIZADA. El caso ha sido resuelto y el chat ha quedado cerrado definitivamente.',
+                sender_id: user?.uid || (user as any)?.id || 'client',
+                sender_name: isDriver ? 'Conductor' : (user?.displayName || 'Cliente'),
+                sender_role: isDriver ? 'driver' : 'client',
+                action: 'lost_item_resolved',
+                created_at: new Date().toISOString()
+            });
+            toast.success("Emergencia finalizada. Chat cerrado definitivamente.", { icon: '🔒' });
+        } catch (e) {
+            console.error(e);
+            toast.error("Error al finalizar emergencia");
+        }
+    };
+
     return (
         <div className="flex flex-col h-full bg-slate-100 relative pointer-events-auto select-none">
             {/* Embedded styles for vehicle track animation */}
@@ -657,21 +707,32 @@ export default function RideChat({
                 </div>
             </div>
 
-            {/* 48-Hour Retention Banner */}
-            {isCompleted && (
-                <div className={`p-2.5 px-3 border-b text-xs flex items-center gap-2 ${
-                    isExpired 
-                        ? 'bg-rose-50 border-rose-200 text-rose-800' 
-                        : 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                }`}>
-                    <Clock className={`w-4 h-4 shrink-0 ${isExpired ? 'text-rose-600' : 'text-emerald-600'}`} />
+            {/* Banner de Emergencia / Objeto Olvidado o Modo Solo Lectura (Audio 3) */}
+            {isEmergencyActive ? (
+                <div className="bg-red-600 text-white p-3 px-4 flex items-center justify-between gap-3 shadow-md border-b-2 border-red-700 animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+                        <div className="truncate">
+                            <p className="text-xs font-black uppercase tracking-wider truncate">🚨 Emergencia Activa: Objeto Olvidado</p>
+                            <p className="text-[10px] text-white/90 font-medium leading-tight">Chat, audios y llamadas habilitados</p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleResolveEmergency}
+                        className="px-3 py-1.5 bg-white hover:bg-slate-100 text-red-700 font-black text-xs rounded-xl shadow-sm shrink-0 active:scale-95 transition-all"
+                    >
+                        Finalizar emergencia
+                    </button>
+                </div>
+            ) : isCompleted && (
+                <div className="p-2.5 px-3 border-b text-xs flex items-center gap-2 bg-slate-100 border-slate-200 text-slate-700">
+                    <Lock className="w-4 h-4 shrink-0 text-slate-500" />
                     <p className="text-[11px] font-medium leading-tight">
-                        {isExpired ? (
-                            <span>El periodo de soporte activo de 48 horas ha concluido. (Modo solo lectura de respaldo)</span>
+                        {isEmergencyExhausted ? (
+                            <span>Caso cerrado definitivamente tras resolver la emergencia reportada.</span>
                         ) : (
-                            <span>
-                                <strong>Soporte Activo Post-Viaje:</strong> Chat abierto para mensajes, fotos y notas de voz por <strong>{hoursRemaining} horas más</strong> ante cualquier duda u objeto olvidado.
-                            </span>
+                            <span>Servicio completado. El chat está cerrado en modo solo lectura de respaldo.</span>
                         )}
                     </p>
                 </div>
@@ -763,9 +824,24 @@ export default function RideChat({
 
             {/* Input Bar - Mobile Safe */}
             {isChatLocked ? (
-                <div className="p-3 bg-slate-200/80 border-t border-slate-300 text-center flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
-                    <Lock className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Chat cerrado: El periodo de soporte y comunicación de 48 horas ha concluido.</span>
+                <div className="p-3 bg-slate-100 border-t border-slate-200 text-center space-y-2">
+                    <div className="flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
+                        <Lock className="w-3.5 h-3.5 text-slate-500" />
+                        <span>
+                            {isEmergencyExhausted 
+                                ? "La emergencia ha sido finalizada y el chat ha concluido definitivamente." 
+                                : "Este viaje ha concluido. El chat está cerrado."}
+                        </span>
+                    </div>
+                    {!isEmergencyExhausted && (
+                        <button
+                            type="button"
+                            onClick={handleReactivateEmergency}
+                            className="w-full py-2.5 bg-amber-400 hover:bg-amber-500 active:scale-95 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+                        >
+                            <span>📦 ¿Olvidaste algo? Reactivar chat de emergencia</span>
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="p-2 sm:p-3 bg-white border-t border-slate-200 sticky bottom-0 z-20">

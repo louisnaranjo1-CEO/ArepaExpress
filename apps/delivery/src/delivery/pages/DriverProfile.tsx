@@ -741,6 +741,102 @@ export default function DriverProfile() {
         }
     };
 
+    // Delete vehicle from fleet (Audio 7)
+    const handleDeleteVehicle = async (vehToDelete?: any) => {
+        const target = vehToDelete || editingVehicle;
+        if (!user || !target) return;
+
+        const confirmMsg = `¿Estás seguro de que deseas eliminar este vehículo (${target.brand || ''} ${target.model || ''} - ${target.plate || ''}) de tu flota?`;
+        if (!window.confirm(confirmMsg)) return;
+
+        setLoading(true);
+        try {
+            const currentList = registeredVehicles.length > 0 ? registeredVehicles : (driverProfile?.registered_vehicles || []);
+            const updatedList = currentList.filter((v: any) => v.id !== target.id);
+
+            const isDeletedActive = target.id === activeVehicleId || target.is_active;
+
+            const auditEntry = {
+                id: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+                vehicle_id: target.id,
+                action: 'vehicle_deleted',
+                previous_data: {
+                    brand: target.brand,
+                    model: target.model,
+                    plate: target.plate,
+                    year: target.year,
+                    color: target.color
+                },
+                new_data: null
+            };
+
+            const currentHistory = Array.isArray(driverProfile?.vehicle_history) ? driverProfile.vehicle_history : [];
+            const updatedHistory = [auditEntry, ...currentHistory];
+
+            const updatePayload: any = {
+                registered_vehicles: updatedList,
+                vehicle_history: updatedHistory,
+                updated_at: new Date().toISOString()
+            };
+
+            // If the deleted vehicle was the active one, pick the next available vehicle if any
+            if (isDeletedActive) {
+                if (updatedList.length > 0) {
+                    const nextActive = { ...updatedList[0], is_active: true };
+                    updatedList[0] = nextActive;
+                    setActiveVehicleId(nextActive.id);
+                    updatePayload.registered_vehicles = updatedList;
+                    updatePayload.vehicle_brand = nextActive.brand || '';
+                    updatePayload.vehicle_model = nextActive.model || '';
+                    updatePayload.vehicle_year = nextActive.year || '';
+                    updatePayload.vehicle_color = nextActive.color || '';
+                    updatePayload.vehicle_plate = nextActive.plate || '';
+                    updatePayload.vehicle_type = nextActive.type || 'moto';
+                    updatePayload.has_ac = Boolean(nextActive.has_ac);
+                    updatePayload.has_thermal_bag = Boolean(nextActive.has_thermal_bag);
+                    updatePayload.is_comfort_eligible = Boolean(nextActive.is_comfort);
+                    if (nextActive.photo_url) {
+                        updatePayload.vehicle_image_url = nextActive.photo_url;
+                    }
+                } else {
+                    setActiveVehicleId(null);
+                    updatePayload.vehicle_brand = '';
+                    updatePayload.vehicle_model = '';
+                    updatePayload.vehicle_plate = '';
+                }
+            }
+
+            const { error: updErr } = await supabase.from('drivers').update(updatePayload).eq('id', user.uid);
+            if (updErr) throw updErr;
+
+            try {
+                await supabase.from('driver_vehicle_history').insert({
+                    driver_id: user.uid,
+                    vehicle_id: target.id,
+                    previous_data: auditEntry.previous_data,
+                    new_data: { action: 'deleted' },
+                    changed_at: new Date().toISOString()
+                });
+            } catch(e) {}
+
+            setRegisteredVehicles(updatedList);
+            setDriverProfile((prev: any) => ({
+                ...prev,
+                ...updatePayload
+            }));
+
+            setShowEditVehicleModal(false);
+            setEditingVehicle(null);
+            alert('Vehículo eliminado de tu flota correctamente.');
+        } catch (err: any) {
+            console.error("Error deleting vehicle:", err);
+            alert("No se pudo eliminar el vehículo: " + (err.message || 'Error'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleLogout = async () => {
         try {
             await supabase.auth.signOut();
@@ -1167,6 +1263,14 @@ export default function DriverProfile() {
                                             <Edit2 className="w-3.5 h-3.5" />
                                             <span>Editar</span>
                                         </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteVehicle(veh)}
+                                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition-all active:scale-95 border border-red-100"
+                                            title="Eliminar este vehículo"
+                                        >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
                                         {isCurrent ? (
                                             <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 font-black text-[11px] rounded-xl border border-emerald-200">
                                                 Activo
@@ -1503,8 +1607,18 @@ export default function DriverProfile() {
                                 <div className="pt-2 border-t border-slate-100 flex gap-2">
                                     <button
                                         type="button"
+                                        onClick={() => handleDeleteVehicle()}
+                                        disabled={loading}
+                                        className="px-3.5 py-3 bg-red-50 hover:bg-red-100 text-red-600 font-black rounded-xl text-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-red-200"
+                                        title="Eliminar este vehículo de tu flota"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                        <span>Eliminar</span>
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => { setShowEditVehicleModal(false); setEditingVehicle(null); }}
-                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs"
+                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-200 transition-colors"
                                     >
                                         Cancelar
                                     </button>
@@ -1514,7 +1628,7 @@ export default function DriverProfile() {
                                         className="flex-1 py-3 bg-primary text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5"
                                     >
                                         <Save className="w-4 h-4" />
-                                        <span>Guardar Cambios</span>
+                                        <span>Guardar</span>
                                     </button>
                                 </div>
                             </form>

@@ -643,6 +643,16 @@ export default function OrdersRadar() {
                     setIncomingOffer(null);
                 }
             })
+            .on('broadcast', { event: 'trip_cancelled' }, () => {
+                setActiveTransport(null);
+                prevActiveTransportId.current = null;
+                setQuickFareInput('');
+                setQuickSelectedDestination(null);
+                setShowQuickDestinationPicker(false);
+                setShowChat(false);
+                setShowIncomingCall(false);
+                toast.info("El pasajero canceló la solicitud. Servicio cerrado automáticamente.", { icon: 'ℹ️', duration: 5000 });
+            })
             .subscribe();
 
         return () => {
@@ -1231,6 +1241,22 @@ export default function OrdersRadar() {
 
             if (error) throw error;
 
+            // Broadcast immediate fare update to client tracker
+            try {
+                const notifyChannel = supabase.channel(`call_${activeTransport.id}`);
+                notifyChannel.subscribe((subStatus) => {
+                    if (subStatus === 'SUBSCRIBED') {
+                        notifyChannel.send({
+                            type: 'broadcast',
+                            event: 'fare_updated',
+                            payload: { fare: fareNum, price: fareNum, total: fareNum }
+                        });
+                    }
+                });
+            } catch (bErr) {
+                console.warn("Could not broadcast fare_updated event:", bErr);
+            }
+
             setActiveTransport((prev: any) => ({
                 ...prev,
                 ...updatePayload
@@ -1465,6 +1491,7 @@ export default function OrdersRadar() {
                     myId={user!.uid}
                     remoteId={activeTransport.userId || activeTransport.user_id}
                     remoteDisplayName={activeTransport.userName || activeTransport.passenger_name || 'Pasajero'}
+                    remotePhone={activeTransport.user_phone || activeTransport.userPhone || activeTransport.passenger_phone || activeTransport.client_phone}
                     role="receiver"
                     initialOffer={incomingOffer}
                     onClose={() => {
@@ -1480,6 +1507,7 @@ export default function OrdersRadar() {
                     myId={user!.uid}
                     remoteId={currentActiveItem.userId || currentActiveItem.user_id}
                     remoteDisplayName={currentActiveItem.userName || currentActiveItem.passenger_name || 'Pasajero'}
+                    remotePhone={currentActiveItem.user_phone || currentActiveItem.userPhone || currentActiveItem.passenger_phone || currentActiveItem.client_phone}
                     role="caller"
                     onClose={() => setShowOutgoingCall(false)}
                 />

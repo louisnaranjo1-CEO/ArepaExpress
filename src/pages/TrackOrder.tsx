@@ -1035,6 +1035,31 @@ export default function TrackOrder() {
 
     const pagoMovilMethod = paymentMethods.find((m: any) => m.type === 'Pago Móvil') || null;
 
+    const originCoords = React.useMemo(() => {
+        if (transportRequest?.origin) {
+            const lat = Number(transportRequest.origin.lat ?? transportRequest.origin.latitude ?? transportRequest.origin.coords?.lat);
+            const lng = Number(transportRequest.origin.lng ?? transportRequest.origin.longitude ?? transportRequest.origin.coords?.lng);
+            if (!isNaN(lat) && !isNaN(lng) && lat !== 0) return { lat, lng };
+        }
+        const rLat = Number(restaurant?.location?.coords?.lat ?? restaurant?.lat ?? restaurant?.latitude ?? restaurant?.location?.lat);
+        const rLng = Number(restaurant?.location?.coords?.lng ?? restaurant?.lng ?? restaurant?.longitude ?? restaurant?.location?.lng);
+        if (!isNaN(rLat) && !isNaN(rLng) && rLat !== 0) return { lat: rLat, lng: rLng };
+        if (order?.pickup_coords?.lat && order?.pickup_coords?.lng) return { lat: Number(order.pickup_coords.lat), lng: Number(order.pickup_coords.lng) };
+        return { lat: 8.9242, lng: -67.4293 };
+    }, [transportRequest?.origin, restaurant, order]);
+
+    const destCoords = React.useMemo(() => {
+        if (transportRequest?.destination) {
+            const lat = Number(transportRequest.destination.lat ?? transportRequest.destination.latitude ?? transportRequest.destination.coords?.lat);
+            const lng = Number(transportRequest.destination.lng ?? transportRequest.destination.longitude ?? transportRequest.destination.coords?.lng);
+            if (!isNaN(lat) && !isNaN(lng) && lat !== 0) return { lat, lng };
+        }
+        const dLat = Number(order?.deliveryCoords?.lat ?? order?.address?.coords?.lat ?? order?.address?.latitude ?? order?.destination?.lat ?? userLocation?.lat);
+        const dLng = Number(order?.deliveryCoords?.lng ?? order?.address?.coords?.lng ?? order?.address?.longitude ?? order?.destination?.lng ?? userLocation?.lng);
+        if (!isNaN(dLat) && !isNaN(dLng) && dLat !== 0) return { lat: dLat, lng: dLng };
+        return { lat: originCoords.lat + 0.005, lng: originCoords.lng + 0.005 };
+    }, [transportRequest?.destination, order, userLocation, originCoords]);
+
     const calculatedDistance = calculateDistanceKm(originCoords.lat, originCoords.lng, destCoords.lat, destCoords.lng) || Number(order?.distance || 2.5);
 
     const mapCenter = (driverLocation && !isNaN(driverLocation.lat))

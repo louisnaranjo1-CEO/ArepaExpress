@@ -4,7 +4,7 @@ import {
   Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
-  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -97,6 +97,41 @@ export default function OrderChatWindow({
   const [clientSelectedCategory, setClientSelectedCategory] = useState<'moto' | 'carro' | 'confort'>('moto');
   const [clientReferenceNote, setClientReferenceNote] = useState('');
   const [submittingClientDispatch, setSubmittingClientDispatch] = useState(false);
+
+  // Emergency / Lost item reactivation state for completed orders (Audio 3)
+  const isCompleted = ['delivered', 'completed', 'entregado', 'finalizado'].includes(liveOrder?.status || orderInfo?.status);
+  const emergencyActivatedMsg = messages.find((m: any) => m.action === 'lost_item_emergency' || m.text?.includes('EMERGENCIA / OBJETO OLVIDADO'));
+  const emergencyResolvedMsg = messages.find((m: any) => m.action === 'lost_item_resolved' || m.text?.includes('EMERGENCIA FINALIZADA'));
+  const isEmergencyActive = Boolean(emergencyActivatedMsg && !emergencyResolvedMsg);
+  const isEmergencyExhausted = Boolean(emergencyResolvedMsg);
+  const isChatLocked = isCompleted && !isEmergencyActive;
+
+  const handleReactivateEmergency = async () => {
+    try {
+      await handleSendMessage(
+        '🚨 ¡EMERGENCIA / OBJETO OLVIDADO! El cliente ha reactivado el chat para reportar un objeto olvidado o novedad urgente de su pedido.',
+        undefined,
+        'lost_item_emergency' as any
+      );
+      toast.success("¡Chat reactivado por emergencia! Puedes comunicarte con el comercio o repartidor.", { icon: '🚨' });
+    } catch (e) {
+      toast.error("No se pudo reactivar el chat");
+    }
+  };
+
+  const handleResolveEmergency = async () => {
+    if (!window.confirm("¿Deseas finalizar la emergencia? Una vez finalizada, el chat se cerrará definitivamente en modo solo lectura.")) return;
+    try {
+      await handleSendMessage(
+        '✅ EMERGENCIA FINALIZADA. El caso ha sido resuelto y el chat ha quedado cerrado definitivamente.',
+        undefined,
+        'lost_item_resolved' as any
+      );
+      toast.success("Emergencia finalizada con éxito. Chat cerrado.", { icon: '🔒' });
+    } catch (e) {
+      toast.error("No se pudo finalizar la emergencia");
+    }
+  };
 
   const isStoreRole = currentUserRole === 'restaurant' || (currentUserRole as string) === 'cashier';
 
@@ -1153,6 +1188,37 @@ export default function OrderChatWindow({
         </div>
       </div>
 
+      {/* Banner de Emergencia / Objeto Olvidado o Modo Solo Lectura (Audio 3) */}
+      {isEmergencyActive ? (
+        <div className="bg-red-600 text-white p-3 px-4 flex items-center justify-between gap-3 shadow-md border-b-2 border-red-700 animate-in slide-in-from-top-2 shrink-0 z-20">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+            <div className="truncate">
+              <p className="text-xs font-black uppercase tracking-wider truncate">🚨 Emergencia Activa: Objeto Olvidado</p>
+              <p className="text-[10px] text-white/90 font-medium leading-tight">Chat desbloqueado para resolver la novedad</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleResolveEmergency}
+            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-red-700 font-black text-xs rounded-xl shadow-sm shrink-0 active:scale-95 transition-all"
+          >
+            Finalizar emergencia
+          </button>
+        </div>
+      ) : isCompleted && (
+        <div className="p-2.5 px-3 border-b text-xs flex items-center gap-2 bg-slate-100 border-slate-200 text-slate-700 shrink-0">
+          <Lock className="w-4 h-4 shrink-0 text-slate-500" />
+          <p className="text-[11px] font-medium leading-tight">
+            {isEmergencyExhausted ? (
+              <span>Emergencia resuelta. El chat se encuentra cerrado definitivamente.</span>
+            ) : (
+              <span>Pedido completado. El chat está cerrado en modo solo lectura de respaldo.</span>
+            )}
+          </p>
+        </div>
+      )}
+
       {/* Countdown Timer Banner */}
       {prepCountdownStr && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-black shadow-md z-10 shrink-0 animate-in slide-in-from-top-2">
@@ -1517,10 +1583,30 @@ export default function OrderChatWindow({
 
       {/* Input area */}
       <div className="p-3 bg-white border-t border-slate-200 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {isRecordingVoice ? (
+        {isChatLocked ? (
+          <div className="p-3.5 bg-slate-100 border border-slate-200 rounded-2xl text-center space-y-2">
+            <div className="flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>
+                {isEmergencyExhausted 
+                  ? "La emergencia ha sido finalizada y el chat ha concluido definitivamente." 
+                  : "Este pedido ha sido entregado. El chat se encuentra en modo solo lectura."}
+              </span>
+            </div>
+            {!isEmergencyExhausted && currentUserRole === 'client' && (
+              <button
+                type="button"
+                onClick={handleReactivateEmergency}
+                className="w-full py-2.5 bg-amber-400 hover:bg-amber-500 active:scale-95 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+              >
+                <span>📦 ¿Olvidaste algo? Reactivar chat de emergencia</span>
+              </button>
+            )}
+          </div>
+        ) : isRecordingVoice ? (
           <div className="flex items-center justify-between gap-3 bg-red-50 border-2 border-red-300 p-2.5 rounded-2xl animate-in fade-in">
             <div className="flex items-center gap-2.5">
-              <span className="w-3 h-3 rounded-full bg-red-600 animate-ping"></span>
+              <span className="w-3.5 h-3.5 rounded-full bg-red-600 animate-ping"></span>
               <span className="text-xs font-black text-red-700 font-mono">
                 Grabando nota de voz ({recordingSeconds}s)...
               </span>

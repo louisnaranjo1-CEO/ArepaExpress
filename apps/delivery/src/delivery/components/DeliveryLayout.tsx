@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Compass, DollarSign, User, Trophy } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { driversApi } from '../../lib/api';
@@ -16,6 +16,8 @@ interface DeliveryLayoutProps {
 export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     const { user } = useAuth();
     const { branding } = useBranding();
+    const location = useLocation();
+    const isAchievements = location.pathname === '/achievements';
     const [driverStatus, setDriverStatus] = useState<AvailabilityStatus>('offline');
     const [updating, setUpdating] = useState(false);
     const [showPicker, setShowPicker] = useState(false);
@@ -158,7 +160,7 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     ];
 
     return (
-        <div className="flex flex-col h-[100dvh] bg-slate-50 w-full max-w-md mx-auto relative overflow-hidden shadow-2xl">
+        <div className={`flex flex-col h-[100dvh] ${isAchievements ? 'bg-slate-950' : 'bg-slate-50'} w-full max-w-md mx-auto relative overflow-hidden shadow-2xl`}>
             {/* Cabecera Fija con Safe Area para Móviles */}
             <header className="bg-secondary text-white px-4 pt-[calc(env(safe-area-inset-top,0px)+12px)] pb-3.5 flex items-center justify-between shadow-md z-[60] shrink-0">
                 <div className="flex items-center gap-2">
@@ -249,20 +251,21 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             )}
 
             {/* Contenido Principal (Scrollable) */}
-            <main className="flex-1 overflow-y-auto min-h-0 pt-3 px-3.5 sm:px-4 pb-4">
+            <main className={`flex-1 overflow-y-auto min-h-0 ${isAchievements ? 'p-0 bg-slate-950' : 'pt-3 px-3.5 sm:px-4 pb-4'}`}>
                 {children}
             </main>
 
             {/* Bottom Navigation Bar con Safe Area */}
-            <nav className="shrink-0 w-full bg-white border-t border-slate-200 px-6 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] flex justify-between items-center z-20 shadow-lg">
+            <nav className={`shrink-0 w-full ${isAchievements ? 'bg-slate-950/95 backdrop-blur-md border-t border-slate-800' : 'bg-white border-t border-slate-200'} px-6 pt-2 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] flex justify-between items-center z-20 shadow-lg`}>
                 {navItems.map((item) => (
                     <NavLink
                         key={item.path}
                         to={item.path}
                         className={({ isActive }) =>
-                            `flex flex-col items-center gap-1 min-w-[64px] transition-all ${isActive
-                                ? 'text-slate-900'
-                                : 'text-slate-400 hover:text-slate-600'
+                            `flex flex-col items-center gap-1 min-w-[64px] transition-all ${
+                                isActive
+                                    ? isAchievements ? 'text-amber-400 font-black' : 'text-slate-900 font-black'
+                                    : isAchievements ? 'text-slate-500 hover:text-slate-300' : 'text-slate-400 hover:text-slate-600'
                             }`
                         }
                     >

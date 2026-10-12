@@ -4,7 +4,7 @@ import {
   Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
-  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet, Lock
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -98,7 +98,83 @@ export default function OrderChatWindow({
   const [clientReferenceNote, setClientReferenceNote] = useState('');
   const [submittingClientDispatch, setSubmittingClientDispatch] = useState(false);
 
+  // Emergency / Lost item reactivation state for completed orders (Audio 3)
+  const isCompleted = ['delivered', 'completed', 'entregado', 'finalizado'].includes(liveOrder?.status || orderInfo?.status);
+  const emergencyActivatedMsg = messages.find((m: any) => m.action === 'lost_item_emergency' || m.text?.includes('EMERGENCIA / OBJETO OLVIDADO'));
+  const emergencyResolvedMsg = messages.find((m: any) => m.action === 'lost_item_resolved' || m.text?.includes('EMERGENCIA FINALIZADA'));
+  const isEmergencyActive = Boolean(emergencyActivatedMsg && !emergencyResolvedMsg);
+  const isEmergencyExhausted = Boolean(emergencyResolvedMsg);
+  const isChatLocked = isCompleted && !isEmergencyActive;
+
+  const handleReactivateEmergency = async () => {
+    try {
+      await handleSendMessage(
+        '🚨 ¡EMERGENCIA / OBJETO OLVIDADO! El cliente ha reactivado el chat para reportar un objeto olvidado o novedad urgente de su pedido.',
+        undefined,
+        'lost_item_emergency' as any
+      );
+      toast.success("¡Chat reactivado por emergencia! Puedes comunicarte con el comercio o repartidor.", { icon: '🚨' });
+    } catch (e) {
+      toast.error("No se pudo reactivar el chat");
+    }
+  };
+
+  const handleResolveEmergency = async () => {
+    if (!window.confirm("¿Deseas finalizar la emergencia? Una vez finalizada, el chat se cerrará definitivamente en modo solo lectura.")) return;
+    try {
+      await handleSendMessage(
+        '✅ EMERGENCIA FINALIZADA. El caso ha sido resuelto y el chat ha quedado cerrado definitivamente.',
+        undefined,
+        'lost_item_resolved' as any
+      );
+      toast.success("Emergencia finalizada con éxito. Chat cerrado.", { icon: '🔒' });
+    } catch (e) {
+      toast.error("No se pudo finalizar la emergencia");
+    }
+  };
+
   const isStoreRole = currentUserRole === 'restaurant' || (currentUserRole as string) === 'cashier';
+
+  // Bidirectional audio alert & haptic feedback (Fase 2.2)
+  const playNotificationChime = (type: 'message' | 'enter' = 'message') => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      if (type === 'enter') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, now); // D5
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      } else {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(784, now); // G5
+        osc.frequency.setValueAtTime(1046.5, now + 0.08); // C6
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      }
+
+      try {
+        if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+      } catch (_) {}
+    } catch (e) {
+      console.debug('Notification chime silent:', e);
+    }
+  };
 
   // Fetch BCV Rate
   useEffect(() => {
@@ -235,6 +311,7 @@ export default function OrderChatWindow({
     };
 
     fetchMessages();
+    playNotificationChime('enter');
 
     const channelName = `chat_${orderId || customCollectionPath || 'default'}`;
     const filterField = customCollectionPath ? 'chat_path' : 'order_id';
@@ -246,8 +323,14 @@ export default function OrderChatWindow({
         schema: 'public',
         table: 'messages',
         filter: `${filterField}=eq.${filterVal}`
-      }, () => {
+      }, (payload) => {
         fetchMessages();
+        if (payload?.new) {
+          const newMsg = payload.new as any;
+          if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
+            playNotificationChime('message');
+          }
+        }
       })
       .subscribe();
 
@@ -843,12 +926,14 @@ export default function OrderChatWindow({
     try {
       await supabase.from('orders').update({
         status: 'awaiting_payment',
+        stock_confirmed: true,
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
-      setLiveOrder((prev: any) => ({ ...prev, status: 'awaiting_payment' }));
+      setLiveOrder((prev: any) => ({ ...prev, status: 'awaiting_payment', stock_confirmed: true }));
 
       await handleSendMessage("✅ *STOCK CONFIRMADO POR EL COMERCIO:*\nTodos los productos de tu pedido están disponibles y apartados. Puedes proceder con el pago con total tranquilidad.");
+      await handleSendPagoMovilInfo();
       toast.success("Stock confirmado al cliente.");
     } catch (e) {
       console.error(e);
@@ -1103,6 +1188,37 @@ export default function OrderChatWindow({
         </div>
       </div>
 
+      {/* Banner de Emergencia / Objeto Olvidado o Modo Solo Lectura (Audio 3) */}
+      {isEmergencyActive ? (
+        <div className="bg-red-600 text-white p-3 px-4 flex items-center justify-between gap-3 shadow-md border-b-2 border-red-700 animate-in slide-in-from-top-2 shrink-0 z-20">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+            <div className="truncate">
+              <p className="text-xs font-black uppercase tracking-wider truncate">🚨 Emergencia Activa: Objeto Olvidado</p>
+              <p className="text-[10px] text-white/90 font-medium leading-tight">Chat desbloqueado para resolver la novedad</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleResolveEmergency}
+            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-red-700 font-black text-xs rounded-xl shadow-sm shrink-0 active:scale-95 transition-all"
+          >
+            Finalizar emergencia
+          </button>
+        </div>
+      ) : isCompleted && (
+        <div className="p-2.5 px-3 border-b text-xs flex items-center gap-2 bg-slate-100 border-slate-200 text-slate-700 shrink-0">
+          <Lock className="w-4 h-4 shrink-0 text-slate-500" />
+          <p className="text-[11px] font-medium leading-tight">
+            {isEmergencyExhausted ? (
+              <span>Emergencia resuelta. El chat se encuentra cerrado definitivamente.</span>
+            ) : (
+              <span>Pedido completado. El chat está cerrado en modo solo lectura de respaldo.</span>
+            )}
+          </p>
+        </div>
+      )}
+
       {/* Countdown Timer Banner */}
       {prepCountdownStr && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-black shadow-md z-10 shrink-0 animate-in slide-in-from-top-2">
@@ -1260,19 +1376,74 @@ export default function OrderChatWindow({
       {/* ACTION BAR: Client */}
       {currentUserRole === 'client' && (
         <div className="shrink-0 bg-white border-t border-slate-200">
-          {/* State 1: Client has not reported payment yet */}
-          {!isPaymentVerifiedByStore && !isPaymentReportedWaitingStore && (
-            <div className="bg-amber-50 p-2.5 px-4 flex items-center justify-between gap-2 border-b border-amber-200">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
-                <span className="text-xs font-bold text-amber-900">¿Realizaste el pago de tu pedido?</span>
+          {/* State 1A: Pre-stock validation (Fase 2.1) */}
+          {!isStockConfirmed && !isPaymentVerifiedByStore && (
+            <div className="bg-amber-50/95 border-b border-amber-200 p-3 px-4 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                <Clock className="w-4 h-4 animate-spin" />
               </div>
-              <button
-                onClick={() => setShowPayModal(true)}
-                className="bg-primary hover:bg-primary/90 text-slate-900 font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
-              >
-                <CheckCircle className="w-4 h-4 text-slate-900" /> Reportar Pago
-              </button>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-black text-amber-950">Validando disponibilidad de productos</p>
+                <p className="text-[11px] font-bold text-amber-800 leading-snug">
+                  Espera a que el negocio te asegure el stock de los productos antes de realizar tu pago. ¡Puedes escribirle primero!
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* State 1B: Stock confirmed by store, awaiting payment report (Fase 3.1) */}
+          {isStockConfirmed && !isPaymentVerifiedByStore && !isPaymentReportedWaitingStore && (
+            <div className="bg-emerald-50/95 border-b border-emerald-200 p-3 px-4 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-emerald-950">¡Stock Confirmado por el Comercio!</p>
+                    <p className="text-[10px] font-bold text-emerald-700">Ya puedes realizar y reportar tu pago</p>
+                  </div>
+                </div>
+                <span className="text-xs font-black text-slate-900 bg-white border border-emerald-200 px-2 py-0.5 rounded-lg shadow-xs">
+                  ${orderDisplayTotal.toFixed(2)} USD {bcvRate > 0 && `• ${(orderDisplayTotal * bcvRate).toFixed(2)} Bs`}
+                </span>
+              </div>
+
+              {/* Bank Details & 1-click Copy */}
+              <div className="bg-white border border-emerald-200 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="min-w-0 text-[11px] text-slate-700 leading-tight">
+                  <p className="font-black text-slate-900 truncate">
+                    {storeData?.payment_methods?.find((m: any) => m.type === 'Pago Móvil')?.bank || storeData?.pago_movil?.bank || storeData?.pagoMovil?.bank || 'Pago Móvil'}
+                  </p>
+                  <p className="text-slate-500 font-bold truncate">
+                    Tlf: {storeData?.payment_methods?.find((m: any) => m.type === 'Pago Móvil')?.phone || storeData?.phone || 'Ver en chat'} • RIF: {storeData?.payment_methods?.find((m: any) => m.type === 'Pago Móvil')?.rif || storeData?.rif || 'N/A'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      const pm = storeData?.payment_methods?.find((m: any) => m.type === 'Pago Móvil') || storeData?.pago_movil || storeData?.pagoMovil || {};
+                      const textToCopy = `Copie y pegue en su banco esto para realizar su pago:\n` +
+                        `Banco: ${pm.bank || 'Banesco / Provincial / Venezuela / Mercantil'}\n` +
+                        `Teléfono: ${pm.phone || storeData?.phone || ''}\n` +
+                        `Cédula/RIF: ${pm.rif || pm.idf || storeData?.rif || ''}\n` +
+                        `Titular: ${pm.owner || storeData?.name || ''}\n` +
+                        `Monto: ${(orderDisplayTotal * bcvRate).toFixed(2)} Bs ($${orderDisplayTotal.toFixed(2)} USD)`;
+                      navigator.clipboard.writeText(textToCopy);
+                      toast.success("¡Datos bancarios copiados al portapapeles! Copie y pegue en su banco.", { duration: 4000 });
+                    }}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-black px-3 py-2 rounded-xl text-xs flex items-center gap-1 border border-slate-200 active:scale-95 transition-all"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-slate-600" /> Copiar Datos
+                  </button>
+                  <button
+                    onClick={() => setShowPayModal(true)}
+                    className="bg-primary hover:bg-primary/90 text-slate-900 font-black px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+                  >
+                    <CreditCard className="w-4 h-4" /> Reportar Pago
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1412,10 +1583,30 @@ export default function OrderChatWindow({
 
       {/* Input area */}
       <div className="p-3 bg-white border-t border-slate-200 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {isRecordingVoice ? (
+        {isChatLocked ? (
+          <div className="p-3.5 bg-slate-100 border border-slate-200 rounded-2xl text-center space-y-2">
+            <div className="flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>
+                {isEmergencyExhausted 
+                  ? "La emergencia ha sido finalizada y el chat ha concluido definitivamente." 
+                  : "Este pedido ha sido entregado. El chat se encuentra en modo solo lectura."}
+              </span>
+            </div>
+            {!isEmergencyExhausted && currentUserRole === 'client' && (
+              <button
+                type="button"
+                onClick={handleReactivateEmergency}
+                className="w-full py-2.5 bg-amber-400 hover:bg-amber-500 active:scale-95 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+              >
+                <span>📦 ¿Olvidaste algo? Reactivar chat de emergencia</span>
+              </button>
+            )}
+          </div>
+        ) : isRecordingVoice ? (
           <div className="flex items-center justify-between gap-3 bg-red-50 border-2 border-red-300 p-2.5 rounded-2xl animate-in fade-in">
             <div className="flex items-center gap-2.5">
-              <span className="w-3 h-3 rounded-full bg-red-600 animate-ping"></span>
+              <span className="w-3.5 h-3.5 rounded-full bg-red-600 animate-ping"></span>
               <span className="text-xs font-black text-red-700 font-mono">
                 Grabando nota de voz ({recordingSeconds}s)...
               </span>
@@ -1568,17 +1759,19 @@ export default function OrderChatWindow({
                 )}
               </div>
 
-              {/* Reference Code Input */}
+              {/* Reference Code Input (Fase 3.1: Strict Numeric-only Keyboard) */}
               <div>
                 <label className="font-black text-slate-700 block mb-1 text-[11px]">
-                  Número de Referencia:
+                  Número de Referencia (Solo Números):
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: 12345678 (Mínimo 4 dígitos)"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Ej: 12345678 (Solo dígitos)"
                   value={payReferenceCode}
-                  onChange={(e) => setPayReferenceCode(e.target.value)}
-                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary focus:bg-white"
+                  onChange={(e) => setPayReferenceCode(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary focus:bg-white font-mono"
                 />
               </div>
 
