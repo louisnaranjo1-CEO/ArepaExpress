@@ -1,4 +1,4 @@
-import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp, Map as MapIcon, ShieldAlert } from 'lucide-react';
+import { MapPin, ChevronDown, ChevronRight, Bell, Search, SlidersHorizontal, Utensils, Star, Heart, Clock, Store, Truck, Zap, Tag, X, Layout, Gift, ArrowUp, Map as MapIcon, ShieldAlert, LayoutGrid, Grid2X2, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useState, useEffect, useMemo } from 'react';
@@ -133,6 +133,21 @@ export default function Home() {
 
   const [manualState, setManualState] = useState<string>(() => localStorage.getItem('userState') || '');
   const [manualCity, setManualCity] = useState<string>(() => localStorage.getItem('userCity') || '');
+  const [storeViewMode, setStoreViewMode] = useState<'grid-large' | 'grid-small' | 'list'>(() => {
+    try {
+      return (localStorage.getItem('un2x3_store_view_mode') as any) || 'grid-large';
+    } catch {
+      return 'grid-large';
+    }
+  });
+
+  const handleSelectStoreViewMode = (mode: 'grid-large' | 'grid-small' | 'list') => {
+    vibrate(25);
+    setStoreViewMode(mode);
+    try {
+      localStorage.setItem('un2x3_store_view_mode', mode);
+    } catch {}
+  };
   const [locationName, setLocationName] = useState(() => {
     return localStorage.getItem('userCity') ? `${localStorage.getItem('userCity')}` : 'Buscando...';
   });
@@ -1062,113 +1077,265 @@ export default function Home() {
                 )}
             </div>
 
-            <h2 className="text-slate-900 text-lg font-bold">Comercios en tu zona</h2>
-            <div className="flex flex-col gap-6">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
+              <h2 className="text-slate-900 text-lg font-bold">Comercios en tu zona</h2>
+              {/* Selector de Modos de Visualización (Audio / Requerimiento: Grande, Pequeña 6 en pantalla, Lista) */}
+              <div className="bg-slate-200/80 p-1 rounded-2xl flex items-center gap-1 border border-slate-300/60 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => handleSelectStoreViewMode('grid-large')}
+                  className={`p-1.5 rounded-xl transition-all flex items-center justify-center ${storeViewMode === 'grid-large' ? 'bg-white text-slate-950 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+                  title="Cuadrículas Grandes"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectStoreViewMode('grid-small')}
+                  className={`p-1.5 rounded-xl transition-all flex items-center justify-center ${storeViewMode === 'grid-small' ? 'bg-white text-slate-950 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+                  title="Cuadrículas Pequeñas (6 en pantalla)"
+                >
+                  <Grid2X2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSelectStoreViewMode('list')}
+                  className={`p-1.5 rounded-xl transition-all flex items-center justify-center ${storeViewMode === 'list' ? 'bg-white text-slate-950 shadow-sm font-black' : 'text-slate-500 hover:text-slate-800'}`}
+                  title="Modo Lista (Compacto con logo pequeño)"
+                >
+                  <List className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
             {loading ? (
                 // Loading Skeleton
-                Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="flex flex-col gap-3 animate-pulse">
-                    <div className="w-full aspect-[16/10] bg-slate-200 rounded-xl"></div>
-                    <div className="space-y-2 px-1">
-                    <div className="h-5 bg-slate-200 rounded w-3/4"></div>
-                    <div className="h-4 bg-slate-200 rounded w-1/2"></div>
+                <div className={storeViewMode === 'grid-small' ? "grid grid-cols-2 gap-2.5 sm:grid-cols-3" : storeViewMode === 'list' ? "space-y-2" : "flex flex-col gap-6"}>
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <div key={i} className="flex flex-col gap-2 p-2 bg-white rounded-2xl shadow-sm border border-slate-100 animate-pulse">
+                        <div className="w-full aspect-[16/10] bg-slate-200 rounded-xl"></div>
+                        <div className="space-y-1.5 px-1">
+                          <div className="h-4 bg-slate-200 rounded w-3/4"></div>
+                          <div className="h-3 bg-slate-200 rounded w-1/2"></div>
+                        </div>
                     </div>
+                  ))}
                 </div>
-                ))
             ) : restaurants.length > 0 ? (
-                restaurants.map((restaurant) => {
-                const coverImg = (restaurant as any).coverUrl || (restaurant as any).cover_url || '';
-                const logoImg = (restaurant as any).logoUrl || (restaurant as any).logo_url || restaurant.image || '';
+                <>
+                  {/* MODO 1: Cuadrícula Grande */}
+                  {storeViewMode === 'grid-large' && (
+                    <div className="flex flex-col gap-6">
+                      {restaurants.map((restaurant) => {
+                        const coverImg = (restaurant as any).coverUrl || (restaurant as any).cover_url || '';
+                        const logoImg = (restaurant as any).logoUrl || (restaurant as any).logo_url || restaurant.image || '';
 
-                return (
-                    <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} onClick={() => vibrate(30)} className="group relative flex flex-col gap-3">
-                    <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-900">
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
-                        <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
-                        <Star className="w-4 h-4 text-highlight fill-highlight" />
-                        <span className="text-xs font-bold text-slate-900">{restaurant.rating}</span>
-                        <span className="text-[10px] text-slate-500">({restaurant.reviews}+)</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => handleToggleFavoriteStore(restaurant.id, e)}
-                          className="absolute top-3 right-3 z-20 bg-white/95 backdrop-blur-sm p-1.5 rounded-full shadow-md cursor-pointer hover:scale-110 active:scale-90 transition-all border border-slate-100"
-                          title="Guardar en favoritos"
-                        >
-                          <Heart className={`w-5 h-5 transition-colors ${favoriteStoreIds.includes(restaurant.id) ? 'text-red-500 fill-red-500' : 'text-slate-400 hover:text-red-500'}`} />
-                        </button>
+                        return (
+                          <Link key={restaurant.id} to={`/restaurant/${restaurant.id}`} onClick={() => vibrate(30)} className="group relative flex flex-col gap-3">
+                            <div className="relative w-full aspect-[16/10] overflow-hidden rounded-xl shadow-sm bg-slate-900">
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent z-10"></div>
+                                <div className="absolute top-3 left-3 z-20 bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full flex items-center gap-1 shadow-sm">
+                                  <Star className="w-4 h-4 text-highlight fill-highlight" />
+                                  <span className="text-xs font-bold text-slate-900">{restaurant.rating}</span>
+                                  <span className="text-[10px] text-slate-500">({restaurant.reviews}+)</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleToggleFavoriteStore(restaurant.id, e)}
+                                  className="absolute top-3 right-3 z-20 bg-white/95 backdrop-blur-sm p-1.5 rounded-full shadow-md cursor-pointer hover:scale-110 active:scale-90 transition-all border border-slate-100"
+                                  title="Guardar en favoritos"
+                                >
+                                  <Heart className={`w-5 h-5 transition-colors ${favoriteStoreIds.includes(restaurant.id) ? 'text-red-500 fill-red-500' : 'text-slate-400 hover:text-red-500'}`} />
+                                </button>
 
-                        {restaurant.hasCashea && (
-                        <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
-                            <img
-                            src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
-                            alt="Cashea"
-                            className="w-full h-full object-contain"
-                            />
-                        </div>
-                        )}
+                                {restaurant.hasCashea && (
+                                  <div className="absolute top-3 right-12 z-20 w-10 h-10 bg-yellow-400 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-110 transition-transform">
+                                      <img
+                                        src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
+                                        alt="Cashea"
+                                        className="w-full h-full object-contain"
+                                      />
+                                  </div>
+                                )}
 
-                        {(restaurant as any).activeRaffle?.isActive && (
-                        <div className={`absolute top-3 z-20 w-10 h-10 bg-orange-500 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-bounce duration-1000 hover:scale-110 transition-transform ${restaurant.hasCashea ? 'right-[5.5rem]' : 'right-12'}`}>
-                            <Gift className="w-5 h-5 text-white" />
-                        </div>
-                        )}
+                                {(restaurant as any).activeRaffle?.isActive && (
+                                  <div className={`absolute top-3 z-20 w-10 h-10 bg-orange-500 backdrop-blur rounded-xl p-1.5 shadow-xl border border-white/20 flex items-center justify-center animate-bounce duration-1000 hover:scale-110 transition-transform ${restaurant.hasCashea ? 'right-[5.5rem]' : 'right-12'}`}>
+                                      <Gift className="w-5 h-5 text-white" />
+                                  </div>
+                                )}
 
-                        {coverImg ? (
-                        <div
-                            className="w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-out"
-                            style={{ backgroundImage: `url('${coverImg}?q=80&w=800&auto=format&fit=crop')` }}
-                        ></div>
-                        ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 flex flex-col items-center justify-center text-slate-400 p-4">
-                            <Store className="w-12 h-12 mb-2 text-white/30" />
-                            <span className="text-[11px] font-black uppercase tracking-widest text-white/50 text-center">{restaurant.name}</span>
-                        </div>
-                        )}
+                                {coverImg ? (
+                                  <div
+                                      className="w-full h-full bg-cover bg-center group-hover:scale-105 transition-transform duration-500 ease-out"
+                                      style={{ backgroundImage: `url('${coverImg}?q=80&w=800&auto=format&fit=crop')` }}
+                                  ></div>
+                                ) : (
+                                  <div className="w-full h-full bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 flex flex-col items-center justify-center text-slate-400 p-4">
+                                      <Store className="w-12 h-12 mb-2 text-white/30" />
+                                      <span className="text-[11px] font-black uppercase tracking-widest text-white/50 text-center">{restaurant.name}</span>
+                                  </div>
+                                )}
 
-                        <div className="absolute bottom-3 left-3 z-20 flex flex-wrap gap-2">
-                        {restaurant.featured && (
-                            <span className="bg-primary text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
-                        )}
-                        <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" /> {restaurant.deliveryTime}
-                        </span>
-                        {(restaurant as any).deliveryRates?.find((r: any) => r.price === 0) && (
-                            <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-lg shadow-emerald-500/20">
-                            <Truck className="w-3.5 h-3.5" /> Gratis
-                            </span>
-                        )}
-                        </div>
+                                <div className="absolute bottom-3 left-3 z-20 flex flex-wrap gap-2">
+                                  {restaurant.featured && (
+                                      <span className="bg-primary text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg">Destacado</span>
+                                  )}
+                                  <span className="bg-white/90 backdrop-blur-md text-slate-900 text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1">
+                                      <Clock className="w-3.5 h-3.5" /> {restaurant.deliveryTime}
+                                  </span>
+                                  {(restaurant as any).deliveryRates?.find((r: any) => r.price === 0) && (
+                                      <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-1 rounded-lg flex items-center gap-1 shadow-lg shadow-emerald-500/20">
+                                        <Truck className="w-3.5 h-3.5" /> Gratis
+                                      </span>
+                                  )}
+                                </div>
+                            </div>
+                            <div className="px-1 flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
+                                  {logoImg ? (
+                                      <img src={logoImg} alt="" className="w-full h-full object-cover rounded-full" />
+                                  ) : (
+                                      <Store className="w-5 h-5 text-slate-300" />
+                                  )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="text-lg font-bold text-slate-900 leading-tight truncate">{restaurant.name}</h3>
+                                  <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
+                                      <span>{restaurant.category}</span>
+                                      <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                                      <span>$$</span>
+                                      <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                                      <span>{restaurant.distance}</span>
+                                  </div>
+                                </div>
+                            </div>
+                          </Link>
+                        );
+                      })}
                     </div>
-                    <div className="px-1 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
-                        {logoImg ? (
-                            <img src={logoImg} alt="" className="w-full h-full object-cover rounded-full" />
-                        ) : (
-                            <Store className="w-5 h-5 text-slate-300" />
-                        )}
-                        </div>
-                        <div>
-                        <h3 className="text-lg font-bold text-slate-900 leading-tight">{restaurant.name}</h3>
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
-                            {restaurant.category}
-                            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                            <span>$$</span>
-                            <span className="w-1 h-1 rounded-full bg-slate-300"></span>
-                            <span>{restaurant.distance}</span>
-                        </div>
-                        </div>
-                    </div>
-                    </Link>
-                );
-                })
+                  )}
 
+                  {/* MODO 2: Cuadrícula Pequeña (6 en pantalla) */}
+                  {storeViewMode === 'grid-small' && (
+                    <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                      {restaurants.map((restaurant) => {
+                        const coverImg = (restaurant as any).coverUrl || (restaurant as any).cover_url || '';
+                        const logoImg = (restaurant as any).logoUrl || (restaurant as any).logo_url || restaurant.image || '';
+
+                        return (
+                          <Link 
+                            key={restaurant.id} 
+                            to={`/restaurant/${restaurant.id}`} 
+                            onClick={() => vibrate(25)} 
+                            className="group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-md border border-slate-100 flex flex-col active:scale-95 transition-all cursor-pointer"
+                          >
+                            <div className="relative h-24 bg-slate-900 overflow-hidden">
+                              {coverImg ? (
+                                <img src={coverImg} alt={restaurant.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-slate-800 to-indigo-950 flex items-center justify-center p-2 text-white/40">
+                                  <Store className="w-8 h-8" />
+                                </div>
+                              )}
+                              <div className="absolute top-1.5 left-1.5 bg-white/95 backdrop-blur px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-xs">
+                                <Star className="w-2.5 h-2.5 text-amber-500 fill-amber-500" />
+                                <span className="text-[10px] font-black text-slate-800">{restaurant.rating}</span>
+                              </div>
+                              {restaurant.hasCashea && (
+                                <div className="absolute top-1.5 right-1.5 w-6 h-6 bg-yellow-400 rounded-lg p-0.5 shadow-sm flex items-center justify-center">
+                                  <img
+                                    src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
+                                    alt="Cashea"
+                                    className="w-full h-full object-contain"
+                                  />
+                                </div>
+                              )}
+                              <div className="absolute -bottom-2.5 left-2 w-7 h-7 rounded-lg border-2 border-white shadow-sm overflow-hidden bg-white shrink-0">
+                                {logoImg ? (
+                                  <img src={logoImg} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <Store className="w-4 h-4 text-slate-400 p-0.5" />
+                                )}
+                              </div>
+                            </div>
+                            <div className="p-2 pt-3.5 space-y-0.5 flex-1 flex flex-col justify-between">
+                              <div>
+                                <h4 className="text-xs font-black text-slate-900 truncate leading-snug group-hover:text-primary transition-colors">
+                                  {restaurant.name}
+                                </h4>
+                                <p className="text-[9px] font-bold text-slate-400 truncate mt-0.5">
+                                  <span>{restaurant.category}</span> • <span className="text-blue-500">{restaurant.distance}</span>
+                                </p>
+                              </div>
+                              <div className="pt-1 flex items-center justify-between text-[9px] font-bold text-slate-500 border-t border-slate-50">
+                                <span className="flex items-center gap-0.5">
+                                  <Clock className="w-2.5 h-2.5" /> {restaurant.deliveryTime}
+                                </span>
+                                <span className="text-slate-400 font-medium">({restaurant.reviews}+)</span>
+                              </div>
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* MODO 3: Modo Lista */}
+                  {storeViewMode === 'list' && (
+                    <div className="divide-y divide-slate-100 bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+                      {restaurants.map((restaurant) => {
+                        const logoImg = (restaurant as any).logoUrl || (restaurant as any).logo_url || restaurant.image || '';
+
+                        return (
+                          <Link 
+                            key={restaurant.id} 
+                            to={`/restaurant/${restaurant.id}`} 
+                            onClick={() => vibrate(20)} 
+                            className="flex items-center gap-3 p-3.5 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer group"
+                          >
+                            <div className="w-12 h-12 rounded-2xl border border-slate-100 shadow-xs overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
+                              {logoImg ? (
+                                <img src={logoImg} alt={restaurant.name} className="w-full h-full object-cover rounded-2xl" />
+                              ) : (
+                                <Store className="w-6 h-6 text-slate-300" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-sm font-black text-slate-900 group-hover:text-primary transition-colors truncate">
+                                {restaurant.name}
+                              </h4>
+                              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 mt-0.5 truncate">
+                                <span>{restaurant.category}</span>
+                                <span>•</span>
+                                <span className="text-blue-600 flex items-center gap-0.5">
+                                  <MapPin className="w-3 h-3 text-blue-500" />
+                                  {restaurant.distance}
+                                </span>
+                                <span>•</span>
+                                <span className="text-slate-500 flex items-center gap-0.5">
+                                  <Clock className="w-3 h-3" />
+                                  {restaurant.deliveryTime}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex items-center gap-1 bg-amber-50 text-amber-800 px-2.5 py-1 rounded-xl text-xs font-black border border-amber-200/50">
+                                <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                                <span>{restaurant.rating}</span>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 group-hover:translate-x-0.5 transition-all" />
+                            </div>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
             ) : (
                 <div className="text-center py-12 text-slate-500 font-medium">
                   No hay comercios disponibles en tu zona actualmente.
                 </div>
             )}
-            </div>
 
             {/* 🚨 BOTÓN DESTACADO DE EMERGENCIAS (Justo arriba de las tarjetas informativas) */}
             <div className="mt-8 px-1">

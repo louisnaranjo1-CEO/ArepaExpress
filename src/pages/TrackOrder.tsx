@@ -147,13 +147,16 @@ export default function TrackOrder() {
 
     // ── UI Modals & Sheets ───────────────────────────────────────────────────
     const [showChat, setShowChat] = useState(false);
-    const [hasUnreadChat, setHasUnreadChat] = useState(true);
+    const [hasUnreadChat, setHasUnreadChat] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
     const [showReviewModal, setShowReviewModal] = useState(false);
     const [showPagoMovilModal, setShowPagoMovilModal] = useState(false);
 
     const openChat = () => {
         setShowChat(true);
         setHasUnreadChat(false);
+        setUnreadCount(0);
+        sessionStorage.setItem(`last_chat_read_${orderId}`, new Date().toISOString());
     };
 
     // ── Step 2 Payment State ─────────────────────────────────────────────────
@@ -210,6 +213,58 @@ export default function TrackOrder() {
             }
         }
     }, [order?.status]);
+
+    // ── Unread Order Chat Listener ──────────────────────────────────────────
+    useEffect(() => {
+        if (!orderId || showChat) return;
+
+        const chatPath = `orders/${orderId}`;
+        const fetchInitialUnread = async () => {
+            try {
+                const lastReadTime = sessionStorage.getItem(`last_chat_read_${orderId}`);
+                let query = supabase
+                    .from('messages')
+                    .select('*', { count: 'exact', head: true })
+                    .or(`chat_path.eq.${chatPath},order_id.eq.${orderId}`);
+                if (user?.id) {
+                    query = query.neq('sender_id', user.id);
+                }
+                if (lastReadTime) {
+                    query = query.gt('created_at', lastReadTime);
+                }
+                const { count } = await query;
+                if (count && count > 0) {
+                    setUnreadCount(count);
+                    setHasUnreadChat(true);
+                }
+            } catch (err) {
+                console.warn('Error fetching unread order messages:', err);
+            }
+        };
+
+        fetchInitialUnread();
+
+        const channel = supabase.channel(`order_chat_unread_${orderId}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'messages'
+            }, (payload) => {
+                const msg: any = payload.new;
+                if (!msg) return;
+                const isForThisChat = msg.order_id === orderId || msg.chat_path === chatPath;
+                const senderId = msg.sender_id || msg.senderId;
+                if (isForThisChat && senderId && senderId !== user?.id) {
+                    setUnreadCount(prev => prev + 1);
+                    setHasUnreadChat(true);
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [orderId, showChat, user?.id]);
 
     // ── Fetch available drivers for client-paid delivery ────────────────────
     useEffect(() => {
@@ -2263,8 +2318,8 @@ export default function TrackOrder() {
                     <MessageSquare className="w-6 h-6 text-primary" />
                     <span className="text-xs font-black pr-1 hidden sm:inline">Chat</span>
                     {hasUnreadChat && (
-                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-lg border-2 border-white animate-bounce">
-                            1
+                        <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 bg-red-600 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-lg border-2 border-white animate-bounce">
+                            {unreadCount > 0 ? unreadCount : 1}
                         </span>
                     )}
                 </motion.button>

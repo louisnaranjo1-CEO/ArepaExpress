@@ -15,6 +15,23 @@ export default function BottomNav() {
   const navigate = useNavigate();
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [activeService, setActiveService] = useState<{ url: string; label: string } | null>(null);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
+
+  useEffect(() => {
+    const handleChatMessage = () => {
+      setUnreadChatCount(prev => prev + 1);
+    };
+    window.addEventListener('chat_message_received', handleChatMessage);
+    return () => {
+      window.removeEventListener('chat_message_received', handleChatMessage);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (currentPath.includes('/track') || currentPath.includes('/orders')) {
+      setUnreadChatCount(0);
+    }
+  }, [currentPath]);
 
   useEffect(() => {
     const rawUserId = user?.id || user?.uid || (userData as any)?.id || (userData as any)?.uid;
@@ -117,7 +134,7 @@ export default function BottomNav() {
   };
 
   return (
-    <nav className="relative z-50 bg-white border-t border-slate-100 pb-safe shrink-0">
+    <nav className="relative z-[60] bg-white border-t border-slate-100 pb-safe shrink-0 pointer-events-auto select-none">
       <div className="flex items-center justify-around px-2 py-3">
         <Link to="/" onClick={() => vibrate(30)} className="flex flex-col items-center gap-1 flex-1 group">
           <Home className={`w-6 h-6 transition-transform group-hover:scale-110 ${currentPath === '/' ? 'text-slate-900 fill-primary/20' : 'text-slate-400 group-hover:text-slate-900'}`} />
@@ -140,12 +157,16 @@ export default function BottomNav() {
         >
           <div className="bg-primary p-2.5 rounded-2xl shadow-[0_8px_16px_rgba(244,140,37,0.3)] transition-transform group-hover:scale-110 flex items-center justify-center relative">
             <Car className="w-6 h-6 text-secondary stroke-[2.5]" />
-            {activeService && (
+            {unreadChatCount > 0 ? (
+              <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[9px] font-black border-2 border-white shadow-md animate-bounce">
+                {unreadChatCount}
+              </span>
+            ) : activeService ? (
               <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500 border-2 border-white"></span>
               </span>
-            )}
+            ) : null}
           </div>
           <span className={`text-[10px] font-black mt-1 ${activeService ? 'text-emerald-700 animate-pulse' : 'text-secondary'}`}>
             {activeService ? activeService.label : 'Taxi'}
@@ -154,11 +175,15 @@ export default function BottomNav() {
         <Link to="/orders" onClick={() => vibrate(30)} className="relative flex flex-col items-center gap-1 flex-1 group">
           <div className="relative">
             <ShoppingBag className={`w-6 h-6 transition-transform group-hover:scale-110 ${(currentPath === '/orders' || currentPath === '/cart') ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-900'}`} />
-            {totalItems > 0 && (
+            {totalItems > 0 ? (
               <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[8px] font-black text-slate-900 ring-2 ring-white shadow-md">
                 {totalItems}
               </span>
-            )}
+            ) : unreadChatCount > 0 ? (
+              <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 flex items-center justify-center rounded-full bg-red-600 text-white text-[9px] font-black border-2 border-white shadow-md animate-bounce">
+                {unreadChatCount}
+              </span>
+            ) : null}
           </div>
           <span className={`text-[10px] font-bold ${(currentPath === '/orders' || currentPath === '/cart') ? 'text-slate-900' : 'text-slate-400 group-hover:text-slate-900'}`}>Pedidos</span>
         </Link>

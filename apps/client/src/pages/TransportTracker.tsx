@@ -458,6 +458,34 @@ export default function TransportTracker() {
         }
 
         const chatPath = `transport_requests/${requestId}`;
+
+        // Cargar mensajes sin leer iniciales
+        const fetchInitialUnread = async () => {
+            try {
+                const reqUserId = request?.userId || request?.user_id;
+                const lastReadTime = sessionStorage.getItem(`last_chat_read_${requestId}`);
+                let query = supabase
+                    .from('messages')
+                    .select('*', { count: 'exact', head: true })
+                    .or(`chat_path.eq.${chatPath},order_id.eq.${requestId}`);
+
+                if (reqUserId) {
+                    query = query.neq('sender_id', reqUserId);
+                }
+                if (lastReadTime) {
+                    query = query.gt('created_at', lastReadTime);
+                }
+                const { count } = await query;
+                if (count && count > 0) {
+                    setUnreadCount(count);
+                }
+            } catch (err) {
+                console.warn('Error fetching initial unread messages:', err);
+            }
+        };
+
+        fetchInitialUnread();
+
         const channel = supabase.channel(`passenger_chat_notif_${requestId}`)
             .on('postgres_changes', {
                 event: 'INSERT',
@@ -968,7 +996,10 @@ export default function TransportTracker() {
                                 driverName={driverName}
                                 showControls={false}
                                 cameraFocus={cameraMode}
-                                onRouteCalculated={(info) => setRouteInfo({ distance: info.distance, duration: info.duration })}
+                                onRouteCalculated={(info) => setRouteInfo({ 
+                                    distance: info.distance, 
+                                    duration: (!info.duration || info.duration.includes('undefined')) ? '~5 min' : info.duration 
+                                })}
                             />
                         </div>
 
@@ -1649,7 +1680,9 @@ export default function TransportTracker() {
                         </div>
                         <div className="flex-1 bg-slate-50 p-2 rounded-xl text-center">
                             <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Tiempo Estimado</p>
-                            <p className="font-black text-sm text-slate-800">{routeInfo.duration}</p>
+                            <p className="font-black text-sm text-slate-800">
+                                {routeInfo.duration && !routeInfo.duration.includes('undefined') ? routeInfo.duration : '~5 min'}
+                            </p>
                         </div>
                     </div>
                 )}
@@ -1688,15 +1721,19 @@ export default function TransportTracker() {
                             <div className="flex gap-2">
                                 {['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress', 'completed'].includes(request.status) && (
                                     <button
-                                        onClick={() => setShowChat(true)}
+                                        onClick={() => {
+                                            setShowChat(true);
+                                            setUnreadCount(0);
+                                            sessionStorage.setItem(`last_chat_read_${requestId}`, new Date().toISOString());
+                                        }}
                                         className="w-10 h-10 bg-orange-50 text-orange-500 rounded-full flex items-center justify-center active:scale-95 transition-transform relative shadow-sm"
                                         title="Chat con conductor"
                                     >
-                                        <MessageCircle className="w-4 h-4" />
+                                        <MessageCircle className="w-5 h-5 text-orange-600" />
                                         {unreadCount > 0 && (
-                                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-[9px] font-black rounded-full border border-white flex items-center justify-center animate-bounce">
+                                            <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 bg-red-600 text-white text-[10px] font-black rounded-full border-2 border-white flex items-center justify-center shadow-md animate-bounce">
                                                 {unreadCount}
-                                            </div>
+                                            </span>
                                         )}
                                     </button>
                                 )}

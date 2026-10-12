@@ -27,6 +27,7 @@ import toast from 'react-hot-toast';
 import WhatsAppPurchaseConfirmationModal from './components/WhatsAppPurchaseConfirmationModal';
 import LockScreen from './components/LockScreen';
 import GlobalCallReceiver from './components/GlobalCallReceiver';
+import InAppChatNotificationBanner from './components/InAppChatNotificationBanner';
 
 function RedirectHandler({ children }: { children: React.ReactNode }) {
     const { user, userData, setIsUnlocked } = useAuth();
@@ -182,6 +183,7 @@ function AppContent() {
                 {!isTrackRoute && <BottomNav />}
                 <WhatsAppPurchaseConfirmationModal />
                 <GlobalCallReceiver />
+                <InAppChatNotificationBanner />
             </div>
         </div>
     );

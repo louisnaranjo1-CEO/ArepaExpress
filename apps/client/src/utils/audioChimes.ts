@@ -18,34 +18,71 @@ function getAudioContext(): AudioContext | null {
  * Friendly 2-tone chat message chime (880Hz -> 1320Hz)
  */
 export function playChatChime() {
+    playLoudMessageNotificationSound();
+}
+
+/**
+ * Fuerte y clara alerta sonora para nuevos mensajes de conductores o comercios
+ * Sintetizador Web Audio de alta ganancia + fallback a audio nativo con vibración háptica
+ */
+export function playLoudMessageNotificationSound() {
     try {
         const ctx = getAudioContext();
-        if (!ctx) return;
-        const now = ctx.currentTime;
+        if (ctx) {
+            const now = ctx.currentTime;
+            
+            // Compresor dinámico para maximizar pegada sin distorsión
+            const compressor = ctx.createDynamicsCompressor();
+            compressor.threshold.setValueAtTime(-8, now);
+            compressor.knee.setValueAtTime(30, now);
+            compressor.ratio.setValueAtTime(8, now);
+            compressor.attack.setValueAtTime(0.002, now);
+            compressor.release.setValueAtTime(0.2, now);
+            compressor.connect(ctx.destination);
 
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.connect(gain);
-        gain.connect(ctx.destination);
+            const masterGain = ctx.createGain();
+            masterGain.gain.setValueAtTime(0.95, now);
+            masterGain.connect(compressor);
 
-        osc.frequency.setValueAtTime(880, now);
-        osc.frequency.setValueAtTime(1320, now + 0.1);
+            // Secuencia brillante y penetrante: E5 (659Hz) -> A5 (880Hz) -> E6 (1318Hz)
+            const tones = [
+                { freq: 659.25, start: 0, dur: 0.12, type: 'sine' as OscillatorType },
+                { freq: 880.00, start: 0.09, dur: 0.14, type: 'triangle' as OscillatorType },
+                { freq: 1318.51, start: 0.20, dur: 0.35, type: 'triangle' as OscillatorType }
+            ];
 
-        gain.gain.setValueAtTime(0, now);
-        gain.gain.linearRampToValueAtTime(0.28, now + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+            tones.forEach(({ freq, start, dur, type }) => {
+                const osc = ctx.createOscillator();
+                osc.type = type;
+                osc.frequency.setValueAtTime(freq, now + start);
 
-        osc.start(now);
-        osc.stop(now + 0.36);
+                const noteGain = ctx.createGain();
+                noteGain.gain.setValueAtTime(0, now + start);
+                noteGain.gain.linearRampToValueAtTime(0.95, now + start + 0.02);
+                noteGain.gain.exponentialRampToValueAtTime(0.001, now + start + dur);
 
-        setTimeout(() => ctx.close().catch(() => {}), 500);
+                osc.connect(noteGain);
+                noteGain.connect(masterGain);
+
+                osc.start(now + start);
+                osc.stop(now + start + dur + 0.02);
+            });
+
+            setTimeout(() => ctx.close().catch(() => {}), 900);
+        }
+
+        // Respaldo de sonido HTML5
+        try {
+            const backupAudio = new Audio('https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/Digital_Cascade_01.mp3');
+            backupAudio.volume = 1.0;
+            backupAudio.play().catch(() => {});
+        } catch {}
 
         if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            navigator.vibrate([80, 40, 80]);
+            navigator.vibrate([250, 100, 250, 100, 350]);
         }
     } catch (e) {
-        console.warn("Could not play chat chime:", e);
+        console.warn("Could not play loud notification sound:", e);
     }
 }
 

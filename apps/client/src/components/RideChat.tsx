@@ -171,6 +171,9 @@ export default function RideChat({
     // Audio 3: En viajes/pedidos completados el chat está cerrado por defecto (modo solo lectura),
     // a menos que se active la emergencia por objeto olvidado (que solo puede usarse 1 vez).
     const isCompleted = requestStatus === 'completed' || requestStatus === 'delivered';
+    const completedTimestamp = completedAt ? new Date(completedAt).getTime() : Date.now();
+    const hoursSinceCompletion = isCompleted ? (Date.now() - completedTimestamp) / (1000 * 60 * 60) : 0;
+    const isExpired = isCompleted && hoursSinceCompletion > 48;
     const isChatLocked = readOnly || (isCompleted && !isEmergencyActive);
 
     // Vehicle Category Meta

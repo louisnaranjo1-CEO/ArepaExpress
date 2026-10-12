@@ -269,11 +269,12 @@ export default function LiveTripMap({
 
             // Notificar información de ruta calculada
             if (onRouteCalculated) {
+                const durationMin = (routeResult as any).durationMinutes ?? (routeResult as any).durationMin ?? 1;
                 onRouteCalculated({
                     distance: `${routeResult.distanceKm} km`,
-                    duration: `~${routeResult.durationMin} min`,
+                    duration: `~${durationMin} min`,
                     distanceKm: routeResult.distanceKm,
-                    durationMin: routeResult.durationMin
+                    durationMin: durationMin
                 });
             }
 

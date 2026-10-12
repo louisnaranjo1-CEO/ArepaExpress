@@ -82,6 +82,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
   const [gpsCoords, setGpsCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isLocatingGps, setIsLocatingGps] = useState(false);
   const [manualReference, setManualReference] = useState('');
+  const cartMapContainerRef = useRef<HTMLDivElement>(null);
 
   const fetchCurrentLocation = async () => {
     setIsLocatingGps(true);
