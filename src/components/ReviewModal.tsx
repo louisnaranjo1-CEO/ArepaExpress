@@ -117,109 +117,142 @@ export default function ReviewModal({
             return;
         }
 
-        if (rating === 0) {
-            setError("Por favor, califica al comercio con al menos 1 estrella.");
-            return;
-        }
+            const isMobilityService = Boolean(
+                isMobility ||
+                !restaurantId ||
+                liveOrder?.order_type === 'transport' ||
+                liveOrder?.type === 'transport' ||
+                liveOrder?.service_category ||
+                !liveOrder?.restaurant_id
+            );
 
-        if (hasDriver && driverRating === 0) {
-            setError(`Por favor, califica también el servicio del conductor (${driverName}) con al menos 1 estrella.`);
-            return;
-        }
-
-        if (comment.trim().length < 4) {
-            setError("Por favor, escribe un breve comentario sobre tu experiencia.");
-            return;
-        }
-
-        setIsSubmitting(true);
-        setError(null);
-
-        try {
-            // Upload photos if any
-            const photoURLs: string[] = [];
-            for (let i = 0; i < photos.length; i++) {
-                const file = photos[i];
-                const ext = file.name.split('.').pop() || 'jpg';
-                const filePath = `reviews/${restaurantId}/${orderId}_${Date.now()}_${i}.${ext}`;
-                const { error: upErr } = await supabase.storage
-                    .from('store_assets')
-                    .upload(filePath, file, { upsert: true });
-
-                if (upErr) throw upErr;
-
-                const { data: pubData } = supabase.storage
-                    .from('store_assets')
-                    .getPublicUrl(filePath);
-
-                photoURLs.push(pubData.publicUrl);
+            if (isMobilityService) {
+                if (driverRating === 0) {
+                    setError(`Por favor, califica el servicio del conductor (${driverName}) con al menos 1 estrella.`);
+                    return;
+                }
+            } else {
+                if (rating === 0) {
+                    setError("Por favor, califica al comercio con al menos 1 estrella.");
+                    return;
+                }
+                if (hasDriver && driverRating === 0) {
+                    setError(`Por favor, califica también el servicio del conductor (${driverName}) con al menos 1 estrella.`);
+                    return;
+                }
+                if (comment.trim().length < 4) {
+                    setError("Por favor, escribe un breve comentario sobre tu experiencia con el comercio.");
+                    return;
+                }
             }
 
-            const authorName = isAnonymous ? 'Cliente Anónimo' : (userData?.displayName || 'Usuario');
-            const authorAvatar = isAnonymous ? '' : (userData?.photoURL || '');
+            setIsSubmitting(true);
+            setError(null);
 
-            // 1. Save store review in Supabase
-            const storeReviewData = {
-                user_id: user.id,
-                user_name: authorName,
-                user_avatar: authorAvatar,
-                is_anonymous: isAnonymous,
-                rating,
-                comment: comment.trim(),
-                photos: photoURLs,
-                created_at: new Date().toISOString(),
-                is_hidden: false,
-                order_id: orderId,
-                restaurant_id: restaurantId
-            };
+            try {
+                // Upload photos if any (only for store reviews)
+                const photoURLs: string[] = [];
+                if (!isMobilityService && photos.length > 0) {
+                    for (let i = 0; i < photos.length; i++) {
+                        const file = photos[i];
+                        const ext = file.name.split('.').pop() || 'jpg';
+                        const filePath = `reviews/${restaurantId || 'orders'}/${orderId}_${Date.now()}_${i}.${ext}`;
+                        const { error: upErr } = await supabase.storage
+                            .from('store_assets')
+                            .upload(filePath, file, { upsert: true });
 
-            const { error: insertStoreErr } = await supabase.from('reviews').insert([storeReviewData]);
-            if (insertStoreErr) throw insertStoreErr;
+                        if (upErr) throw upErr;
 
-            // 2. If driver was rated, save driver review
-            const driverIdVal = liveOrder?.driver_id || liveOrder?.delivery_driver_id;
-            if (hasDriver && driverIdVal && driverRating > 0) {
-                try {
-                    await supabase.from('reviews').insert([{
+                        const { data: pubData } = supabase.storage
+                            .from('store_assets')
+                            .getPublicUrl(filePath);
+
+                        photoURLs.push(pubData.publicUrl);
+                    }
+                }
+
+                const authorName = isAnonymous ? 'Cliente Anónimo' : (userData?.displayName || 'Usuario');
+                const authorAvatar = isAnonymous ? '' : (userData?.photoURL || '');
+
+                // 1. Save store review in Supabase if not mobility
+                if (!isMobilityService && restaurantId) {
+                    const storeReviewData = {
                         user_id: user.id,
                         user_name: authorName,
                         user_avatar: authorAvatar,
                         is_anonymous: isAnonymous,
-                        driver_id: driverIdVal,
-                        rating: driverRating,
-                        comment: driverComment.trim() || `Calificación al conductor (${driverRating}★)`,
+                        rating,
+                        comment: comment.trim(),
+                        photos: photoURLs,
+                        created_at: new Date().toISOString(),
+                        is_hidden: false,
                         order_id: orderId,
-                        created_at: new Date().toISOString()
-                    }]);
-                } catch (drvErr) {
-                    console.warn("Could not insert driver review record:", drvErr);
+                        restaurant_id: restaurantId
+                    };
+
+                    const { error: insertStoreErr } = await supabase.from('reviews').insert([storeReviewData]);
+                    if (insertStoreErr) throw insertStoreErr;
                 }
-            }
 
-            // 3. Update order: mark as reviewed and completed
-            await supabase.from('orders').update({
-                has_reviewed: true,
-                hasReviewed: true,
-                status: 'completed',
-                completed_at: new Date().toISOString(),
-                delivered_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            }).eq('id', orderId);
+                // 2. If driver was rated or is mobility, save driver review
+                const driverIdVal = liveOrder?.driver_id || liveOrder?.delivery_driver_id || liveOrder?.assigned_driver_id;
+                if (driverRating > 0 && driverIdVal) {
+                    try {
+                        await supabase.from('reviews').insert([{
+                            user_id: user.id,
+                            user_name: authorName,
+                            user_avatar: authorAvatar,
+                            is_anonymous: isAnonymous,
+                            driver_id: driverIdVal,
+                            rating: driverRating,
+                            comment: driverComment.trim() || `Calificación al servicio (${driverRating}★)`,
+                            order_id: orderId,
+                            created_at: new Date().toISOString()
+                        }]);
+                    } catch (drvErr) {
+                        console.warn("Could not insert driver review record:", drvErr);
+                    }
 
-            // Also mark linked transport_request as completed
-            try {
-                await supabase.from('transport_requests').update({
-                    status: 'completed',
-                    completed_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                }).eq('order_id', orderId);
-            } catch (trErr) {
-                console.warn("Could not update transport_request status:", trErr);
-            }
+                    // Update transport_requests rating directly
+                    try {
+                        await supabase.from('transport_requests').update({
+                            rating: driverRating,
+                            rating_comment: driverComment.trim() || null,
+                            rated_at: new Date().toISOString()
+                        }).or(`id.eq.${orderId},order_id.eq.${orderId}`);
+                    } catch (trRatingErr) {
+                        console.warn("Could not update transport_requests rating:", trRatingErr);
+                    }
+                }
 
-            // Clear local active IDs so bottom nav and trackers know the cycle is finished
-            localStorage.removeItem('active_order_id');
-            localStorage.removeItem('active_transport_req_id');
+                // 3. Update order: mark as reviewed and completed
+                try {
+                    await supabase.from('orders').update({
+                        has_reviewed: true,
+                        status: 'completed',
+                        completed_at: new Date().toISOString(),
+                        delivered_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }).eq('id', orderId);
+                } catch (ordUpErr) {
+                    console.warn("Could not update order status:", ordUpErr);
+                }
+
+                // Also mark linked transport_request as completed
+                try {
+                    await supabase.from('transport_requests').update({
+                        status: 'completed',
+                        completed_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }).or(`id.eq.${orderId},order_id.eq.${orderId}`);
+                } catch (trErr) {
+                    console.warn("Could not update transport_request status:", trErr);
+                }
+
+                // Persist locally in session to prevent auto-reopen loop
+                sessionStorage.setItem(`reviewed_order_${orderId}`, 'true');
+                localStorage.removeItem('active_order_id');
+                localStorage.removeItem('active_transport_req_id');
 
             // 4. Otorgar puntos de fidelización por compra al usuario
             if (user?.id && !liveOrder?.points_credited && !liveOrder?.pointsCredited) {
@@ -291,53 +324,55 @@ export default function ReviewModal({
                             </div>
                         )}
 
-                        {/* SECTION 1: Calificación del Comercio */}
-                        <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
-                            <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center text-slate-900">
-                                    <Store className="w-4 h-4" />
+                        {/* SECTION 1: Calificación del Comercio (Oculto en movilidad pura) */}
+                        {!isMobilityService && (
+                            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-xl bg-primary/20 flex items-center justify-center text-slate-900">
+                                        <Store className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                        <h4 className="font-black text-slate-900 text-xs">Calificación del Comercio</h4>
+                                        <p className="text-[10px] text-slate-400 font-bold">
+                                            {liveOrder?.restaurant_name || 'Comercio'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <h4 className="font-black text-slate-900 text-xs">Calificación del Comercio</h4>
-                                    <p className="text-[10px] text-slate-400 font-bold">
-                                        {liveOrder?.restaurant_name || 'Comercio'}
-                                    </p>
+
+                                {/* Stars */}
+                                <div className="flex items-center justify-center gap-1.5 py-1">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                        <button
+                                            key={star}
+                                            type="button"
+                                            onMouseEnter={() => setHoverRating(star)}
+                                            onMouseLeave={() => setHoverRating(0)}
+                                            onClick={() => setRating(star)}
+                                            className="p-1 transition-transform hover:scale-115 active:scale-95"
+                                        >
+                                            <Star
+                                                className={`w-7 h-7 transition-colors ${
+                                                    star <= (hoverRating || rating)
+                                                        ? 'fill-amber-400 text-amber-400'
+                                                        : 'text-slate-200'
+                                                }`}
+                                            />
+                                        </button>
+                                    ))}
                                 </div>
+
+                                {/* Store Comment Input */}
+                                <textarea
+                                    value={comment}
+                                    onChange={(e) => setComment(e.target.value)}
+                                    placeholder="¿Qué tal la calidad del producto, presentación y preparación?..."
+                                    className="w-full bg-white border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-slate-700 transition-all text-xs min-h-[70px] resize-none"
+                                />
                             </div>
+                        )}
 
-                            {/* Stars */}
-                            <div className="flex items-center justify-center gap-1.5 py-1">
-                                {[1, 2, 3, 4, 5].map((star) => (
-                                    <button
-                                        key={star}
-                                        type="button"
-                                        onMouseEnter={() => setHoverRating(star)}
-                                        onMouseLeave={() => setHoverRating(0)}
-                                        onClick={() => setRating(star)}
-                                        className="p-1 transition-transform hover:scale-115 active:scale-95"
-                                    >
-                                        <Star
-                                            className={`w-7 h-7 transition-colors ${
-                                                star <= (hoverRating || rating)
-                                                    ? 'fill-amber-400 text-amber-400'
-                                                    : 'text-slate-200'
-                                            }`}
-                                        />
-                                    </button>
-                                ))}
-                            </div>
-
-                            {/* Store Comment Input */}
-                            <textarea
-                                value={comment}
-                                onChange={(e) => setComment(e.target.value)}
-                                placeholder="¿Qué tal la calidad del producto, presentación y preparación?..."
-                                className="w-full bg-white border border-slate-200 focus:border-primary p-3 rounded-xl outline-none font-bold text-slate-700 transition-all text-xs min-h-[70px] resize-none"
-                            />
-                        </div>
-
-                        {/* SECTION 2: Calificación del Conductor (if delivery) */}
-                        {hasDriver && (
+                        {/* SECTION 2: Calificación del Conductor / Repartidor */}
+                        {(hasDriver || isMobilityService) && (
                             <div className="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-100 space-y-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
@@ -345,7 +380,9 @@ export default function ReviewModal({
                                             <Bike className="w-4 h-4" />
                                         </div>
                                         <div>
-                                            <h4 className="font-black text-slate-900 text-xs">Calificación del Conductor</h4>
+                                            <h4 className="font-black text-slate-900 text-xs">
+                                                {isMobilityService ? 'Calificación del Conductor' : 'Calificación del Repartidor'}
+                                            </h4>
                                             <p className="text-[10px] text-slate-500 font-bold">
                                                 {driverName}
                                             </p>
@@ -381,48 +418,50 @@ export default function ReviewModal({
                                     type="text"
                                     value={driverComment}
                                     onChange={(e) => setDriverComment(e.target.value)}
-                                    placeholder="Comentario sobre la puntualidad o trato del repartidor..."
+                                    placeholder={isMobilityService ? "Comentario sobre el trato, amabilidad y vehículo del conductor..." : "Comentario sobre la puntualidad o trato del repartidor..."}
                                     className="w-full bg-white border border-indigo-200 focus:border-indigo-400 p-2.5 rounded-xl outline-none font-bold text-slate-700 text-xs"
                                 />
                             </div>
                         )}
 
-                        {/* Photos Upload */}
-                        <div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">
-                                Fotos de tu pedido ({photos.length}/{MAX_PHOTOS}):
-                            </span>
-                            {photoPreviews.length > 0 && (
-                                <div className="flex gap-2 overflow-x-auto pb-2 mb-2">
-                                    {photoPreviews.map((preview, i) => (
-                                        <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 shrink-0 group">
-                                            <img src={preview} alt="Upload preview" className="w-full h-full object-cover" />
-                                            <button
-                                                type="button"
-                                                onClick={() => removePhoto(i)}
-                                                className="absolute top-1 right-1 bg-black/60 p-1 rounded-full text-white hover:bg-red-500 transition-colors"
-                                            >
-                                                <Trash2 className="w-3 h-3" />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
+                        {/* Photos Upload (Solo para comercios / pedidos) */}
+                        {!isMobilityService && (
+                            <div>
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+                                    Fotos de tu pedido ({photos.length}/{MAX_PHOTOS}):
+                                </span>
+                                {photoPreviews.length > 0 && (
+                                    <div className="flex gap-2 overflow-x-auto pb-2 mb-2">
+                                        {photoPreviews.map((preview, i) => (
+                                            <div key={i} className="relative w-16 h-16 rounded-xl overflow-hidden border border-slate-200 shrink-0 group">
+                                                <img src={preview} alt="Upload preview" className="w-full h-full object-cover" />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removePhoto(i)}
+                                                    className="absolute top-1 right-1 bg-black/60 p-1 rounded-full text-white hover:bg-red-500 transition-colors"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
 
-                            {photos.length < MAX_PHOTOS && (
-                                <label className="flex items-center justify-center gap-2 p-2.5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-primary transition-all text-xs font-bold text-slate-500">
-                                    <UploadCloud className="w-4 h-4 text-slate-400" />
-                                    <span>Adjuntar fotos del producto</span>
-                                    <input
-                                        type="file"
-                                        accept="image/*"
-                                        multiple
-                                        onChange={handlePhotoChange}
-                                        className="hidden"
-                                    />
-                                </label>
-                            )}
-                        </div>
+                                {photos.length < MAX_PHOTOS && (
+                                    <label className="flex items-center justify-center gap-2 p-2.5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-primary transition-all text-xs font-bold text-slate-500">
+                                        <UploadCloud className="w-4 h-4 text-slate-400" />
+                                        <span>Adjuntar fotos del producto</span>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            multiple
+                                            onChange={handlePhotoChange}
+                                            className="hidden"
+                                        />
+                                    </label>
+                                )}
+                            </div>
+                        )}
 
                         {/* SECTION 3: Privacy Selector (Visible vs Anonymous) */}
                         <div className="space-y-1.5">

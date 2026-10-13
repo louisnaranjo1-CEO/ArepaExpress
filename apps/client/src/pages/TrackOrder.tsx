@@ -204,15 +204,29 @@ export default function TrackOrder() {
 
     // ── Auto-open review modal on delivery completion ────────────────────────
     useEffect(() => {
-        if (order && !order.hasReviewed && !order.has_reviewed) {
-            const isDelivered = order.status === 'delivered' || order.status === 'completed';
-            const isPickupDone = (order.deliveryMethod === 'pickup' || order.delivery_method === 'pickup')
-                && (order.status === 'ready' || order.status === 'completed');
-            if (isDelivered || isPickupDone) {
-                setShowReviewModal(true);
-            }
+        if (!order || !orderId) return;
+        const isLocallyReviewed = sessionStorage.getItem(`reviewed_order_${orderId}`) === 'true';
+        if (order.hasReviewed || order.has_reviewed || isLocallyReviewed || order.status === 'completed') {
+            return;
         }
-    }, [order?.status]);
+
+        const isDelivered = order.status === 'delivered';
+        const isPickupDone = (order.deliveryMethod === 'pickup' || order.delivery_method === 'pickup')
+            && (order.status === 'ready');
+        if (isDelivered || isPickupDone) {
+            supabase.from('reviews').select('id').eq('order_id', orderId).limit(1)
+                .then(({ data }) => {
+                    if (data && data.length > 0) {
+                        sessionStorage.setItem(`reviewed_order_${orderId}`, 'true');
+                    } else {
+                        setShowReviewModal(true);
+                    }
+                })
+                .catch(() => {
+                    setShowReviewModal(true);
+                });
+        }
+    }, [order?.status, order?.has_reviewed, order?.hasReviewed, orderId]);
 
     // ── Unread Order Chat Listener ──────────────────────────────────────────
     useEffect(() => {
