@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft, Info } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft, Info, Scale, Gift, AlertTriangle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { useCurrency } from '../../context/CurrencyContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
@@ -15,6 +16,14 @@ interface OrderItem {
     quantity: number;
     price: number;
     consultPrice?: boolean;
+    consultar_precio?: boolean;
+    price_pending?: boolean;
+    is_weighted?: boolean;
+    weight_value?: string | number;
+    isGift?: boolean;
+    is_gift?: boolean;
+    addedBy?: string;
+    notes?: string;
     image?: string;
 }
 
@@ -26,6 +35,9 @@ interface Order {
     subtotal?: number;
     deliveryFee?: number;
     tip?: number;
+    exchange_rate?: number;
+    is_rate_overridden?: boolean;
+    total_bs?: number;
     status: 'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected';
     paymentStatus?: 'sold' | 'not_sold';
     createdAt: any;
@@ -116,6 +128,27 @@ export default function Orders() {
     const [closeTip, setCloseTip] = useState(0);
     const [missingItemsByOrder, setMissingItemsByOrder] = useState<Record<string, string[]>>({});
     const [chatOrderId, setChatOrderId] = useState<string | null>(null);
+
+    // ── Dynamic Order Modification & Catalog State ──────────────────────────
+    const { bcvRate } = useCurrency();
+    const [showAddProdModal, setShowAddProdModal] = useState(false);
+    const [targetOrderForAddProd, setTargetOrderForAddProd] = useState<Order | null>(null);
+    const [addProdTab, setAddProdTab] = useState<'cart' | 'gift'>('cart');
+    const [addProdSearch, setAddProdSearch] = useState('');
+    const [selectedCatalogProdId, setSelectedCatalogProdId] = useState('');
+    const [selectedCatalogVariant, setSelectedCatalogVariant] = useState('');
+    const [addProdQty, setAddProdQty] = useState(1);
+    const [addProdCustomPrice, setAddProdCustomPrice] = useState(0);
+    const [addProdNote, setAddProdNote] = useState('');
+    const [isAddingProd, setIsAddingProd] = useState(false);
+
+    // ── Assign Price / Peso Modal State ─────────────────────────────────────
+    const [assignPriceModal, setAssignPriceModal] = useState<{ orderId: string; item: any; price: number; weight: string } | null>(null);
+    const [isSavingPrice, setIsSavingPrice] = useState(false);
+
+    // ── Exchange Rate Override per Order ────────────────────────────────────
+    const [orderRateOverride, setOrderRateOverride] = useState<Record<string, boolean>>({});
+    const [orderCustomRates, setOrderCustomRates] = useState<Record<string, number>>({});
 
     // Smart Rejection State (Fase 2.3)
     const [smartRejectModalOpen, setSmartRejectModalOpen] = useState(false);
@@ -237,7 +270,7 @@ export default function Orders() {
     const [posEditingOrderId, setPosEditingOrderId] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!user || !showPOS || !rid) return;
+        if (!user || !rid) return;
         const fetchPosProducts = async () => {
             const { data } = await supabase.from('products').select('*').eq('restaurant_id', rid);
             const items: any[] = [];
@@ -264,7 +297,7 @@ export default function Orders() {
         };
 
         fetchPosProducts();
-    }, [user, showPOS, rid]);
+    }, [user, rid]);
 
     const fetchOrders = async () => {
         if (!rid) return;
@@ -923,8 +956,158 @@ export default function Orders() {
         });
     };
 
+    // ── Open Add Product / Gift Modal ───────────────────────────────────────
+    const handleOpenAddProduct = (order: Order) => {
+        setTargetOrderForAddProd(order);
+        setAddProdTab('cart');
+        setAddProdSearch('');
+        setSelectedCatalogProdId('');
+        setSelectedCatalogVariant('');
+        setAddProdQty(1);
+        setAddProdCustomPrice(0);
+        setAddProdNote('');
+        setShowAddProdModal(true);
+    };
+
+    const handleExecuteAddProduct = async () => {
+        if (!targetOrderForAddProd || !selectedCatalogProdId) return;
+        const prod = posProducts.find(p => p.id === selectedCatalogProdId);
+        if (!prod) return;
+
+        setIsAddingProd(true);
+        try {
+            let finalName = prod.name;
+            const finalPrice = addProdTab === 'gift' ? 0 : (Number(addProdCustomPrice) >= 0 ? Number(addProdCustomPrice) : Number(prod.price || 0));
+
+            if (selectedCatalogVariant) {
+                finalName = `${prod.name} (${selectedCatalogVariant})`;
+            }
+
+            const newItem: OrderItem = {
+                id: `${prod.id}-${Date.now()}`,
+                name: finalName,
+                price: finalPrice,
+                quantity: Number(addProdQty) || 1,
+                isGift: addProdTab === 'gift',
+                is_gift: addProdTab === 'gift',
+                addedBy: 'store',
+                notes: addProdNote || undefined
+            };
+
+            const updatedItems = [...(targetOrderForAddProd.items || []), newItem];
+            const newSubtotal = updatedItems.reduce((acc, item) => acc + (Number(item.price) * Number(item.quantity)), 0);
+            const deliveryFee = Number(targetOrderForAddProd.deliveryFee || 0);
+            const newTotal = Number((newSubtotal + deliveryFee).toFixed(2));
+
+            const updates: any = {
+                items: updatedItems,
+                subtotal: newSubtotal,
+                total: newTotal,
+                updated_at: new Date().toISOString()
+            };
+
+            await supabase.from('orders').update(updates).eq('id', targetOrderForAddProd.id);
+
+            // Mensaje de auditoría en el chat
+            const auditText = addProdTab === 'gift' 
+                ? `🎁 *¡Obsequio del Comercio!* Se agregó *${finalName}* (${addProdQty}x) como cortesía ($0.00).`
+                : `➕ *Producto agregado por el comercio:* Se agregó *${finalName}* (${addProdQty}x) a **$${finalPrice.toFixed(2)} c/u**${addProdNote ? ` (${addProdNote})` : ''}. Total actualizado: **$${newTotal.toFixed(2)} USD**.`;
+
+            await supabase.from('messages').insert({
+                order_id: targetOrderForAddProd.id,
+                text: auditText,
+                sender_id: user?.uid,
+                sender_name: 'Restaurante',
+                sender_role: 'restaurant',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success(addProdTab === 'gift' ? 'Obsequio agregado a la orden' : 'Producto agregado al pedido');
+            setShowAddProdModal(false);
+            setTargetOrderForAddProd(null);
+            fetchOrders();
+        } catch (err) {
+            console.error('Error adding product to order:', err);
+            toast.error('Error al agregar producto a la orden');
+        } finally {
+            setIsAddingProd(false);
+        }
+    };
+
+    // ── Open & Save Assign Price / Peso Modal ────────────────────────────────
+    const handleOpenAssignPrice = (orderId: string, item: any) => {
+        setAssignPriceModal({
+            orderId,
+            item,
+            price: Number(item.price) || 0,
+            weight: item.weight_value ? String(item.weight_value) : ''
+        });
+    };
+
+    const handleSaveAssignPrice = async () => {
+        if (!assignPriceModal) return;
+        const { orderId, item, price, weight } = assignPriceModal;
+        if (Number(price) <= 0) {
+            toast.error('Por favor ingresa un precio válido mayor a 0');
+            return;
+        }
+
+        setIsSavingPrice(true);
+        try {
+            const targetOrder = orders.find(o => o.id === orderId);
+            if (!targetOrder) return;
+
+            const updatedItems = (targetOrder.items || []).map((it: any) => {
+                if (it.id === item.id) {
+                    return {
+                        ...it,
+                        price: Number(price),
+                        consultPrice: false,
+                        consultar_precio: false,
+                        price_pending: false,
+                        weight_value: weight || undefined
+                    };
+                }
+                return it;
+            });
+
+            const newSubtotal = updatedItems.reduce((acc, it) => acc + (Number(it.price) * Number(it.quantity)), 0);
+            const deliveryFee = Number(targetOrder.deliveryFee || 0);
+            const newTotal = Number((newSubtotal + deliveryFee).toFixed(2));
+
+            await supabase.from('orders').update({
+                items: updatedItems,
+                subtotal: newSubtotal,
+                total: newTotal,
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            // Mensaje de auditoría en el chat
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                text: `⚖️ *Precio asignado por el comercio:* *${item.name}* fijado en **$${Number(price).toFixed(2)} USD**${weight ? ` (Peso: ${weight})` : ''}. Total actualizado: **$${newTotal.toFixed(2)} USD**.`,
+                sender_id: user?.uid,
+                sender_name: 'Restaurante',
+                sender_role: 'restaurant',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success('Precio asignado correctamente');
+            setAssignPriceModal(null);
+            fetchOrders();
+        } catch (err) {
+            console.error('Error assigning price:', err);
+            toast.error('Error al guardar precio');
+        } finally {
+            setIsSavingPrice(false);
+        }
+    };
+
     const handleConfirmStock = async (orderId: string) => {
         try {
+            const orderTemp = orders.find(o => o.id === orderId);
+            if (!orderTemp) return;
+
             const missing = missingItemsByOrder[orderId] || [];
             
             if (missing.length > 0) {
@@ -933,8 +1116,7 @@ export default function Orders() {
                     updated_at: new Date().toISOString()
                 }).eq('id', orderId);
                 
-                const orderTemp = orders.find(o => o.id === orderId);
-                const missingNames = orderTemp?.items
+                const missingNames = orderTemp.items
                     .filter(i => missing.includes(i.id))
                     .map(i => i.name)
                     .join(', ');
@@ -949,38 +1131,62 @@ export default function Orders() {
                 });
                 
                 toast.success("Pedido marcado con falta de stock. El cliente ha sido notificado.");
-            } else {
-                await supabase.from('orders').update({ 
-                    status: 'awaiting_payment',
-                    updated_at: new Date().toISOString()
-                }).eq('id', orderId);
-
-                // Enviar mensaje de pago
-                const { data: restaurantData } = await supabase.from('comercios').select('*').eq('id', rid).single();
-                
-                if (restaurantData) {
-                    const methods = restaurantData.payment_methods || [];
-                    let paymentMsg = "✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n";
-                    if (methods.length > 0) {
-                        methods.forEach((m: any) => {
-                            paymentMsg += `*${m.type}:*\n${m.bank ? 'Banco: ' + m.bank + '\n' : ''}${m.phone ? 'Tlf: ' + m.phone + '\n' : ''}${m.rif ? 'RIF/CI: ' + m.rif + '\n' : ''}${m.owner ? 'Titular: ' + m.owner + '\n' : ''}${m.email ? 'Correo: ' + m.email + '\n' : ''}\n`;
-                        });
-                        paymentMsg += "Favor enviar el capture y la referencia por este medio.\n\n_Hemos verificado tu pedido puedes proceder a realizar el pago_";
-                    } else {
-                        paymentMsg += "Por favor contacta con el restaurante para los métodos de pago.";
-                    }
-
-                    await supabase.from('messages').insert({
-                        order_id: orderId,
-                        text: paymentMsg,
-                        sender_id: user?.uid,
-                        sender_name: 'Restaurante',
-                        sender_role: 'restaurant',
-                        created_at: new Date().toISOString()
-                    });
-                }
-                toast.success("Stock confirmado. El cliente ahora puede pagar.");
+                fetchOrders();
+                return;
             }
+
+            // Regla de Oro: Validar que no haya productos con precio pendiente
+            const pendingItems = (orderTemp.items || []).filter((i: any) => 
+                i.consultPrice || i.consultar_precio || i.price_pending || (Number(i.price) === 0 && !i.isGift && !i.is_gift)
+            );
+            if (pendingItems.length > 0) {
+                toast.error("⚠️ Debes asignar precio a todos los productos pendientes antes de confirmar stock.");
+                return;
+            }
+
+            // Tasa Dinámica
+            const isOverridden = orderRateOverride[orderId] || false;
+            const customRate = isOverridden 
+                ? (orderCustomRates[orderId] || bcvRate || 855.66) 
+                : (orderTemp.exchange_rate || bcvRate || 855.66);
+            const totalBs = Number(((orderTemp.total || 0) * customRate).toFixed(2));
+
+            await supabase.from('orders').update({ 
+                status: 'awaiting_payment',
+                stock_confirmed: true,
+                stockConfirmed: true,
+                stock_confirmed_at: new Date().toISOString(),
+                exchange_rate: customRate,
+                is_rate_overridden: isOverridden,
+                total_bs: totalBs,
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            // Enviar mensaje de pago
+            const { data: restaurantData } = await supabase.from('comercios').select('*').eq('id', rid).single();
+            
+            if (restaurantData) {
+                const methods = restaurantData.payment_methods || [];
+                let paymentMsg = `✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n*Total a pagar:* $${orderTemp.total.toFixed(2)} USD • ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs\n(Tasa de cambio: ${customRate.toFixed(2)} Bs/$)\n\n`;
+                if (methods.length > 0) {
+                    methods.forEach((m: any) => {
+                        paymentMsg += `*${m.type}:*\n${m.bank ? 'Banco: ' + m.bank + '\n' : ''}${m.phone ? 'Tlf: ' + m.phone + '\n' : ''}${m.rif ? 'RIF/CI: ' + m.rif + '\n' : ''}${m.owner ? 'Titular: ' + m.owner + '\n' : ''}${m.email ? 'Correo: ' + m.email + '\n' : ''}\n`;
+                    });
+                    paymentMsg += "Favor enviar el capture y la referencia por este medio.\n\n_Hemos verificado tu pedido, puedes proceder a realizar el pago._";
+                } else {
+                    paymentMsg += "Por favor contacta con el restaurante para los métodos de pago.";
+                }
+
+                await supabase.from('messages').insert({
+                    order_id: orderId,
+                    text: paymentMsg,
+                    sender_id: user?.uid,
+                    sender_name: 'Restaurante',
+                    sender_role: 'restaurant',
+                    created_at: new Date().toISOString()
+                });
+            }
+            toast.success("Stock confirmado. El cliente ahora puede pagar.");
             fetchOrders();
         } catch (error) {
             console.error("Error confirming stock:", error);
@@ -1489,33 +1695,133 @@ export default function Orders() {
                 </div>
             </div>
 
+            {/* Barra Superior de la Orden: Agregar Producto */}
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">Productos del Pedido</span>
+                {(!order.stockConfirmed || order.status === 'pending') && (
+                    <button
+                        onClick={() => handleOpenAddProduct(order)}
+                        className="bg-primary/20 hover:bg-primary text-slate-900 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs active:scale-95 transition-all"
+                        title="Agregar producto o cortesía"
+                    >
+                        <Plus className="w-3.5 h-3.5" /> Agregar Producto
+                    </button>
+                )}
+            </div>
+
             <div className="space-y-2 mb-3 sm:mb-5">
                 {order.items.map((item: any, idx: number) => {
                     const isMissing = (missingItemsByOrder[order.id] || []).includes(item.id);
+                    const isGift = Boolean(item.isGift || item.is_gift);
+                    const isPricePending = !isGift && (item.consultPrice || item.consultar_precio || item.price_pending || item.is_weighted || Number(item.price) === 0);
+
                     return (
                         <div key={idx} className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isMissing ? 'bg-red-50 border border-red-100 opacity-60' : 'bg-slate-50 border border-transparent'}`}>
                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black border shadow-sm ${isMissing ? 'bg-red-100 text-red-600 border-red-200' : 'bg-white text-slate-900 border-slate-100'}`}>
                                 {item.quantity}x
                             </div>
-                            <div className="flex-1">
-                                <p className={`font-black ${isMissing ? 'text-red-700' : 'text-slate-700'}`}>{item.name}</p>
-                                <p className="text-xs text-slate-400 font-bold">
-                                    {item.consultPrice || item.price === 0 ? 'Precio a consultar' : `$${item.price.toFixed(2)} c/u`}
-                                </p>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <p className={`font-black text-sm ${isMissing ? 'text-red-700' : 'text-slate-800'} truncate`}>{item.name}</p>
+                                    {isGift && (
+                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                                            <Gift className="w-3 h-3 text-emerald-600" /> Cortesía / Obsequio
+                                        </span>
+                                    )}
+                                    {isPricePending && (
+                                        <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                                            <AlertTriangle className="w-3 h-3 text-amber-600" /> Precio pendiente por asignar
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                    <p className="text-xs text-slate-500 font-bold">
+                                        {isGift 
+                                            ? '$0.00 c/u' 
+                                            : isPricePending 
+                                                ? 'Requiere pesaje o precio' 
+                                                : `$${Number(item.price).toFixed(2)} c/u • Subtotal: $${(Number(item.price) * Number(item.quantity)).toFixed(2)}`}
+                                    </p>
+                                    {item.weight_value && (
+                                        <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">
+                                            Peso: {item.weight_value}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                            {(!order.stockConfirmed || order.status === 'pending') && (
-                                <button
-                                    onClick={() => toggleItemStock(order.id, item.id)}
-                                    className={`p-2 rounded-xl transition-all ${isMissing ? 'bg-red-500 text-white' : 'bg-white text-slate-400 hover:text-red-500 border border-slate-100'}`}
-                                    title={isMissing ? "Marcar como disponible" : "Marcar como sin stock"}
-                                >
-                                    <ShoppingCart className="w-4 h-4" />
-                                </button>
-                            )}
+
+                            {/* Acciones del Ítem */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                {isPricePending && (!order.stockConfirmed || order.status === 'pending') && (
+                                    <button
+                                        onClick={() => handleOpenAssignPrice(order.id, item)}
+                                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-2.5 py-1.5 rounded-xl font-black text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all"
+                                        title="Definir precio o peso"
+                                    >
+                                        <Scale className="w-3.5 h-3.5" /> Asignar Precio
+                                    </button>
+                                )}
+                                {(!order.stockConfirmed || order.status === 'pending') && (
+                                    <button
+                                        onClick={() => toggleItemStock(order.id, item.id)}
+                                        className={`p-2 rounded-xl transition-all ${isMissing ? 'bg-red-500 text-white' : 'bg-white text-slate-400 hover:text-red-500 border border-slate-100'}`}
+                                        title={isMissing ? "Marcar como disponible" : "Marcar como sin stock"}
+                                    >
+                                        <ShoppingCart className="w-4 h-4" />
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     );
                 })}
             </div>
+
+            {/* Módulo de Tasa Cambiaria Dinámica */}
+            {(!order.stockConfirmed || order.status === 'pending') && (
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 mb-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-black text-slate-800">
+                            <input
+                                type="checkbox"
+                                checked={orderRateOverride[order.id] || false}
+                                onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    setOrderRateOverride(prev => ({ ...prev, [order.id]: checked }));
+                                    if (!orderCustomRates[order.id]) {
+                                        setOrderCustomRates(prev => ({ ...prev, [order.id]: order.exchange_rate || bcvRate || 855.66 }));
+                                    }
+                                }}
+                                className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                            />
+                            <span>¿Actualizar tasa para este pedido?</span>
+                        </label>
+                        <span className="text-[10px] font-bold text-slate-400">
+                            Tasa: {(orderRateOverride[order.id] ? (orderCustomRates[order.id] || bcvRate || 855.66) : (order.exchange_rate || bcvRate || 855.66)).toFixed(2)} Bs/$
+                        </span>
+                    </div>
+                    {orderRateOverride[order.id] && (
+                        <div className="flex items-center gap-2 pt-1 animate-in fade-in">
+                            <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-primary">
+                                <span className="text-xs font-bold text-slate-400 mr-2">Tasa Bs/$:</span>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    value={orderCustomRates[order.id] ?? (order.exchange_rate || bcvRate || 855.66)}
+                                    onChange={(e) => {
+                                        const val = parseFloat(e.target.value) || 0;
+                                        setOrderCustomRates(prev => ({ ...prev, [order.id]: val }));
+                                    }}
+                                    className="w-full text-xs font-black text-slate-800 outline-none"
+                                    placeholder="Tasa en Bs"
+                                />
+                            </div>
+                            <div className="bg-primary/10 border border-primary/20 px-3 py-1.5 rounded-xl text-xs font-black text-slate-900 shrink-0">
+                                Total: Bs. {((order.total || 0) * (orderCustomRates[order.id] || bcvRate || 855.66)).toLocaleString('es-VE', { minimumFractionDigits: 2 })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {(order as any).orderNote && (
                 <div className="bg-primary border border-primary/20 text-slate-900 p-4 rounded-xl mb-6 text-sm">
@@ -1704,14 +2010,31 @@ export default function Orders() {
                                 <span className="flex items-center gap-2 relative z-10"><Clock className="w-4 h-4 animate-spin" /> Esperando Delivery...</span>
                                 <div className="absolute inset-0 bg-amber-100/30 -translate-x-full group-hover:translate-x-0 transition-transform duration-500"></div>
                             </div>
-                        ) : !(order as any).stockConfirmed ? (
-                            <button
-                                onClick={() => handleConfirmStock(order.id)}
-                                className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                            >
-                                <CheckCircle className="w-5 h-5" /> Confirmar Stock
-                            </button>
-                        ) : (
+                        ) : !(order as any).stockConfirmed ? (() => {
+                            const hasPendingPrice = (order.items || []).some((i: any) => 
+                                i.consultPrice || i.consultar_precio || i.price_pending || (Number(i.price) === 0 && !i.isGift && !i.is_gift)
+                            );
+                            if (hasPendingPrice) {
+                                return (
+                                    <button
+                                        onClick={() => toast.error("⚠️ Debes asignar precio a todos los productos pendientes antes de confirmar stock.")}
+                                        className="flex-1 bg-slate-200 text-slate-400 py-4 rounded-2xl font-black border border-slate-300 shadow-none cursor-not-allowed flex items-center justify-center gap-2 transition-all"
+                                        title="Debes asignar precio a los productos con precio pendiente"
+                                    >
+                                        <AlertTriangle className="w-5 h-5 text-amber-500" />
+                                        <span>Precios Pendientes</span>
+                                    </button>
+                                );
+                            }
+                            return (
+                                <button
+                                    onClick={() => handleConfirmStock(order.id)}
+                                    className="flex-1 bg-blue-500 text-white py-4 rounded-2xl font-black shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                >
+                                    <CheckCircle className="w-5 h-5" /> Confirmar Stock
+                                </button>
+                            );
+                        })() : (
                             <button
                                 onClick={() => { setSelectedOrderForAccept(order); setAcceptModalOpen(true); }}
                                 disabled={printingOrderId === order.id}
@@ -3957,6 +4280,315 @@ export default function Orders() {
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+            {/* Modal: + Agregar Producto (Añadir al Carrito / Obsequiar) */}
+            {showAddProdModal && targetOrderForAddProd && (
+                <div className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4 shrink-0">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                                    <Plus className="w-5 h-5 text-primary" /> Modificar Pedido
+                                </h3>
+                                <p className="text-[11px] font-bold text-slate-400">
+                                    Orden #{targetOrderForAddProd.id.slice(-6).toUpperCase()}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setShowAddProdModal(false);
+                                    setTargetOrderForAddProd(null);
+                                }}
+                                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        {/* Pestañas: Añadir al Carrito vs Obsequiar */}
+                        <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl mb-4 shrink-0">
+                            <button
+                                onClick={() => {
+                                    setAddProdTab('cart');
+                                    if (selectedCatalogProdId) {
+                                        const p = posProducts.find(x => x.id === selectedCatalogProdId);
+                                        if (p) setAddProdCustomPrice(p.promoPrice > 0 ? p.promoPrice : p.price);
+                                    }
+                                }}
+                                className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                                    addProdTab === 'cart'
+                                        ? 'bg-white text-slate-900 shadow-xs'
+                                        : 'text-slate-500 hover:text-slate-800'
+                                }`}
+                            >
+                                <ShoppingCart className="w-3.5 h-3.5" /> Añadir al Carrito
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setAddProdTab('gift');
+                                    setAddProdCustomPrice(0);
+                                }}
+                                className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                                    addProdTab === 'gift'
+                                        ? 'bg-emerald-600 text-white shadow-xs'
+                                        : 'text-slate-500 hover:text-slate-800'
+                                }`}
+                            >
+                                <Gift className="w-3.5 h-3.5" /> Obsequiar ($0.00)
+                            </button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                            {/* Buscador de catálogo compacto */}
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                                    Buscar en el Catálogo de la Tienda
+                                </label>
+                                <div className="flex items-center bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2">
+                                    <Search className="w-4 h-4 text-slate-400 mr-2 shrink-0" />
+                                    <input
+                                        type="text"
+                                        value={addProdSearch}
+                                        onChange={(e) => setAddProdSearch(e.target.value)}
+                                        placeholder="Escribe el nombre del producto..."
+                                        className="w-full text-xs font-bold text-slate-800 bg-transparent outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Selector de Producto */}
+                            <div className="space-y-1.5 max-h-48 overflow-y-auto border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
+                                {posProducts
+                                    .filter(p => !addProdSearch || p.name.toLowerCase().includes(addProdSearch.toLowerCase()))
+                                    .slice(0, 30)
+                                    .map(p => {
+                                        const isSelected = selectedCatalogProdId === p.id;
+                                        return (
+                                            <div
+                                                key={p.id}
+                                                onClick={() => {
+                                                    setSelectedCatalogProdId(p.id);
+                                                    setSelectedCatalogVariant('');
+                                                    const basePrice = p.promoPrice > 0 ? p.promoPrice : p.price;
+                                                    setAddProdCustomPrice(addProdTab === 'gift' ? 0 : basePrice);
+                                                }}
+                                                className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all flex items-center justify-between ${
+                                                    isSelected
+                                                        ? 'border-primary bg-primary/10 font-black text-slate-900 shadow-2xs'
+                                                        : 'border-slate-200/80 bg-white hover:bg-slate-100 text-slate-700'
+                                                }`}
+                                            >
+                                                <div className="min-w-0 flex-1 mr-2">
+                                                    <p className="truncate font-bold text-xs">{p.name}</p>
+                                                    <span className="text-[10px] text-slate-400 font-medium">Cat: {p.category || 'General'}</span>
+                                                </div>
+                                                <span className="font-black text-xs shrink-0">
+                                                    ${(p.promoPrice > 0 ? p.promoPrice : p.price).toFixed(2)}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                            </div>
+
+                            {/* Variantes si el producto tiene */}
+                            {(() => {
+                                const prod = posProducts.find(p => p.id === selectedCatalogProdId);
+                                if (!prod?.variants || prod.variants.length === 0) return null;
+                                return (
+                                    <div>
+                                        <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                                            Variante / Presentación
+                                        </label>
+                                        <select
+                                            value={selectedCatalogVariant}
+                                            onChange={(e) => {
+                                                const vName = e.target.value;
+                                                setSelectedCatalogVariant(vName);
+                                                const vObj = prod.variants.find((x: any) => x.name === vName);
+                                                if (vObj?.price && addProdTab !== 'gift') {
+                                                    setAddProdCustomPrice(Number(vObj.price));
+                                                }
+                                            }}
+                                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary"
+                                        >
+                                            <option value="">Selecciona una variante (opcional)...</option>
+                                            {prod.variants.map((v: any, idx: number) => (
+                                                <option key={idx} value={v.name}>
+                                                    {v.name} {v.price ? `($${Number(v.price).toFixed(2)})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Cantidad y Precio Editable */}
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                                        Cantidad
+                                    </label>
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        value={addProdQty}
+                                        onChange={(e) => setAddProdQty(Math.max(1, parseInt(e.target.value) || 1))}
+                                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-center text-slate-800 outline-none focus:border-primary"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                                        {addProdTab === 'gift' ? 'Precio Unitario' : 'Precio Unitario ($)'}
+                                    </label>
+                                    {addProdTab === 'gift' ? (
+                                        <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-black text-center text-emerald-700">
+                                            $0.00 (Cortesía)
+                                        </div>
+                                    ) : (
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={addProdCustomPrice}
+                                            onChange={(e) => setAddProdCustomPrice(parseFloat(e.target.value) || 0)}
+                                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-center text-slate-800 outline-none focus:border-primary"
+                                        />
+                                    )}
+                                </div>
+                            </div>
+
+                            {/* Comentario Opcional */}
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+                                    Nota adicional (Opcional)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={addProdNote}
+                                    onChange={(e) => setAddProdNote(e.target.value)}
+                                    placeholder="Ej: A petición del cliente en chat..."
+                                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-800 outline-none focus:border-primary"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Footer del Modal */}
+                        <div className="pt-4 border-t border-slate-100 flex gap-2.5 mt-3 shrink-0">
+                            <button
+                                onClick={() => {
+                                    setShowAddProdModal(false);
+                                    setTargetOrderForAddProd(null);
+                                }}
+                                disabled={isAddingProd}
+                                className="flex-1 py-3.5 rounded-2xl border border-slate-200 font-black text-xs text-slate-700 hover:bg-slate-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                onClick={handleExecuteAddProduct}
+                                disabled={isAddingProd || !selectedCatalogProdId}
+                                className={`flex-1 py-3.5 rounded-2xl font-black text-xs text-slate-900 shadow-md flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50 ${
+                                    addProdTab === 'gift' ? 'bg-emerald-500 text-white' : 'bg-primary'
+                                }`}
+                            >
+                                {isAddingProd ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                ) : addProdTab === 'gift' ? (
+                                    <>
+                                        <Gift className="w-4 h-4" /> Obsequiar Producto ($0.00)
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus className="w-4 h-4" /> Agregar al Carrito
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal: Asignar Precio / Peso de Producto Pendiente */}
+            {assignPriceModal && (
+                <div className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-2xl border border-slate-100 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div className="flex items-center gap-2 text-amber-700 font-black text-sm">
+                                <Scale className="w-5 h-5 text-amber-600" />
+                                <span>Asignar Precio / Peso</span>
+                            </div>
+                            <button
+                                onClick={() => setAssignPriceModal(null)}
+                                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div>
+                            <p className="text-[10px] font-black uppercase text-slate-400">Producto:</p>
+                            <p className="text-sm font-black text-slate-900">{assignPriceModal.item.name}</p>
+                            <span className="text-xs text-slate-500 font-bold">Cantidad: {assignPriceModal.item.quantity}x</span>
+                        </div>
+
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                                    Precio Unitario Final ($ USD) *
+                                </label>
+                                <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 focus-within:border-primary">
+                                    <span className="text-xs font-black text-slate-500 mr-2">$</span>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0.01"
+                                        value={assignPriceModal.price || ''}
+                                        onChange={(e) => setAssignPriceModal(prev => prev ? ({ ...prev, price: parseFloat(e.target.value) || 0 }) : null)}
+                                        placeholder="Ej: 4.50"
+                                        className="w-full text-xs font-black text-slate-900 bg-transparent outline-none"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                                    Peso Registrado (Opcional)
+                                </label>
+                                <input
+                                    type="text"
+                                    value={assignPriceModal.weight || ''}
+                                    onChange={(e) => setAssignPriceModal(prev => prev ? ({ ...prev, weight: e.target.value }) : null)}
+                                    placeholder="Ej: 1.120 kg, 800 gr"
+                                    className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary"
+                                />
+                            </div>
+
+                            <div className="bg-primary/10 border border-primary/20 p-2.5 rounded-xl text-center">
+                                <span className="text-[10px] font-bold text-slate-600 block">Subtotal Calculado:</span>
+                                <span className="text-sm font-black text-slate-900">
+                                    ${(Number(assignPriceModal.price || 0) * Number(assignPriceModal.item.quantity || 1)).toFixed(2)} USD
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2.5 pt-2">
+                            <button
+                                onClick={() => setAssignPriceModal(null)}
+                                disabled={isSavingPrice}
+                                className="flex-1 py-3.5 rounded-2xl border border-slate-200 font-black text-xs text-slate-700 hover:bg-slate-50"
+                            >
+                                Volver
+                            </button>
+                            <button
+                                onClick={handleSaveAssignPrice}
+                                disabled={isSavingPrice || !assignPriceModal.price || assignPriceModal.price <= 0}
+                                className="flex-1 py-3.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 active:scale-95 disabled:opacity-50"
+                            >
+                                {isSavingPrice ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Guardar Precio'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
