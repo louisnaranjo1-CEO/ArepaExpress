@@ -259,7 +259,24 @@ export default function CashierDashboard() {
                 schema: 'public',
                 table: 'orders',
                 filter: `restaurant_id=eq.${storedRestaurantId}`
-            }, () => {
+            }, (payload: any) => {
+                const newRecord = payload?.new;
+                const oldRecord = payload?.old;
+                const eventType = payload?.eventType;
+
+                if (newRecord && (newRecord.status === 'cancelled_by_client' || newRecord.status === 'cancelled')) {
+                    if (selectedOrder?.id === newRecord.id) {
+                        setSelectedOrder(null);
+                    }
+                    toast.error(`El cliente ha eliminado su pedido #${(newRecord.id || '').slice(-6).toUpperCase()}`, {
+                        duration: 6000,
+                        icon: '🚫'
+                    });
+                } else if (eventType === 'DELETE' && oldRecord?.id) {
+                    if (selectedOrder?.id === oldRecord.id) {
+                        setSelectedOrder(null);
+                    }
+                }
                 fetchOrders();
             })
             .subscribe();

@@ -155,6 +155,112 @@ export default function Orders() {
     const [selectedOrderForReject, setSelectedOrderForReject] = useState<Order | null>(null);
     const [smartRejectReason, setSmartRejectReason] = useState<'closed' | 'no_stock' | null>(null);
 
+    // ── Client Cancelled Notice (Fase Cancelación en Checkout) ───────────────
+    const [clientCancelledNotice, setClientCancelledNotice] = useState<{
+        orderId: string;
+        orderNumber: string;
+        userName: string;
+        reason?: string;
+    } | null>(null);
+
+    const handleOrderCancelledByClient = (orderData: any, isDeleted: boolean = false) => {
+        const orderId = orderData?.id;
+        if (!orderId) return;
+
+        // 1. Cerrar automáticamente cualquier modal, comanda, chat o detalle abierto para este pedido
+        setSelectedOrderForDetail((current: any) => (current?.id === orderId ? null : current));
+        setSelectedOrderForAccept((current: any) => {
+            if (current?.id === orderId) {
+                setAcceptModalOpen(false);
+                return null;
+            }
+            return current;
+        });
+        setSelectedOrderForVerify((current: any) => {
+            if (current?.id === orderId) {
+                setVerifyModalOpen(false);
+                return null;
+            }
+            return current;
+        });
+        setSelectedOrderForEdit((current: any) => {
+            if (current?.id === orderId) {
+                setEditModalOpen(false);
+                return null;
+            }
+            return current;
+        });
+        setSelectedOrderForDispatch((current: any) => {
+            if (current?.id === orderId) {
+                setDispatchModalOpen(false);
+                return null;
+            }
+            return current;
+        });
+        setSelectedOrderForClose((current: any) => {
+            if (current?.id === orderId) {
+                setCloseSaleModalOpen(false);
+                return null;
+            }
+            return current;
+        });
+        setSelectedOrderForReject((current: any) => {
+            if (current?.id === orderId) {
+                setSmartRejectModalOpen(false);
+                return null;
+            }
+            return current;
+        });
+        setSelectedOrderForComanda((current: any) => (current?.id === orderId ? null : current));
+        setChatOrderId((current: any) => (current === orderId ? null : current));
+        setAssignPriceModal((current: any) => (current?.orderId === orderId ? null : current));
+        setShowAddProdModal((current: any) => {
+            if (targetOrderForAddProd?.id === orderId) {
+                setTargetOrderForAddProd(null);
+                return false;
+            }
+            return current;
+        });
+
+        // 2. Notificación acústica y vibración de advertencia
+        try {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioCtx) {
+                const ctx = new AudioCtx();
+                if (ctx.state === 'suspended') ctx.resume();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(440, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(220, ctx.currentTime + 0.3);
+                gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.35);
+                osc.start(ctx.currentTime);
+                osc.stop(ctx.currentTime + 0.35);
+            }
+        } catch (e) {
+            console.debug("Audio play blocked", e);
+        }
+        vibrateWarning();
+
+        // 3. Notificación Toast prominente
+        const orderNum = (orderData.id || '').slice(-6).toUpperCase();
+        toast.error(`El cliente ha eliminado su pedido #${orderNum}`, {
+            duration: 6000,
+            icon: '🚫'
+        });
+
+        // 4. Modal de alerta para el comercio: "El cliente ha eliminado su pedido"
+        setClientCancelledNotice({
+            orderId: orderData.id,
+            orderNumber: orderNum,
+            userName: orderData.user_name || orderData.userName || 'Cliente',
+            reason: orderData.cancellation_reason || (isDeleted ? 'El pedido fue retirado del sistema' : 'El cliente canceló y eliminó el pedido antes del pago')
+        });
+    };
+
     const handleCloseSale = async () => {
         if (!selectedOrderForClose) return;
         setIsAccepting(true);
@@ -484,7 +590,17 @@ export default function Orders() {
 
         const channel = supabase
             .channel(`orders_page_${rid}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${rid}` }, () => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${rid}` }, (payload: any) => {
+                const newRecord = payload?.new;
+                const oldRecord = payload?.old;
+                const eventType = payload?.eventType;
+
+                if (newRecord && (newRecord.status === 'cancelled_by_client' || newRecord.status === 'cancelled')) {
+                    handleOrderCancelledByClient(newRecord);
+                } else if (eventType === 'DELETE' && oldRecord?.id) {
+                    handleOrderCancelledByClient(oldRecord, true);
+                }
+
                 fetchOrders();
             })
             .subscribe();
@@ -1456,7 +1572,7 @@ export default function Orders() {
         ).length,
         delivering: orders.filter(o => o.status === 'delivering' || o.status === 'buscando_piloto' || o.status === 'piloto_asignado' || o.status === 'conductor_asignado' || o.status === 'en_camino' || o.status === 'ready').length,
         delivered: orders.filter(o => o.status === 'delivered').length,
-        rejected: orders.filter(o => o.status === 'rejected').length,
+        rejected: orders.filter(o => o.status === 'rejected' || o.status === 'cancelled' || o.status === 'cancelled_by_client').length,
         tables: tables.length
     };
 
@@ -1483,6 +1599,11 @@ export default function Orders() {
                 o.status === 'ready'
             );
             if (activeTab === 'tables') return false; // Handled by renderTablesView
+            if (activeTab === 'rejected') return (
+                o.status === 'rejected' ||
+                o.status === 'cancelled' ||
+                o.status === 'cancelled_by_client'
+            );
             return o.status === activeTab;
         })
         .filter(o =>
@@ -1658,6 +1779,13 @@ export default function Orders() {
             {order.paymentStatus === 'not_sold' && (
                 <div className="absolute top-0 right-0 p-3 sm:p-4">
                     <span className="bg-red-100 text-red-600 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">No Vendido</span>
+                </div>
+            )}
+            {order.status === 'cancelled_by_client' && (
+                <div className="absolute top-0 right-0 p-3 sm:p-4">
+                    <span className="bg-rose-100 text-rose-700 text-[9px] sm:text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                        <Trash2 className="w-3 h-3 text-rose-600" /> Eliminado por el cliente
+                    </span>
                 </div>
             )}
 
@@ -4592,6 +4720,56 @@ export default function Orders() {
                     </div>
                 </div>
             )}
+
+            {/* Modal de Alerta al Negocio: El cliente ha eliminado su pedido */}
+            <AnimatePresence>
+                {clientCancelledNotice && (
+                    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                            animate={{ scale: 1, opacity: 1, y: 0 }}
+                            exit={{ scale: 0.9, opacity: 0, y: 20 }}
+                            className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border-2 border-rose-200 text-center space-y-4"
+                        >
+                            <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full mx-auto flex items-center justify-center shadow-lg shadow-rose-600/20">
+                                <Trash2 className="w-8 h-8" />
+                            </div>
+
+                            <div className="space-y-1">
+                                <span className="text-[10px] font-black uppercase tracking-widest text-rose-600 bg-rose-50 px-3 py-1 rounded-full border border-rose-200/60 inline-block">
+                                    Orden #{clientCancelledNotice.orderNumber}
+                                </span>
+                                <h3 className="text-xl font-black text-slate-900 pt-2">
+                                    El cliente ha eliminado su pedido
+                                </h3>
+                                <p className="text-xs text-slate-500 font-bold">
+                                    Cliente: <span className="text-slate-800">{clientCancelledNotice.userName}</span>
+                                </p>
+                            </div>
+
+                            {clientCancelledNotice.reason && (
+                                <div className="bg-rose-50/80 border border-rose-200/80 rounded-2xl p-3.5 text-left">
+                                    <p className="text-[10px] font-black uppercase tracking-wider text-rose-700 mb-0.5">Motivo de cancelación:</p>
+                                    <p className="text-xs font-semibold text-rose-950 leading-relaxed">
+                                        {clientCancelledNotice.reason}
+                                    </p>
+                                </div>
+                            )}
+
+                            <p className="text-xs text-slate-500 font-medium leading-relaxed">
+                                Este pedido ha sido cerrado automáticamente y ya no requiere atención ni despacho.
+                            </p>
+
+                            <button
+                                onClick={() => setClientCancelledNotice(null)}
+                                className="w-full py-4 rounded-2xl bg-slate-900 hover:bg-slate-800 text-white font-black text-xs shadow-xl active:scale-98 transition-all"
+                            >
+                                Entendido
+                            </button>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
         </div >
     );
 }

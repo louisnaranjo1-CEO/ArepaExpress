@@ -5,7 +5,7 @@ import {
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
   Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet, Lock,
-  Scale
+  Scale, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -363,6 +363,14 @@ export default function OrderChatWindow({
             }
             return ord;
           });
+
+          // Si el cliente canceló y eliminó el pedido
+          if (ord?.status === 'cancelled_by_client' || ord?.status === 'cancelled') {
+            if (isStoreRole) {
+              toast.error('El cliente ha eliminado su pedido', { duration: 6000, icon: '🚫' });
+              onClose?.();
+            }
+          }
         }
       })
       .subscribe();
@@ -1348,6 +1356,24 @@ export default function OrderChatWindow({
           <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-xl font-mono text-xs tracking-wider border border-white/30">
             {prepCountdownStr}
           </span>
+        </div>
+      )}
+
+      {/* BANNER DE CANCELACIÓN: Si el pedido fue cancelado o eliminado */}
+      {(liveOrder?.status === 'cancelled_by_client' || liveOrder?.status === 'cancelled') && (
+        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5 flex items-center justify-between text-xs text-rose-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span className="font-black">Este pedido fue cancelado y eliminado por el cliente.</span>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all"
+            >
+              Cerrar
+            </button>
+          )}
         </div>
       )}
 

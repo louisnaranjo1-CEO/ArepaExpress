@@ -6,7 +6,7 @@ import {
     Navigation, Clock, CheckCircle2, Bike, Motorbike, MapPin, Phone, ArrowLeft,
     Store, Star, Wallet, X, Loader2, Upload, AlertCircle, Copy,
     ChevronRight, Package, CreditCard, CheckCircle, Check, Radio,
-    Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink
+    Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
@@ -154,7 +154,7 @@ export default function TrackOrder() {
 
     // ── Order Cancellation Modal State (Paso 2 / Checkout) ───────────────────
     const [showCancelModal, setShowCancelModal] = useState(false);
-    const [selectedCancelReason, setSelectedCancelReason] = useState('El precio final o pesaje no coincide con lo esperado');
+    const [selectedCancelReason, setSelectedCancelReason] = useState('Ya no deseo realizar esta compra');
     const [customCancelReason, setCustomCancelReason] = useState('');
     const [isCancellingOrder, setIsCancellingOrder] = useState(false);
 
@@ -759,12 +759,12 @@ export default function TrackOrder() {
                 sender_id: user?.uid || 'client',
                 sender_name: user?.displayName || order?.userName || 'Cliente',
                 sender_role: 'system',
-                text: `❌ *Pedido cancelado por el cliente.*\n*Motivo:* ${reason}`,
+                text: `🚫 *El cliente ha cancelado y eliminado su pedido.*\n*Motivo:* ${reason}`,
                 action: 'order_cancelled',
                 created_at: new Date().toISOString()
             });
 
-            toast.success('Pedido cancelado exitosamente');
+            toast.success('Pedido cancelado y eliminado con éxito');
             setShowCancelModal(false);
             setOrder((prev: any) => ({ ...prev, status: 'cancelled_by_client', cancellation_reason: reason }));
         } catch (error) {
@@ -1336,14 +1336,14 @@ export default function TrackOrder() {
     if (order.status === 'cancelled' || order.status === 'cancelled_by_client' || order.status === 'cancelled_by_store') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-slate-50">
-                <div className="w-20 h-20 bg-red-100 text-red-500 flex items-center justify-center rounded-3xl mb-4 shadow-xl shadow-red-500/20">
-                    <X className="w-10 h-10" />
+                <div className="w-20 h-20 bg-rose-100 text-rose-500 flex items-center justify-center rounded-3xl mb-4 shadow-xl shadow-rose-500/20">
+                    <Trash2 className="w-10 h-10" />
                 </div>
-                <h2 className="text-2xl font-black text-slate-900 mb-2">Pedido Cancelado</h2>
+                <h2 className="text-2xl font-black text-slate-900 mb-2">Pedido Cancelado y Eliminado</h2>
                 <p className="text-slate-500 font-medium mb-3 text-sm">
                     {order.status === 'cancelled_by_client' 
-                        ? 'Cancelaste este pedido satisfactoriamente.' 
-                        : 'Este pedido fue cancelado.'}
+                        ? 'Cancelaste y eliminaste este pedido exitosamente.' 
+                        : 'Este pedido fue cancelado y retirado del sistema.'}
                 </p>
                 {order.cancellation_reason && (
                     <div className="bg-red-50/80 border border-red-200/60 rounded-2xl p-3 mb-6 max-w-sm text-xs text-red-800 font-bold">
@@ -1658,13 +1658,13 @@ export default function TrackOrder() {
                                 </button>
                             </div>
 
-                            {/* Botón de Cancelar Pedido (Paso 2 / Checkout) */}
-                            <div className="pt-1">
+                            {/* Botón de Cancelar y Eliminar Pedido (Paso 2 / Checkout) */}
+                            <div className="pt-2">
                                 <button
                                     onClick={() => setShowCancelModal(true)}
-                                    className="w-full bg-rose-50/80 hover:bg-rose-100 text-rose-600 font-bold py-3.5 rounded-2xl border border-rose-200/80 transition-all text-xs flex items-center justify-center gap-2 active:scale-98 shadow-xs"
+                                    className="w-full bg-rose-50/90 hover:bg-rose-100 text-rose-600 font-bold py-3.5 px-4 rounded-2xl border border-rose-200 transition-all text-xs flex items-center justify-center gap-2 active:scale-98 shadow-xs"
                                 >
-                                    <X className="w-4 h-4 text-rose-500" /> Cancelar Pedido
+                                    <Trash2 className="w-4 h-4 text-rose-500" /> Cancelar y eliminar pedido
                                 </button>
                             </div>
                         </>
@@ -2570,7 +2570,7 @@ export default function TrackOrder() {
                     </div>
                 )}
 
-                {/* Modal de Cancelación de Pedido (Paso 2 / Checkout) */}
+                {/* Modal de Cancelación y Eliminación de Pedido (Paso 2 / Checkout) */}
                 {showCancelModal && (
                     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in">
                         <motion.div
@@ -2581,8 +2581,8 @@ export default function TrackOrder() {
                         >
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                                 <div className="flex items-center gap-2 text-rose-600 font-black text-base">
-                                    <AlertCircle className="w-5 h-5" />
-                                    <span>Cancelar Pedido</span>
+                                    <Trash2 className="w-5 h-5 text-rose-600" />
+                                    <span>Cancelar y Eliminar Pedido</span>
                                 </div>
                                 <button
                                     onClick={() => setShowCancelModal(false)}
@@ -2592,12 +2592,17 @@ export default function TrackOrder() {
                                 </button>
                             </div>
 
-                            <p className="text-slate-600 text-xs font-medium leading-relaxed">
-                                Si el monto final, pesaje o tiempo no se ajustan a lo que necesitas, puedes cancelar el pedido ahora sin costo. Por favor indícanos el motivo:
+                            <div className="bg-rose-50/70 border border-rose-200/70 rounded-2xl p-3 text-xs text-rose-900 font-medium leading-relaxed">
+                                Si no deseas continuar con la compra, el pedido se cancelará y cerrará automáticamente tanto para ti como para el negocio.
+                            </div>
+
+                            <p className="text-slate-600 text-xs font-bold">
+                                Por favor indícanos el motivo de la cancelación:
                             </p>
 
                             <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                                 {[
+                                    'Ya no deseo realizar esta compra',
                                     'El precio final o pesaje no coincide con lo esperado',
                                     'El comercio tardó demasiado en responder',
                                     'Deseo modificar los productos de mi pedido',
@@ -2646,7 +2651,7 @@ export default function TrackOrder() {
                                     disabled={isCancellingOrder || (selectedCancelReason === 'Otro motivo' && !customCancelReason.trim())}
                                     className="flex-1 py-3.5 rounded-2xl bg-rose-600 text-white font-black text-xs hover:bg-rose-700 shadow-lg shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
                                 >
-                                    {isCancellingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmar Cancelación'}
+                                    {isCancellingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmar Eliminación'}
                                 </button>
                             </div>
                         </motion.div>

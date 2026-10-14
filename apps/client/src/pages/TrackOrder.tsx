@@ -6,7 +6,7 @@ import {
     Navigation, Clock, CheckCircle2, Bike, Motorbike, MapPin, Phone, ArrowLeft,
     Store, Star, Wallet, X, Loader2, Upload, AlertCircle, Copy,
     ChevronRight, Package, CreditCard, CheckCircle, Check, Radio,
-    Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink
+    Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
@@ -151,6 +151,12 @@ export default function TrackOrder() {
     const [unreadCount, setUnreadCount] = useState(0);
     const [showReviewModal, setShowReviewModal] = useState(false);
     const [showPagoMovilModal, setShowPagoMovilModal] = useState(false);
+
+    // ── Order Cancellation Modal State (Paso 2 / Checkout) ───────────────────
+    const [showCancelModal, setShowCancelModal] = useState(false);
+    const [selectedCancelReason, setSelectedCancelReason] = useState('Ya no deseo realizar esta compra');
+    const [customCancelReason, setCustomCancelReason] = useState('');
+    const [isCancellingOrder, setIsCancellingOrder] = useState(false);
 
     const openChat = () => {
         setShowChat(true);
@@ -715,21 +721,57 @@ export default function TrackOrder() {
         }
     };
 
-    // Cancelar orden
+    // Cancelar y eliminar orden
     const handleCancelOrder = async () => {
+        setShowCancelModal(true);
+    };
+
+    const handleConfirmCancelOrder = async () => {
         if (!orderId) return;
-        if (window.confirm('¿Estás seguro que deseas cancelar tu pedido?')) {
-            try {
-                await supabase.from('orders').update({
+        setIsCancellingOrder(true);
+        try {
+            const reason = selectedCancelReason === 'Otro motivo' 
+                ? (customCancelReason.trim() || 'Cancelado por el cliente') 
+                : selectedCancelReason;
+
+            await supabase.from('orders').update({
+                status: 'cancelled_by_client',
+                cancellation_reason: reason,
+                cancelled_at: new Date().toISOString(),
+                cancelled_by: 'client',
+                updated_at: new Date().toISOString()
+            }).eq('id', orderId);
+
+            // Cancel transport request if active
+            if (transportRequest?.id || order?.transport_request_id) {
+                const trId = transportRequest?.id || order?.transport_request_id;
+                await supabase.from('transport_requests').update({
                     status: 'cancelled',
-                    cancelledAt: new Date().toISOString(),
-                    cancelled_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                }).eq('id', orderId);
-                toast.success('Pedido cancelado');
-            } catch (error) {
-                toast.error('Error al cancelar');
+                    canceled_at: new Date().toISOString(),
+                    canceled_by: 'client',
+                    cancel_reason: reason
+                }).eq('id', trId);
             }
+
+            // Insert audit message in chat
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                sender_id: user?.uid || 'client',
+                sender_name: user?.displayName || order?.userName || 'Cliente',
+                sender_role: 'system',
+                text: `🚫 *El cliente ha cancelado y eliminado su pedido.*\n*Motivo:* ${reason}`,
+                action: 'order_cancelled',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success('Pedido cancelado y eliminado con éxito');
+            setShowCancelModal(false);
+            setOrder((prev: any) => ({ ...prev, status: 'cancelled_by_client', cancellation_reason: reason }));
+        } catch (error) {
+            console.error('Error al cancelar pedido:', error);
+            toast.error('Error al cancelar el pedido');
+        } finally {
+            setIsCancellingOrder(false);
         }
     };
 
@@ -1291,14 +1333,24 @@ export default function TrackOrder() {
         );
     }
 
-    if (order.status === 'cancelled') {
+    if (order.status === 'cancelled' || order.status === 'cancelled_by_client' || order.status === 'cancelled_by_store') {
         return (
             <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-slate-50">
-                <div className="w-20 h-20 bg-red-100 text-red-500 flex items-center justify-center rounded-3xl mb-4 shadow-xl shadow-red-500/20">
-                    <X className="w-10 h-10" />
+                <div className="w-20 h-20 bg-rose-100 text-rose-500 flex items-center justify-center rounded-3xl mb-4 shadow-xl shadow-rose-500/20">
+                    <Trash2 className="w-10 h-10" />
                 </div>
-                <h2 className="text-2xl font-black text-slate-900 mb-2">Pedido Cancelado</h2>
-                <p className="text-slate-500 font-medium mb-6 text-sm">Este pedido fue cancelado satisfactoriamente.</p>
+                <h2 className="text-2xl font-black text-slate-900 mb-2">Pedido Cancelado y Eliminado</h2>
+                <p className="text-slate-500 font-medium mb-3 text-sm">
+                    {order.status === 'cancelled_by_client' 
+                        ? 'Cancelaste y eliminaste este pedido exitosamente.' 
+                        : 'Este pedido fue cancelado y retirado del sistema.'}
+                </p>
+                {order.cancellation_reason && (
+                    <div className="bg-rose-50/80 border border-rose-200/60 rounded-2xl p-3 mb-6 max-w-sm text-xs text-rose-800 font-bold">
+                        <span className="opacity-70 block text-[10px] uppercase tracking-wider mb-0.5">Motivo:</span>
+                        {order.cancellation_reason}
+                    </div>
+                )}
                 <button onClick={() => navigate('/')} className="bg-slate-900 text-white rounded-2xl px-8 py-4 font-black shadow-xl hover:bg-slate-800 transition-colors">
                     Volver al inicio
                 </button>
@@ -1598,6 +1650,16 @@ export default function TrackOrder() {
                                     className="w-full bg-white hover:bg-slate-100 text-slate-700 font-bold py-3.5 rounded-2xl border border-slate-200 transition-all text-xs flex items-center justify-center gap-2"
                                 >
                                     <Store className="w-4 h-4 text-slate-500" /> Prefiero pagar en el local al retirar (PickUp)
+                                </button>
+                            </div>
+
+                            {/* Botón de Cancelar y Eliminar Pedido (Paso 2 / Checkout) */}
+                            <div className="pt-2">
+                                <button
+                                    onClick={() => setShowCancelModal(true)}
+                                    className="w-full bg-rose-50/90 hover:bg-rose-100 text-rose-600 font-bold py-3.5 px-4 rounded-2xl border border-rose-200 transition-all text-xs flex items-center justify-center gap-2 active:scale-98 shadow-xs"
+                                >
+                                    <Trash2 className="w-4 h-4 text-rose-500" /> Cancelar y eliminar pedido
                                 </button>
                             </div>
                         </>
@@ -2499,6 +2561,94 @@ export default function TrackOrder() {
                                     <p className="text-sm font-bold text-amber-700">El negocio no tiene configurado Pago Móvil automático. Usa el chat para solicitar los datos directamente.</p>
                                 </div>
                             )}
+                        </motion.div>
+                    </div>
+                )}
+
+                {/* Modal de Cancelación y Eliminación de Pedido (Paso 2 / Checkout) */}
+                {showCancelModal && (
+                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-in fade-in">
+                        <motion.div
+                            initial={{ y: 50, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: 50, opacity: 0 }}
+                            className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-4"
+                        >
+                            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                <div className="flex items-center gap-2 text-rose-600 font-black text-base">
+                                    <Trash2 className="w-5 h-5 text-rose-600" />
+                                    <span>Cancelar y Eliminar Pedido</span>
+                                </div>
+                                <button
+                                    onClick={() => setShowCancelModal(false)}
+                                    className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600"
+                                >
+                                    <X className="w-4 h-4" />
+                                </button>
+                            </div>
+
+                            <div className="bg-rose-50/70 border border-rose-200/70 rounded-2xl p-3 text-xs text-rose-900 font-medium leading-relaxed">
+                                Si no deseas continuar con la compra, el pedido se cancelará y cerrará automáticamente tanto para ti como para el negocio.
+                            </div>
+
+                            <p className="text-slate-600 text-xs font-bold">
+                                Por favor indícanos el motivo de la cancelación:
+                            </p>
+
+                            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                                {[
+                                    'Ya no deseo realizar esta compra',
+                                    'El precio final o pesaje no coincide con lo esperado',
+                                    'El comercio tardó demasiado en responder',
+                                    'Deseo modificar los productos de mi pedido',
+                                    'Cometí un error al solicitar la orden',
+                                    'Otro motivo'
+                                ].map((reason) => (
+                                    <label
+                                        key={reason}
+                                        onClick={() => setSelectedCancelReason(reason)}
+                                        className={`flex items-center gap-3 p-3 rounded-2xl border text-xs font-bold cursor-pointer transition-all ${
+                                            selectedCancelReason === reason
+                                                ? 'border-rose-500 bg-rose-50/70 text-rose-950 shadow-xs'
+                                                : 'border-slate-200 bg-slate-50/50 text-slate-700 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                            selectedCancelReason === reason ? 'border-rose-600 bg-rose-600 text-white' : 'border-slate-300'
+                                        }`}>
+                                            {selectedCancelReason === reason && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                        </div>
+                                        <span className="flex-1">{reason}</span>
+                                    </label>
+                                ))}
+                            </div>
+
+                            {selectedCancelReason === 'Otro motivo' && (
+                                <textarea
+                                    value={customCancelReason}
+                                    onChange={(e) => setCustomCancelReason(e.target.value)}
+                                    placeholder="Describe brevemente el motivo..."
+                                    className="w-full p-3 text-xs border border-slate-200 rounded-2xl focus:ring-2 focus:ring-rose-500 outline-none font-medium"
+                                    rows={2}
+                                />
+                            )}
+
+                            <div className="flex gap-2.5 pt-2">
+                                <button
+                                    onClick={() => setShowCancelModal(false)}
+                                    disabled={isCancellingOrder}
+                                    className="flex-1 py-3.5 rounded-2xl border border-slate-200 font-black text-xs text-slate-700 hover:bg-slate-50 transition-all"
+                                >
+                                    Volver
+                                </button>
+                                <button
+                                    onClick={handleConfirmCancelOrder}
+                                    disabled={isCancellingOrder || (selectedCancelReason === 'Otro motivo' && !customCancelReason.trim())}
+                                    className="flex-1 py-3.5 rounded-2xl bg-rose-600 text-white font-black text-xs hover:bg-rose-700 shadow-lg shadow-rose-600/20 flex items-center justify-center gap-1.5 transition-all disabled:opacity-50"
+                                >
+                                    {isCancellingOrder ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirmar Eliminación'}
+                                </button>
+                            </div>
                         </motion.div>
                     </div>
                 )}

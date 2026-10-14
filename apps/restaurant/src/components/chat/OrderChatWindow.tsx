@@ -4,7 +4,8 @@ import {
   Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
-  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet, Lock,
+  Scale, Trash2
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -81,6 +82,14 @@ export default function OrderChatWindow({
   const [payNotes, setPayNotes] = useState('');
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
+  // Assign price/peso modal for store (Consultar precio / productos pesados)
+  const [assignPriceModal, setAssignPriceModal] = useState<{
+    item: any;
+    price: number;
+    weight: string;
+  } | null>(null);
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
+
   // Preparation tool modal state (Store)
   const [showPrepTimeModal, setShowPrepTimeModal] = useState(false);
   const [customPrepMinutes, setCustomPrepMinutes] = useState(20);
@@ -97,6 +106,41 @@ export default function OrderChatWindow({
   const [clientSelectedCategory, setClientSelectedCategory] = useState<'moto' | 'carro' | 'confort'>('moto');
   const [clientReferenceNote, setClientReferenceNote] = useState('');
   const [submittingClientDispatch, setSubmittingClientDispatch] = useState(false);
+
+  // Emergency / Lost item reactivation state for completed orders (Audio 3)
+  const isCompleted = ['delivered', 'completed', 'entregado', 'finalizado'].includes(liveOrder?.status || orderInfo?.status);
+  const emergencyActivatedMsg = messages.find((m: any) => m.action === 'lost_item_emergency' || m.text?.includes('EMERGENCIA / OBJETO OLVIDADO'));
+  const emergencyResolvedMsg = messages.find((m: any) => m.action === 'lost_item_resolved' || m.text?.includes('EMERGENCIA FINALIZADA'));
+  const isEmergencyActive = Boolean(emergencyActivatedMsg && !emergencyResolvedMsg);
+  const isEmergencyExhausted = Boolean(emergencyResolvedMsg);
+  const isChatLocked = isCompleted && !isEmergencyActive;
+
+  const handleReactivateEmergency = async () => {
+    try {
+      await handleSendMessage(
+        '🚨 ¡EMERGENCIA / OBJETO OLVIDADO! El cliente ha reactivado el chat para reportar un objeto olvidado o novedad urgente de su pedido.',
+        undefined,
+        'lost_item_emergency' as any
+      );
+      toast.success("¡Chat reactivado por emergencia! Puedes comunicarte con el comercio o repartidor.", { icon: '🚨' });
+    } catch (e) {
+      toast.error("No se pudo reactivar el chat");
+    }
+  };
+
+  const handleResolveEmergency = async () => {
+    if (!window.confirm("¿Deseas finalizar la emergencia? Una vez finalizada, el chat se cerrará definitivamente en modo solo lectura.")) return;
+    try {
+      await handleSendMessage(
+        '✅ EMERGENCIA FINALIZADA. El caso ha sido resuelto y el chat ha quedado cerrado definitivamente.',
+        undefined,
+        'lost_item_resolved' as any
+      );
+      toast.success("Emergencia finalizada con éxito. Chat cerrado.", { icon: '🔒' });
+    } catch (e) {
+      toast.error("No se pudo finalizar la emergencia");
+    }
+  };
 
   const isStoreRole = currentUserRole === 'restaurant' || (currentUserRole as string) === 'cashier';
 
@@ -309,7 +353,24 @@ export default function OrderChatWindow({
         if (payload.new) {
           const ord = payload.new as any;
           if (ord.items) setOrderItems(ord.items);
-          setLiveOrder(ord);
+          
+          setLiveOrder((prev: any) => {
+            const wasStockConfirmed = Boolean(prev?.stock_confirmed || prev?.stockConfirmed);
+            const isNowStockConfirmed = Boolean(ord?.stock_confirmed || ord?.stockConfirmed);
+            if (!wasStockConfirmed && isNowStockConfirmed) {
+              playNotificationChime('enter');
+              toast.success("¡Stock y monto final confirmados por el comercio! Ya puedes pagar.", { icon: '✅' });
+            }
+            return ord;
+          });
+
+          // Si el cliente canceló y eliminó el pedido
+          if (ord?.status === 'cancelled_by_client' || ord?.status === 'cancelled') {
+            if (isStoreRole) {
+              toast.error('El cliente ha eliminado su pedido', { duration: 6000, icon: '🚫' });
+              onClose?.();
+            }
+          }
         }
       })
       .subscribe();
@@ -886,20 +947,120 @@ export default function OrderChatWindow({
     }
   };
 
-  // Stock Confirmation Tool for Store
-  const handleConfirmStoreStock = async () => {
+  // Open & Save Assign Price / Peso Modal (Store)
+  const handleOpenAssignPrice = (item: any) => {
+    setAssignPriceModal({
+      item,
+      price: Number(item.price) || 0,
+      weight: item.weight_value ? String(item.weight_value) : ''
+    });
+  };
+
+  const handleSaveAssignPrice = async () => {
+    if (!assignPriceModal) return;
+    const { item, price, weight } = assignPriceModal;
+    if (Number(price) <= 0) {
+      toast.error('Por favor ingresa un precio válido mayor a 0');
+      return;
+    }
+
+    setIsSavingPrice(true);
     try {
+      const updatedItems = orderItems.map((it: any) => {
+        if (it.id === item.id) {
+          return {
+            ...it,
+            price: Number(price),
+            consultPrice: false,
+            consultar_precio: false,
+            price_pending: false,
+            weight_value: weight || undefined
+          };
+        }
+        return it;
+      });
+
+      const newSubtotal = updatedItems.reduce((acc, it) => acc + (Number(it.price || 0) * Number(it.quantity || 1)), 0);
+      const deliveryFee = Number(liveOrder?.delivery_fee || liveOrder?.deliveryFee || 0);
+      const newTotal = Number((newSubtotal + deliveryFee).toFixed(2));
+
+      setOrderItems(updatedItems);
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        items: updatedItems,
+        subtotal: newSubtotal,
+        total: newTotal
+      }));
+
       await supabase.from('orders').update({
-        status: 'awaiting_payment',
-        stock_confirmed: true,
+        items: updatedItems,
+        subtotal: newSubtotal,
+        total: newTotal,
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
-      setLiveOrder((prev: any) => ({ ...prev, status: 'awaiting_payment', stock_confirmed: true }));
+      const auditText = `⚖️ *Precio asignado por el comercio:*\n` +
+        `• Producto: *${item.name}*\n` +
+        `• Precio unitario: **$${Number(price).toFixed(2)} USD**\n` +
+        (weight ? `• Peso registrado: **${weight}**\n` : '') +
+        `• Total orden actualizado: **$${newTotal.toFixed(2)} USD** (${(newTotal * effectiveRate).toFixed(0)} Bs).`;
 
-      await handleSendMessage("✅ *STOCK CONFIRMADO POR EL COMERCIO:*\nTodos los productos de tu pedido están disponibles y apartados. Puedes proceder con el pago con total tranquilidad.");
+      await handleSendMessage(auditText, undefined, 'items_modified');
+      toast.success('Precio y peso asignados correctamente');
+      setAssignPriceModal(null);
+    } catch (err) {
+      console.error('Error assigning price in chat:', err);
+      toast.error('Error al guardar precio');
+    } finally {
+      setIsSavingPrice(false);
+    }
+  };
+
+  // Stock Confirmation Tool for Store (Enforces Golden Rule & Dynamic Rate)
+  const handleConfirmStoreStock = async () => {
+    // Regla de Oro: Validar que no haya productos con precio pendiente
+    const pendingItems = orderItems.filter((i: any) => 
+      i.consultPrice || i.consultar_precio || i.price_pending || ((Number(i.price) === 0 || i.price === undefined || i.price === null) && !i.isGift && !i.is_gift)
+    );
+    if (pendingItems.length > 0) {
+      toast.error(`⚠️ Debes asignar precio a "${pendingItems[0].name}" antes de confirmar stock.`);
+      return;
+    }
+
+    try {
+      const customRate = Number(liveOrder?.exchange_rate || liveOrder?.custom_exchange_rate || bcvRate || 855.66);
+      const totalUsd = orderDisplayTotal;
+      const totalBs = Number((totalUsd * customRate).toFixed(2));
+
+      await supabase.from('orders').update({
+        status: 'awaiting_payment',
+        stock_confirmed: true,
+        stock_confirmed_at: new Date().toISOString(),
+        total: totalUsd,
+        total_bs: totalBs,
+        exchange_rate: customRate,
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
+
+      setLiveOrder((prev: any) => ({ 
+        ...prev, 
+        status: 'awaiting_payment', 
+        stock_confirmed: true,
+        stock_confirmed_at: new Date().toISOString(),
+        total: totalUsd,
+        total_bs: totalBs,
+        exchange_rate: customRate
+      }));
+
+      await handleSendMessage(
+        `✅ *¡STOCK Y MONTO FINAL CONFIRMADOS POR EL COMERCIO!*\n` +
+        `Todos los productos de tu pedido están disponibles y apartados.\n` +
+        `• Total a pagar: **$${totalUsd.toFixed(2)} USD** (${totalBs.toLocaleString('es-VE')} Bs)\n` +
+        `• Tasa oficial aplicada: **${customRate.toFixed(2)} Bs/$**\n\n` +
+        `Ya puedes realizar y reportar tu pago con total tranquilidad.`
+      );
       await handleSendPagoMovilInfo();
-      toast.success("Stock confirmado al cliente.");
+      toast.success("Stock y monto final confirmados al cliente.");
     } catch (e) {
       console.error(e);
       toast.error("Error al confirmar stock");
@@ -907,6 +1068,7 @@ export default function OrderChatWindow({
   };
 
   // Financial and Qualification Calculations
+  const effectiveRate = Number(liveOrder?.exchange_rate || liveOrder?.custom_exchange_rate || bcvRate || 855.66);
   const isPickupOrder = liveOrder?.delivery_method === 'pickup' || liveOrder?.deliveryMethod === 'pickup';
   const calculatedItemsTotal = (orderItems && orderItems.length > 0)
     ? orderItems.reduce((acc, it) => acc + (Number(it.price || 0) * Number(it.quantity || 1)), 0)
@@ -956,7 +1118,7 @@ export default function OrderChatWindow({
   const isStockConfirmed = Boolean(
     liveOrder?.stock_confirmed ||
     liveOrder?.stockConfirmed ||
-    (liveOrder?.status && !['pending', 'action_required'].includes(liveOrder.status))
+    (liveOrder?.status && !['pending', 'pending_store_review', 'action_required'].includes(liveOrder.status))
   );
 
   const renderMessageContent = (msg: Message) => {
@@ -1153,6 +1315,37 @@ export default function OrderChatWindow({
         </div>
       </div>
 
+      {/* Banner de Emergencia / Objeto Olvidado o Modo Solo Lectura (Audio 3) */}
+      {isEmergencyActive ? (
+        <div className="bg-red-600 text-white p-3 px-4 flex items-center justify-between gap-3 shadow-md border-b-2 border-red-700 animate-in slide-in-from-top-2 shrink-0 z-20">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+            <div className="truncate">
+              <p className="text-xs font-black uppercase tracking-wider truncate">🚨 Emergencia Activa: Objeto Olvidado</p>
+              <p className="text-[10px] text-white/90 font-medium leading-tight">Chat desbloqueado para resolver la novedad</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleResolveEmergency}
+            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-red-700 font-black text-xs rounded-xl shadow-sm shrink-0 active:scale-95 transition-all"
+          >
+            Finalizar emergencia
+          </button>
+        </div>
+      ) : isCompleted && (
+        <div className="p-2.5 px-3 border-b text-xs flex items-center gap-2 bg-slate-100 border-slate-200 text-slate-700 shrink-0">
+          <Lock className="w-4 h-4 shrink-0 text-slate-500" />
+          <p className="text-[11px] font-medium leading-tight">
+            {isEmergencyExhausted ? (
+              <span>Emergencia resuelta. El chat se encuentra cerrado definitivamente.</span>
+            ) : (
+              <span>Pedido completado. El chat está cerrado en modo solo lectura de respaldo.</span>
+            )}
+          </p>
+        </div>
+      )}
+
       {/* Countdown Timer Banner */}
       {prepCountdownStr && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-black shadow-md z-10 shrink-0 animate-in slide-in-from-top-2">
@@ -1163,6 +1356,24 @@ export default function OrderChatWindow({
           <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-xl font-mono text-xs tracking-wider border border-white/30">
             {prepCountdownStr}
           </span>
+        </div>
+      )}
+
+      {/* BANNER DE CANCELACIÓN: Si el pedido fue cancelado o eliminado */}
+      {(liveOrder?.status === 'cancelled_by_client' || liveOrder?.status === 'cancelled') && (
+        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5 flex items-center justify-between text-xs text-rose-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span className="font-black">Este pedido fue cancelado y eliminado por el cliente.</span>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all"
+            >
+              Cerrar
+            </button>
+          )}
         </div>
       )}
 
@@ -1201,15 +1412,27 @@ export default function OrderChatWindow({
           <div className="space-y-1.5">
             {orderItems.map((item: any, idx: number) => {
               const isSoldOut = !!item.isSoldOut;
-              const itemTotal = (item.price || 0) * (item.quantity || 1);
-              const itemTotalBs = bcvRate > 0 ? (itemTotal * bcvRate).toFixed(0) : '0';
+              const isGift = Boolean(item.isGift || item.is_gift || (item.price === 0 && !item.consultPrice && !item.consultar_precio && !item.price_pending));
+              const isPricePending = Boolean(
+                item.consultPrice || 
+                item.consultar_precio || 
+                item.price_pending || 
+                ((item.price === undefined || item.price === null || Number(item.price) === 0) && !isGift)
+              );
+              const itemPrice = Number(item.price || 0);
+              const itemTotal = itemPrice * (item.quantity || 1);
+              const itemTotalBs = effectiveRate > 0 ? (itemTotal * effectiveRate).toFixed(0) : '0';
 
               return (
                 <div
                   key={item.id || idx}
-                  className={`flex items-center justify-between gap-2 p-2 rounded-xl text-xs transition-all ${
+                  className={`flex items-center justify-between gap-2 p-2.5 rounded-xl text-xs transition-all ${
                     isSoldOut
                       ? 'bg-red-50 border border-red-200 text-red-700'
+                      : isPricePending
+                      ? 'bg-amber-50/80 border border-amber-300 text-amber-950 shadow-xs'
+                      : isGift
+                      ? 'bg-purple-50/80 border border-purple-200 text-purple-900'
                       : 'bg-slate-50 border border-slate-100 text-slate-800'
                   }`}
                 >
@@ -1218,16 +1441,46 @@ export default function OrderChatWindow({
                       {item.quantity}x
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className={`font-black text-xs truncate ${isSoldOut ? 'line-through text-red-600' : 'text-slate-900'}`}>
-                        {item.name}
-                      </p>
-                      <span className="text-[10px] text-slate-500 font-bold">
-                        ${itemTotal.toFixed(2)} USD • {itemTotalBs} Bs
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className={`font-black text-xs truncate ${isSoldOut ? 'line-through text-red-600' : 'text-slate-900'}`}>
+                          {item.name}
+                        </p>
+                        {isGift && (
+                          <span className="bg-purple-100 text-purple-700 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                            🎁 Cortesía / Obsequio
+                          </span>
+                        )}
+                        {item.weight_value && (
+                          <span className="bg-slate-200 text-slate-700 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                            ⚖️ {item.weight_value}
+                          </span>
+                        )}
+                      </div>
+
+                      {isPricePending ? (
+                        <div className="flex items-center gap-1 text-[10px] font-black text-amber-700 mt-0.5">
+                          <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                          <span>Precio pendiente por asignar</span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-bold block mt-0.5">
+                          ${itemTotal.toFixed(2)} USD • {itemTotalBs} Bs
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Botón Asignar Precio para comercio si el ítem está pendiente */}
+                    {isStoreRole && isPricePending && (
+                      <button
+                        onClick={() => handleOpenAssignPrice(item)}
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 shadow-sm active:scale-95 animate-pulse"
+                      >
+                        <Scale className="w-3 h-3" /> Asignar Precio
+                      </button>
+                    )}
+
                     {isSoldOut && (
                       <span className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-0.5 rounded-md uppercase">
                         Agotado
@@ -1257,7 +1510,7 @@ export default function OrderChatWindow({
                 ${orderDisplayTotal.toFixed(2)} USD
               </span>
               <span className="text-slate-500 text-[10px]">
-                ({bcvRate > 0 ? (orderDisplayTotal * bcvRate).toFixed(0) : '0'} Bs)
+                ({effectiveRate > 0 ? (orderDisplayTotal * effectiveRate).toFixed(0) : '0'} Bs)
               </span>
             </div>
 
@@ -1312,15 +1565,35 @@ export default function OrderChatWindow({
         <div className="shrink-0 bg-white border-t border-slate-200">
           {/* State 1A: Pre-stock validation (Fase 2.1) */}
           {!isStockConfirmed && !isPaymentVerifiedByStore && (
-            <div className="bg-amber-50/95 border-b border-amber-200 p-3 px-4 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
-                <Clock className="w-4 h-4 animate-spin" />
+            <div className="bg-amber-50/95 border-b border-amber-200 p-3 px-4 flex flex-col gap-2.5">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                  <Clock className="w-4 h-4 animate-spin" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black text-amber-950">Esperando confirmación del comercio...</p>
+                  <p className="text-[11px] font-bold text-amber-800 leading-snug">
+                    El comercio está revisando los productos, pesaje y montos. El pago se habilitará formalmente en cuanto confirmen el stock.
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-black text-amber-950">Validando disponibilidad de productos</p>
-                <p className="text-[11px] font-bold text-amber-800 leading-snug">
-                  Espera a que el negocio te asegure el stock de los productos antes de realizar tu pago. ¡Puedes escribirle primero!
-                </p>
+
+              {/* Tarjeta inferior de pago deshabilitada con opacidad 50% (Regla de Oro: Bloqueo de Pago) */}
+              <div className="opacity-50 pointer-events-none bg-white border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-2xs select-none">
+                <div className="min-w-0 text-[11px] text-slate-500">
+                  <p className="font-bold flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" /> Pago bloqueado
+                  </p>
+                  <p className="text-[10px] text-slate-400">Esperando confirmación de stock</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="bg-slate-100 text-slate-400 font-black px-3 py-2 rounded-xl text-xs flex items-center gap-1 border border-slate-200">
+                    <Copy className="w-3.5 h-3.5" /> Copiar Datos
+                  </span>
+                  <span className="bg-slate-200 text-slate-500 font-black px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-none">
+                    <CreditCard className="w-4 h-4" /> Reportar Pago
+                  </span>
+                </div>
               </div>
             </div>
           )}
@@ -1339,7 +1612,7 @@ export default function OrderChatWindow({
                   </div>
                 </div>
                 <span className="text-xs font-black text-slate-900 bg-white border border-emerald-200 px-2 py-0.5 rounded-lg shadow-xs">
-                  ${orderDisplayTotal.toFixed(2)} USD {bcvRate > 0 && `• ${(orderDisplayTotal * bcvRate).toFixed(2)} Bs`}
+                  ${orderDisplayTotal.toFixed(2)} USD {effectiveRate > 0 && `• ${(orderDisplayTotal * effectiveRate).toFixed(2)} Bs`}
                 </span>
               </div>
 
@@ -1362,7 +1635,8 @@ export default function OrderChatWindow({
                         `Teléfono: ${pm.phone || storeData?.phone || ''}\n` +
                         `Cédula/RIF: ${pm.rif || pm.idf || storeData?.rif || ''}\n` +
                         `Titular: ${pm.owner || storeData?.name || ''}\n` +
-                        `Monto: ${(orderDisplayTotal * bcvRate).toFixed(2)} Bs ($${orderDisplayTotal.toFixed(2)} USD)`;
+                        `Monto: ${(orderDisplayTotal * effectiveRate).toFixed(2)} Bs ($${orderDisplayTotal.toFixed(2)} USD)` +
+                        (liveOrder?.is_rate_overridden ? `\n(Tasa aplicada: ${effectiveRate.toFixed(2)} Bs/$)` : '');
                       navigator.clipboard.writeText(textToCopy);
                       toast.success("¡Datos bancarios copiados al portapapeles! Copie y pegue en su banco.", { duration: 4000 });
                     }}
@@ -1445,6 +1719,14 @@ export default function OrderChatWindow({
         <div className="bg-white p-2.5 border-t border-slate-200 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide shadow-sm z-10 w-full shrink-0">
           {!isPaymentVerifiedByStore && (
             <>
+              {!isStockConfirmed && (
+                <button
+                  onClick={handleConfirmStoreStock}
+                  className="shrink-0 bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 rounded-xl text-xs font-black text-white active:scale-95 transition-all flex items-center gap-1.5 shadow-sm animate-pulse"
+                >
+                  <CheckCircle className="w-4 h-4" /> CONFIRMAR STOCK
+                </button>
+              )}
               <button
                 onClick={handleSendPagoMovilInfo}
                 className="shrink-0 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl text-xs font-black text-blue-700 hover:bg-blue-100 active:scale-95 transition-all flex items-center gap-1"
@@ -1517,10 +1799,30 @@ export default function OrderChatWindow({
 
       {/* Input area */}
       <div className="p-3 bg-white border-t border-slate-200 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {isRecordingVoice ? (
+        {isChatLocked ? (
+          <div className="p-3.5 bg-slate-100 border border-slate-200 rounded-2xl text-center space-y-2">
+            <div className="flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>
+                {isEmergencyExhausted 
+                  ? "La emergencia ha sido finalizada y el chat ha concluido definitivamente." 
+                  : "Este pedido ha sido entregado. El chat se encuentra en modo solo lectura."}
+              </span>
+            </div>
+            {!isEmergencyExhausted && currentUserRole === 'client' && (
+              <button
+                type="button"
+                onClick={handleReactivateEmergency}
+                className="w-full py-2.5 bg-amber-400 hover:bg-amber-500 active:scale-95 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+              >
+                <span>📦 ¿Olvidaste algo? Reactivar chat de emergencia</span>
+              </button>
+            )}
+          </div>
+        ) : isRecordingVoice ? (
           <div className="flex items-center justify-between gap-3 bg-red-50 border-2 border-red-300 p-2.5 rounded-2xl animate-in fade-in">
             <div className="flex items-center gap-2.5">
-              <span className="w-3 h-3 rounded-full bg-red-600 animate-ping"></span>
+              <span className="w-3.5 h-3.5 rounded-full bg-red-600 animate-ping"></span>
               <span className="text-xs font-black text-red-700 font-mono">
                 Grabando nota de voz ({recordingSeconds}s)...
               </span>
@@ -2132,6 +2434,106 @@ export default function OrderChatWindow({
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Asignar Precio / Peso para Ítems Pendientes (Comercio) */}
+      {assignPriceModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                  <Scale className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-black text-sm text-slate-900">Asignar Precio / Peso</h4>
+                  <p className="text-[10px] text-slate-500 font-bold">Definir precio final acordado</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAssignPriceModal(null)}
+                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3">
+              <p className="font-black text-xs text-amber-950">{assignPriceModal.item.name}</p>
+              <p className="text-[10px] text-amber-700 font-bold">
+                Cantidad: {assignPriceModal.item.quantity || 1}x
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-black text-slate-700 block mb-1">
+                  Precio Unitario ($ USD) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-400 text-xs">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={assignPriceModal.price || ''}
+                    onChange={(e) => setAssignPriceModal({
+                      ...assignPriceModal,
+                      price: parseFloat(e.target.value) || 0
+                    })}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-black text-slate-700 block mb-1">
+                  Peso o Detalle (Opcional, ej: 1.150 kg)
+                </label>
+                <input
+                  type="text"
+                  value={assignPriceModal.weight || ''}
+                  onChange={(e) => setAssignPriceModal({
+                    ...assignPriceModal,
+                    weight: e.target.value
+                  })}
+                  placeholder="Ej: 1.250 kg"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              {Number(assignPriceModal.price) > 0 && (
+                <div className="bg-slate-50 rounded-xl p-2.5 text-xs border border-slate-100 flex items-center justify-between font-bold">
+                  <span className="text-slate-500">Subtotal ítem:</span>
+                  <span className="font-black text-slate-900">
+                    ${(Number(assignPriceModal.price) * (assignPriceModal.item.quantity || 1)).toFixed(2)} USD
+                    {effectiveRate > 0 && ` (${((Number(assignPriceModal.price) * (assignPriceModal.item.quantity || 1)) * effectiveRate).toFixed(0)} Bs)`}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setAssignPriceModal(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isSavingPrice || Number(assignPriceModal.price) <= 0}
+                onClick={handleSaveAssignPrice}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+              >
+                {isSavingPrice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Guardar Precio
+              </button>
             </div>
           </div>
         </div>
