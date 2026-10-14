@@ -15,7 +15,10 @@ import {
     Loader2, 
     AlertCircle,
     Boxes,
-    CheckCircle2
+    CheckCircle2,
+    ZoomIn,
+    ZoomOut,
+    RotateCcw
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
@@ -64,6 +67,8 @@ export default function CommonProductsManager() {
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<CommonProduct | null>(null);
+    const [previewingProductImage, setPreviewingProductImage] = useState<{ url: string; name: string } | null>(null);
+    const [imageZoomScale, setImageZoomScale] = useState<number>(1);
     const [saving, setSaving] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
 
@@ -401,16 +406,34 @@ export default function CommonProductsManager() {
                         >
                             <div className="space-y-3">
                                 {/* Image & Category */}
-                                <div className="relative aspect-square w-full rounded-2xl overflow-hidden bg-slate-100 border border-slate-100">
+                                <div 
+                                    className={`relative aspect-square w-full rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 ${
+                                        p.image_url ? 'cursor-zoom-in' : ''
+                                    }`}
+                                    onClick={() => {
+                                        if (p.image_url) {
+                                            setPreviewingProductImage({ url: p.image_url, name: p.name });
+                                            setImageZoomScale(1);
+                                        }
+                                    }}
+                                    title={p.image_url ? "Clic para ampliar y ver detalles de la imagen" : undefined}
+                                >
                                     {p.image_url ? (
-                                        <img src={p.image_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                        <>
+                                            <img src={p.image_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                                <span className="p-2 bg-white/95 backdrop-blur-md rounded-full text-slate-800 shadow-md">
+                                                    <ZoomIn className="w-4 h-4" />
+                                                </span>
+                                            </div>
+                                        </>
                                     ) : (
                                         <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
                                             <ImageIcon className="w-10 h-10" />
                                             <span className="text-[10px] font-bold mt-1">Sin Imagen</span>
                                         </div>
                                     )}
-                                    <span className="absolute top-2 left-2 bg-slate-950/70 backdrop-blur-md text-white text-[10px] font-black px-2 py-0.5 rounded-lg">
+                                    <span className="absolute top-2 left-2 bg-slate-950/70 backdrop-blur-md text-white text-[10px] font-black px-2 py-0.5 rounded-lg z-10">
                                         {p.category}
                                     </span>
                                 </div>
@@ -662,6 +685,97 @@ export default function CommonProductsManager() {
                                 <span>{editingProduct ? 'Guardar Cambios' : 'Registrar Producto Común'}</span>
                             </button>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal para Ampliar y Ver Detalles de Imagen de Producto Común */}
+            {previewingProductImage && (
+                <div 
+                    className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200"
+                    onClick={() => {
+                        setPreviewingProductImage(null);
+                        setImageZoomScale(1);
+                    }}
+                >
+                    <div 
+                        className="relative max-w-4xl w-full bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col max-h-[92vh]"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header con título y controles de zoom */}
+                        <div className="p-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+                            <div className="min-w-0">
+                                <h3 className="text-sm sm:text-base font-black text-white truncate">
+                                    {previewingProductImage.name}
+                                </h3>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    Catálogo Maestro • Inspección de imagen en alta resolución
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setImageZoomScale(prev => Math.max(0.5, Number((prev - 0.25).toFixed(2))))}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                                    title="Alejar"
+                                >
+                                    <ZoomOut className="w-4 h-4" />
+                                </button>
+                                <span className="text-xs font-mono font-bold text-slate-300 min-w-[42px] text-center">
+                                    {Math.round(imageZoomScale * 100)}%
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setImageZoomScale(prev => Math.min(3, Number((prev + 0.25).toFixed(2))))}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                                    title="Acercar"
+                                >
+                                    <ZoomIn className="w-4 h-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setImageZoomScale(1)}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                                    title="Restablecer tamaño"
+                                >
+                                    <RotateCcw className="w-4 h-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setPreviewingProductImage(null);
+                                        setImageZoomScale(1);
+                                    }}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500 text-slate-200 hover:text-white transition-colors ml-1"
+                                    title="Cerrar"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Área de visualización interactiva con zoom */}
+                        <div className="flex-1 overflow-auto p-4 sm:p-8 flex items-center justify-center bg-radial from-slate-900 to-slate-950 min-h-[320px]">
+                            <div 
+                                className="transition-transform duration-200 ease-out origin-center cursor-grab active:cursor-grabbing flex items-center justify-center"
+                                style={{ transform: `scale(${imageZoomScale})` }}
+                            >
+                                <img
+                                    src={previewingProductImage.url}
+                                    alt={previewingProductImage.name}
+                                    className="max-h-[68vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
+                                    draggable={false}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Pie con sugerencia */}
+                        <div className="px-4 py-2.5 bg-slate-950/60 border-t border-slate-800 text-center">
+                            <span className="text-[11px] text-slate-400 font-medium">
+                                Haz zoom o arrastra para revisar la calidad y nitidez del empaque oficial.
+                            </span>
+                        </div>
                     </div>
                 </div>
             )}
