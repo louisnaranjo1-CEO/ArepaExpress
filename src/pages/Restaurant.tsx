@@ -193,6 +193,8 @@ export default function RestaurantPage() {
             followerCount: docSnap.follower_count ?? docSnap.followerCount ?? 0,
             hasCashea: docSnap.has_cashea ?? docSnap.hasCashea,
             hasTwoByThree: docSnap.has_two_by_three ?? docSnap.hasTwoByThree,
+            freeDeliveryEnabled: Boolean(docSnap.free_delivery_enabled ?? docSnap.freeDeliveryEnabled),
+            freeDeliveryMinAmount: Number(docSnap.free_delivery_min_amount ?? docSnap.freeDeliveryMinAmount ?? 0),
             location: docSnap.location,
           };
 
@@ -885,15 +887,21 @@ export default function RestaurantPage() {
                 <span className="text-[10px] font-black text-slate-700">{restaurant.rating}</span>
               </div>
             )}
-            {restaurant.hasCashea && (
-              <div className="absolute -top-1 -right-1 w-8 h-8 bg-white/95 backdrop-blur rounded-xl p-1 shadow-lg border border-white/50 flex items-center justify-center animate-in zoom-in duration-500">
+            {/* Badge Insignia de Servicio */}
+            {restaurant.hasCashea ? (
+              <div className="absolute -top-1 -right-1 w-8 h-8 bg-yellow-400 rounded-xl overflow-hidden shadow-lg border-2 border-white flex items-center justify-center animate-in zoom-in duration-500">
                 <img
                   src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                   alt="Cashea"
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-cover"
                 />
               </div>
-            )}
+            ) : restaurant.hasTwoByThree ? (
+              <div className="absolute -top-1 -right-1 w-8 h-8 bg-primary rounded-xl overflow-hidden shadow-lg border-2 border-white flex flex-col items-center justify-center text-slate-900 leading-none animate-in zoom-in duration-500 font-black">
+                <span className="text-[8px] font-black leading-none">2x3</span>
+                <span className="text-[5px] font-black uppercase tracking-tighter leading-none">Resuelve</span>
+              </div>
+            ) : null}
           </div>
           <div className="pb-8 flex-1">
             <h1 className="text-2xl md:text-4xl font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] leading-tight">{restaurant.name}</h1>
@@ -959,30 +967,53 @@ export default function RestaurantPage() {
             </div>
           )}
 
-          {/* Cashea Active Service Insignia */}
-          {restaurant.hasCashea && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-3 bg-gradient-to-br from-yellow-50 to-white text-yellow-700 px-5 py-4 rounded-[2rem] border-2 border-yellow-100 shadow-xl shadow-yellow-100/30 group transition-all hover:border-yellow-300 w-full mt-4 mb-2 overflow-hidden relative"
-            >
-              <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/5 rounded-full -mr-8 -mt-8 blur-2xl" />
-              <div className="w-12 h-12 rounded-[1.25rem] bg-yellow-400 flex items-center justify-center shrink-0 shadow-lg shadow-yellow-400/30 group-hover:scale-110 transition-transform">
-                <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} className="w-7 h-7 object-contain" alt="Cashea" />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black tracking-wider uppercase text-yellow-600">Servicio Activo</span>
-                  <span className="bg-yellow-400 text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Oficial</span>
+          {/* Delivery & Free Shipping Feature Badge */}
+          {restaurant.businessType !== 'hotel' && (
+            restaurant.freeDeliveryEnabled && restaurant.freeDeliveryMinAmount > 0 ? (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center gap-3.5 bg-gradient-to-br from-emerald-50 via-teal-50 to-white text-emerald-800 px-5 py-4 rounded-[2rem] border-2 border-emerald-200 shadow-xl shadow-emerald-100/50 w-full mt-4 mb-2 overflow-hidden relative group"
+              >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-400/10 rounded-full -mr-10 -mt-10 blur-2xl pointer-events-none" />
+                <div className="w-12 h-12 rounded-[1.25rem] bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-emerald-500/30 group-hover:scale-105 transition-transform">
+                  <Truck className="w-6 h-6" />
                 </div>
-                <h3 className="font-black text-base text-slate-900">Compra con Cashea</h3>
-                <p className="text-xs text-slate-500 font-medium">Paga en cuotas sin interés</p>
-              </div>
-              <div className="flex items-center gap-1 text-slate-400">
-                <Zap className="w-4 h-4 text-yellow-500 fill-yellow-500" />
-                <ChevronRight className="w-5 h-5" />
-              </div>
-            </motion.div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-[10px] font-black tracking-wider uppercase text-emerald-700">Beneficio Exclusivo</span>
+                    <span className="bg-emerald-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">100% Gratis</span>
+                  </div>
+                  <h3 className="font-black text-sm sm:text-base text-slate-900 leading-tight">
+                    Envío gratis por compras a partir de ${Number(restaurant.freeDeliveryMinAmount).toFixed(2)}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">Aprovecha y llena tu carrito para disfrutar de este beneficio</p>
+                </div>
+                <div className="flex items-center text-emerald-500 shrink-0">
+                  <Sparkles className="w-5 h-5 animate-pulse" />
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-start sm:items-center gap-3.5 bg-gradient-to-br from-amber-50 via-yellow-50/60 to-white text-slate-800 px-5 py-4 rounded-[2rem] border-2 border-amber-200/80 shadow-xl shadow-amber-100/40 w-full mt-4 mb-2 overflow-hidden relative"
+              >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 rounded-full -mr-10 -mt-10 blur-2xl pointer-events-none" />
+                <div className="w-12 h-12 rounded-[1.25rem] bg-primary text-slate-950 flex items-center justify-center shrink-0 shadow-lg shadow-primary/30 mt-0.5 sm:mt-0 font-black">
+                  <Truck className="w-6 h-6" />
+                </div>
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-black tracking-wider uppercase text-amber-700">Red de Entregas</span>
+                    <span className="bg-slate-900 text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">En un 2x3</span>
+                  </div>
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed">
+                    Tu pedido llegará a ti en un 2x3 gracias a la red de deliverys locales, elige el delivery de tu preferencia y hazle seguimiento hasta la puerta de casa con nuestro sistema de tracking en tiempo real 😉
+                  </p>
+                </div>
+              </motion.div>
+            )
           )}
 
           {/* Job Opportunities Badge */}
@@ -1309,7 +1340,7 @@ export default function RestaurantPage() {
                 No hay productos en esta categoría.
               </div>
             ) : viewMode === 'grid' ? (
-              /* MODO CUADRÍCULA: Foto prominente, nombre debajo de la imagen, precio Desde $X y botón + */
+              /* MODO CUADRÍCULA: Sigue exactamente la misma línea de diseño del Inicio */
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                 {filteredProducts.map((product) => {
                   const productImages = product.images && product.images.length > 0 
@@ -1318,6 +1349,9 @@ export default function RestaurantPage() {
                   const minPrice = product.variants && product.variants.length > 0
                     ? Math.min(...product.variants.map(v => v.price))
                     : product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
+                  const discount = product.price && product.promoPrice && product.promoPrice < product.price 
+                    ? Math.round(((product.price - product.promoPrice) / product.price) * 100) 
+                    : 0;
 
                   return (
                     <div
@@ -1328,16 +1362,18 @@ export default function RestaurantPage() {
                         setSelectedModifiers({});
                         recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
                       }}
-                      className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden group cursor-pointer relative"
+                      className="bg-white rounded-2xl shadow-2xs hover:shadow-md border border-slate-200/80 overflow-hidden cursor-pointer group transition-all duration-200 flex flex-col relative"
                     >
-                      {/* Imagen con botón de favoritos y logo */}
-                      <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
+                      {/* Imagen del Producto: Rellena completamente el recuadro superior cubriendo esquinas */}
+                      <div className="w-full aspect-square bg-slate-100 overflow-hidden relative rounded-t-2xl">
                         <img
                           src={productImages[0] || ''}
                           alt={product.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           loading="lazy"
                         />
+                        
+                        {/* Botón de Favoritos */}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1350,66 +1386,115 @@ export default function RestaurantPage() {
                           <Heart className={`w-3.5 h-3.5 transition-colors ${favoriteProductIds.includes(product.id) ? 'text-red-500 fill-red-500' : 'text-slate-400 hover:text-red-500'}`} />
                         </button>
 
-                        {restaurant.logoUrl && (
-                          <div className="absolute top-2 right-2 w-6 h-6 bg-white/90 backdrop-blur-sm rounded-md p-0.5 shadow-xs border border-white/50 z-10 pointer-events-none">
-                            <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                        {/* Visual Indicators (Logo del Comercio & Cashea / 2x3) */}
+                        <div className="absolute top-2 right-2 flex flex-col gap-1 items-end z-10 pointer-events-none">
+                          {restaurant.logoUrl && (
+                            <div className="w-6 h-6 rounded-full bg-white shadow-sm border border-slate-100 overflow-hidden flex items-center justify-center" title="Comercio">
+                              <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover rounded-full" />
+                            </div>
+                          )}
+                          {restaurant.hasCashea && (
+                            <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm overflow-hidden" title="Cashea">
+                              <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} alt="Cashea" className="w-full h-full object-cover" />
+                            </div>
+                          )}
+                          {restaurant.hasTwoByThree && (
+                            <div className="w-6 h-6 bg-primary rounded-full flex items-center justify-center shadow-sm text-slate-900 border border-white/50" title="2x3 Resuelve">
+                              <div className="flex flex-col items-center justify-center leading-none">
+                                <span className="text-[6px] font-black">2x3</span>
+                                <span className="text-[4px] font-black uppercase">Resuelve</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {discount > 0 && (
+                          <div className="absolute bottom-2 left-2 bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg shadow-sm">
+                            {discount}% OFF
                           </div>
                         )}
 
-                        {product.isAvailable === false && (
+                        {product.isAvailable === false ? (
                           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center">
                             <span className="px-2 py-0.5 bg-slate-900 text-white rounded font-black text-[9px] uppercase tracking-wider">
                               Agotado
                             </span>
                           </div>
-                        )}
+                        ) : product.consultPrice ? (
+                          <div className="absolute bottom-2 left-2 bg-slate-900 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg shadow-sm">
+                            CONSULTAR
+                          </div>
+                        ) : null}
                       </div>
 
-                      {/* Info debajo de la imagen */}
-                      <div className="p-2.5 sm:p-3 flex-1 flex flex-col justify-between">
+                      {/* Contenido compacto sin espacios en blanco excesivos */}
+                      <div className="p-2.5 flex-1 flex flex-col justify-between">
                         <div>
-                          <h3 className="font-bold text-slate-900 text-xs sm:text-sm line-clamp-2 leading-tight">
+                          <h3 className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug group-hover:text-primary transition-colors">
                             {product.name}
                           </h3>
-                          {product.description && (
-                            <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">
-                              {product.description}
-                            </p>
-                          )}
+                          
+                          <div className="flex items-center gap-1 mt-0.5 mb-1 text-[10px] text-slate-500 font-bold">
+                            <Star className="w-3 h-3 text-blue-600 fill-blue-600" />
+                            <span className="text-blue-600 font-black">5.0</span>
+                          </div>
                         </div>
 
-                        {/* Precios y botón de añadir */}
-                        <div className="flex items-end justify-between gap-1 mt-2 pt-1 border-t border-slate-50">
-                          <div className="min-w-0">
-                            {product.consultPrice ? (
-                              <span className="text-[10px] font-black text-orange-600 block">Cotizar</span>
-                            ) : (
-                              <div>
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight block leading-none mb-0.5">Desde</span>
-                                <DualPrice usdAmount={minPrice} usdClassName="font-black text-slate-900 text-sm leading-none" showDivider={false} />
-                              </div>
+                        <div className="mt-auto pt-0.5">
+                          <div className="flex items-end justify-between gap-1">
+                            <div className="min-w-0 flex flex-col">
+                              {discount > 0 && product.price > 0 && (
+                                <div className="flex items-center gap-1 mb-0.5 opacity-60">
+                                  <span className="text-[10px] text-slate-400 line-through">
+                                    ${Number(product.price).toFixed(2)}
+                                  </span>
+                                </div>
+                              )}
+
+                              {product.consultPrice ? (
+                                <span className="text-[10px] font-black text-orange-600 block">Cotizar</span>
+                              ) : (
+                                <div className="inline-flex items-center px-2 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-200/90 rounded-xl shadow-2xs group-hover:border-primary/50 group-hover:bg-primary/5 transition-all w-fit">
+                                  <DualPrice 
+                                    usdAmount={minPrice} 
+                                    className="flex items-center gap-1.5" 
+                                    usdClassName="text-xs sm:text-sm font-black text-slate-900 leading-none" 
+                                    bsClassName="text-[10px] sm:text-[11px] font-bold text-slate-600 leading-none"
+                                    showDivider={true}
+                                  />
+                                </div>
+                              )}
+                            </div>
+
+                            {product.isAvailable !== false && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
+                                    setSelectedProduct(product);
+                                    setSelectedVariant(null);
+                                    setSelectedModifiers({});
+                                  } else {
+                                    handleAddToCart(product);
+                                  }
+                                  recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                                }}
+                                className="w-8 h-8 rounded-xl bg-primary text-slate-900 flex items-center justify-center shadow-sm hover:scale-110 active:scale-95 transition-all shrink-0"
+                                title="Añadir al pedido"
+                              >
+                                <Plus className="w-4 h-4 font-black" />
+                              </button>
                             )}
                           </div>
 
-                          {product.isAvailable !== false && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
-                                  setSelectedProduct(product);
-                                  setSelectedVariant(null);
-                                  setSelectedModifiers({});
-                                } else {
-                                  handleAddToCart(product);
-                                }
-                                recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
-                              }}
-                              className="w-8 h-8 rounded-xl bg-primary text-slate-900 flex items-center justify-center shadow-sm hover:scale-110 active:scale-95 transition-all shrink-0"
-                              title="Añadir al pedido"
-                            >
-                              <Plus className="w-4 h-4 font-black" />
-                            </button>
+                          {/* Free Delivery Highlight */}
+                          {restaurant.freeDeliveryEnabled && (
+                            <div className="mt-1">
+                              <span className="text-[10px] font-extrabold text-emerald-600 tracking-tight flex items-center gap-1">
+                                Envío gratis
+                              </span>
+                            </div>
                           )}
                         </div>
                       </div>

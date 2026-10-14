@@ -513,9 +513,9 @@ export default function Services() {
     };
 
     return (
-        <div className="min-h-full bg-slate-50 flex flex-col pb-24 overflow-y-auto hide-scrollbar">
+        <div className="h-full w-full flex-1 bg-slate-50 flex flex-col pb-36 overflow-y-auto overscroll-y-contain touch-pan-y select-none">
             {/* Header Hero */}
-            <div className="bg-gradient-to-br from-rose-700 via-red-700 to-slate-900 text-white px-5 pt-6 pb-6 shadow-xl relative overflow-hidden">
+            <div className="bg-gradient-to-br from-rose-700 via-red-700 to-slate-900 text-white px-5 pt-6 pb-6 shadow-xl relative overflow-hidden shrink-0">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
                 
                 {/* Back button */}
