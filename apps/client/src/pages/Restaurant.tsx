@@ -1,4 +1,4 @@
-import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles, ShoppingCart, Bell } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Star, Clock, Plus, AlertCircle, MessageSquare, MapPin, ChevronRight, Phone, Instagram, UserPlus, UserCheck, Store, Truck, CheckCircle, User as UserIcon, Briefcase, X, Tag, Share2, Zap, Youtube, Music2, ExternalLink, Gift, Sparkles, ShoppingCart, Bell, LayoutGrid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
@@ -37,6 +37,24 @@ export default function RestaurantPage() {
   const [showClearCartModal, setShowClearCartModal] = useState(false);
   const [pendingCartItem, setPendingCartItem] = useState<{product: Product, variant?: any, modifiers?: any} | null>(null);
   const [activeOrder, setActiveOrder] = useState<any | null>(null);
+
+  // Modo de visualización del menú en el perfil del negocio ('cards' | 'grid' | 'compact')
+  const [viewMode, setViewMode] = useState<'cards' | 'grid' | 'compact'>(() => {
+    try {
+      const saved = localStorage.getItem('un2x3_restaurant_view_mode');
+      if (saved === 'cards' || saved === 'grid' || saved === 'compact') {
+        return saved;
+      }
+    } catch {}
+    return 'cards';
+  });
+
+  const handleSetViewMode = (mode: 'cards' | 'grid' | 'compact') => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem('un2x3_restaurant_view_mode', mode);
+    } catch {}
+  };
 
   const [favoriteProductIds, setFavoriteProductIds] = useState<string[]>(() => {
     try {
@@ -1218,15 +1236,63 @@ export default function RestaurantPage() {
               </div>
             </div>
           )}
-          {/* Categories Tabs */}
-          <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-100 pb-3 pt-3">
+          {/* Categories Tabs & Layout View Selector */}
+          <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-100 pb-2.5 pt-2.5">
+            <div className="flex items-center justify-between gap-2 px-5 mb-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                Catálogo ({filteredProducts.length})
+              </span>
+
+              {/* Selector de modo de vista con persistencia */}
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/80 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('grid')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                    viewMode === 'grid'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="Cuadrícula optimizada (Foto grande con nombre abajo)"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[11px]">Cuadrícula</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('compact')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                    viewMode === 'compact'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="Modo lista compacto (Más productos en pantalla)"
+                >
+                  <List className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[11px]">Lista</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetViewMode('cards')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                    viewMode === 'cards'
+                      ? 'bg-white text-slate-900 shadow-xs'
+                      : 'text-slate-400 hover:text-slate-700'
+                  }`}
+                  title="Vista detallada con presentaciones"
+                >
+                  <span className="text-[11px] font-black">Detalle</span>
+                </button>
+              </div>
+            </div>
+
             <div className="flex overflow-x-auto gap-2 px-5 hide-scrollbar">
               {categories.map((cat) => (
                 <button
                   key={cat}
                   onClick={() => setActiveCategory(cat)}
-                  className={`px-5 py-2.5 rounded-full text-sm font-bold whitespace-nowrap transition-colors ${activeCategory === cat
-                    ? "bg-primary text-slate-900 shadow-md shadow-primary/20"
+                  className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-colors ${activeCategory === cat
+                    ? "bg-primary text-slate-900 shadow-md shadow-primary/20 font-black"
                     : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
                     }`}
                 >
@@ -1236,9 +1302,225 @@ export default function RestaurantPage() {
             </div>
           </div>
 
-          {/* Menu List */}
+          {/* Menu Products List Container */}
           <div className="px-5 pb-32 flex-1 mt-4">
-            {filteredProducts.length > 0 ? (
+            {filteredProducts.length === 0 ? (
+              <div className="text-center py-12 text-slate-500 font-bold">
+                No hay productos en esta categoría.
+              </div>
+            ) : viewMode === 'grid' ? (
+              /* MODO CUADRÍCULA: Foto prominente, nombre debajo de la imagen, precio Desde $X y botón + */
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
+                {filteredProducts.map((product) => {
+                  const productImages = product.images && product.images.length > 0 
+                    ? product.images 
+                    : [product.image && !product.image.includes('unsplash.com') ? product.image : (restaurant?.logoUrl || restaurant?.image || '')];
+                  const minPrice = product.variants && product.variants.length > 0
+                    ? Math.min(...product.variants.map(v => v.price))
+                    : product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
+
+                  return (
+                    <div
+                      key={product.id}
+                      onClick={() => {
+                        setSelectedProduct(product);
+                        setSelectedVariant(null);
+                        setSelectedModifiers({});
+                        recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                      }}
+                      className="bg-white rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col overflow-hidden group cursor-pointer relative"
+                    >
+                      {/* Imagen con botón de favoritos y logo */}
+                      <div className="relative aspect-square w-full bg-slate-100 overflow-hidden">
+                        <img
+                          src={productImages[0] || ''}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavoriteProduct(product);
+                          }}
+                          className="absolute top-2 left-2 z-20 w-7 h-7 bg-white/95 backdrop-blur-md rounded-full flex items-center justify-center shadow-md hover:scale-110 active:scale-90 transition-all border border-slate-100"
+                          title="Guardar en favoritos"
+                        >
+                          <Heart className={`w-3.5 h-3.5 transition-colors ${favoriteProductIds.includes(product.id) ? 'text-red-500 fill-red-500' : 'text-slate-400 hover:text-red-500'}`} />
+                        </button>
+
+                        {restaurant.logoUrl && (
+                          <div className="absolute top-2 right-2 w-6 h-6 bg-white/90 backdrop-blur-sm rounded-md p-0.5 shadow-xs border border-white/50 z-10 pointer-events-none">
+                            <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                          </div>
+                        )}
+
+                        {product.isAvailable === false && (
+                          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center">
+                            <span className="px-2 py-0.5 bg-slate-900 text-white rounded font-black text-[9px] uppercase tracking-wider">
+                              Agotado
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Info debajo de la imagen */}
+                      <div className="p-2.5 sm:p-3 flex-1 flex flex-col justify-between">
+                        <div>
+                          <h3 className="font-bold text-slate-900 text-xs sm:text-sm line-clamp-2 leading-tight">
+                            {product.name}
+                          </h3>
+                          {product.description && (
+                            <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">
+                              {product.description}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Precios y botón de añadir */}
+                        <div className="flex items-end justify-between gap-1 mt-2 pt-1 border-t border-slate-50">
+                          <div className="min-w-0">
+                            {product.consultPrice ? (
+                              <span className="text-[10px] font-black text-orange-600 block">Cotizar</span>
+                            ) : (
+                              <div>
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight block leading-none mb-0.5">Desde</span>
+                                <DualPrice usdAmount={minPrice} usdClassName="font-black text-slate-900 text-sm leading-none" showDivider={false} />
+                              </div>
+                            )}
+                          </div>
+
+                          {product.isAvailable !== false && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
+                                  setSelectedProduct(product);
+                                  setSelectedVariant(null);
+                                  setSelectedModifiers({});
+                                } else {
+                                  handleAddToCart(product);
+                                }
+                                recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                              }}
+                              className="w-8 h-8 rounded-xl bg-primary text-slate-900 flex items-center justify-center shadow-sm hover:scale-110 active:scale-95 transition-all shrink-0"
+                              title="Añadir al pedido"
+                            >
+                              <Plus className="w-4 h-4 font-black" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : viewMode === 'compact' ? (
+              /* MODO LISTA COMPACTA: Foto más pequeña, información esencial alineada horizontalmente */
+              <div className="flex flex-col divide-y divide-slate-100">
+                {filteredProducts.map((product) => {
+                  const productImages = product.images && product.images.length > 0 
+                    ? product.images 
+                    : [product.image && !product.image.includes('unsplash.com') ? product.image : (restaurant?.logoUrl || restaurant?.image || '')];
+                  const minPrice = product.variants && product.variants.length > 0
+                    ? Math.min(...product.variants.map(v => v.price))
+                    : product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
+
+                  return (
+                    <div
+                      key={product.id}
+                      onClick={() => {
+                        setSelectedProduct(product);
+                        setSelectedVariant(null);
+                        setSelectedModifiers({});
+                        recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                      }}
+                      className="py-3 flex items-center gap-3 group cursor-pointer hover:bg-slate-50/60 rounded-xl px-1 transition-colors"
+                    >
+                      {/* Foto pequeña */}
+                      <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-100 overflow-hidden shrink-0">
+                        <img
+                          src={productImages[0] || ''}
+                          alt={product.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                        />
+                        {product.isAvailable === false && (
+                          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center">
+                            <span className="text-[7px] font-black text-white uppercase">Agotado</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Información central */}
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-bold text-slate-900 text-xs sm:text-sm truncate leading-snug">
+                          {product.name}
+                        </h3>
+                        {product.description && (
+                          <p className="text-[10px] sm:text-xs text-slate-400 truncate mt-0.5">
+                            {product.description}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          {product.consultPrice ? (
+                            <span className="text-[10px] font-black text-orange-600">Consultar precio</span>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Desde</span>
+                              <DualPrice usdAmount={minPrice} usdClassName="font-black text-slate-900 text-xs sm:text-sm" showDivider={false} />
+                            </div>
+                          )}
+                          {product.variants && product.variants.length > 0 && (
+                            <span className="text-[9px] bg-slate-100 text-slate-500 font-bold px-1.5 py-0.2 rounded">
+                              {product.variants.length} pres.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Acciones */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavoriteProduct(product);
+                          }}
+                          className="p-1.5 text-slate-300 hover:text-red-500 rounded-lg hover:bg-slate-100 transition-colors"
+                          title="Favorito"
+                        >
+                          <Heart className={`w-4 h-4 ${favoriteProductIds.includes(product.id) ? 'text-red-500 fill-red-500' : ''}`} />
+                        </button>
+                        {product.isAvailable !== false && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if ((product.variants && product.variants.length > 0) || (product.modifiers && product.modifiers.length > 0)) {
+                                setSelectedProduct(product);
+                                setSelectedVariant(null);
+                                setSelectedModifiers({});
+                              } else {
+                                handleAddToCart(product);
+                              }
+                              recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
+                            }}
+                            className="w-8 h-8 rounded-xl bg-primary text-slate-900 flex items-center justify-center font-bold shadow-xs hover:scale-105 active:scale-95 transition-all"
+                            title="Añadir"
+                          >
+                            <Plus className="w-4 h-4 font-black" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* MODO DETALLE (Actual / Cards completas con píldoras de presentaciones) */
               filteredProducts.map((product) => {
                 const productImages = product.images && product.images.length > 0 
                   ? product.images 
@@ -1380,7 +1662,7 @@ export default function RestaurantPage() {
                           e.stopPropagation();
                           toggleFavoriteProduct(product);
                         }}
-                        className="absolute top-2 left-2 z-20 w-8 h-8 bg-white/95 backdrop-blur-md rounded-full flex items-center justify-center shadow-md hover:scale-110 active:scale-90 transition-all border border-slate-100"
+                        className="absolute top-2 left-2 z-20 w-8 h-8 bg-white/95 backdrop-blur-md rounded-full flex items-center justify-center shadow-md hover:scale-110 active:scale-95 transition-all border border-slate-100"
                         title="Guardar en favoritos"
                       >
                         <Heart className={`w-4 h-4 transition-colors ${favoriteProductIds.includes(product.id) ? 'text-red-500 fill-red-500' : 'text-slate-400 hover:text-red-500'}`} />
@@ -1426,10 +1708,6 @@ export default function RestaurantPage() {
                   </div>
                 );
               })
-            ) : (
-              <div className="text-center py-12 text-slate-500">
-                No hay productos en esta categoría.
-              </div>
             )}
           </div>
         </>

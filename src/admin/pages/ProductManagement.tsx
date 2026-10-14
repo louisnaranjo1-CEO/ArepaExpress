@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List, Package, Sparkles } from 'lucide-react';
+import { UtensilsCrossed, Plus, Search, Filter, Edit2, Trash2, Image as ImageIcon, Check, ChevronDown, X, Loader2, DollarSign, Tag, TrendingUp, Instagram, Youtube, Music2, LayoutGrid, List, Package, Sparkles, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS, DEVELOPER_WHATSAPP } from '../../lib/constants';
@@ -47,6 +47,8 @@ export default function ProductManagement() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isCommonPickerOpen, setIsCommonPickerOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+    const [previewingProductImage, setPreviewingProductImage] = useState<{ url: string; name: string } | null>(null);
+    const [imageZoomScale, setImageZoomScale] = useState<number>(1);
     const [submitting, setSubmitting] = useState(false);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
     const [restaurantLogo, setRestaurantLogo] = useState<string>('');
@@ -631,9 +633,20 @@ export default function ProductManagement() {
                 <div className="flex flex-col gap-3">
                     {filteredProducts.map((p) => (
                         <div key={p.id} className="bg-white rounded-[24px] overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all duration-300 flex flex-row group">
-                           <div className="w-24 md:w-40 h-auto self-stretch bg-slate-100 relative shrink-0">
+                            <div 
+                                className="w-24 md:w-40 h-auto self-stretch bg-slate-100 relative shrink-0 cursor-zoom-in overflow-hidden"
+                                onClick={() => p.image && setPreviewingProductImage({ url: p.image, name: p.name })}
+                                title="Clic para ampliar y ver detalles de la imagen"
+                            >
                                 {p.image ? (
-                                    <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500" />
+                                    <>
+                                        <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500" />
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                            <span className="p-1.5 bg-white/90 backdrop-blur-md rounded-full text-slate-800 shadow-md">
+                                                <ZoomIn className="w-4 h-4" />
+                                            </span>
+                                        </div>
+                                    </>
                                 ) : (
                                     <div className="absolute inset-0 flex items-center justify-center text-slate-300">
                                         <ImageIcon className="w-6 h-6 md:w-10 md:h-10 opacity-50" />
@@ -714,13 +727,24 @@ export default function ProductManagement() {
                             className="bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-md transition-all flex flex-col group"
                         >
                             {/* Thumbnail Container */}
-                            <div className="relative w-full aspect-square bg-slate-100 overflow-hidden">
+                            <div 
+                                className="relative w-full aspect-square bg-slate-100 overflow-hidden cursor-zoom-in"
+                                onClick={() => p.image && setPreviewingProductImage({ url: p.image, name: p.name })}
+                                title="Clic para ampliar y ver detalles de la imagen"
+                            >
                                 {p.image ? (
-                                    <img
-                                        src={p.image}
-                                        alt={p.name}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                    />
+                                    <>
+                                        <img
+                                            src={p.image}
+                                            alt={p.name}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                        />
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                            <span className="p-1 bg-white/90 backdrop-blur-md rounded-full text-slate-800 shadow-md">
+                                                <ZoomIn className="w-3.5 h-3.5" />
+                                            </span>
+                                        </div>
+                                    </>
                                 ) : (
                                     <div className="absolute inset-0 flex items-center justify-center text-slate-300">
                                         <ImageIcon className="w-7 h-7 sm:w-8 sm:h-8" />
@@ -903,46 +927,39 @@ export default function ProductManagement() {
                             </div>
 
                             {!formData.consultPrice && (
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                    <div className="space-y-1 md:col-span-2">
-                                        <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                            <DollarSign className="w-3 h-3" /> Precio Venta
-                                        </label>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            required={formData.variants.length === 0}
-                                            value={formData.price}
-                                            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
-                                            placeholder={formData.variants.length > 0 ? "Opcional si usas variantes" : "Si bajas el precio actual, se creará una oferta autom."}
-                                        />
-                                    </div>
+                                <div className="space-y-2">
                                     <div className="space-y-1">
-                                        <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                            <TrendingUp className="w-3 h-3" /> Costo Inversión
-                                        </label>
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            value={formData.investment}
-                                            onChange={(e) => setFormData({ ...formData, investment: e.target.value })}
-                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                            <Tag className="w-3 h-3" /> Precio (Puntos)
-                                        </label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="1"
-                                            value={formData.pointsPrice}
-                                            onChange={(e) => setFormData({ ...formData, pointsPrice: e.target.value })}
-                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
-                                            placeholder="Opc. Ej: 500"
-                                        />
+                                        <div className="flex items-center justify-between ml-2 mr-1">
+                                            <label className="text-xs font-black text-slate-500 uppercase flex items-center gap-1">
+                                                <DollarSign className="w-3.5 h-3.5" /> Precio Venta (USD)
+                                            </label>
+                                            {formData.variants.length > 0 && (
+                                                <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                                                    Bloqueado por presentaciones / variantes
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="relative">
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                disabled={formData.variants.length > 0}
+                                                required={formData.variants.length === 0}
+                                                value={formData.variants.length > 0 ? (formData.variants[0]?.price ? Math.min(...formData.variants.map((v: any) => v.price)) : '') : formData.price}
+                                                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                                                className={`w-full p-3 rounded-2xl outline-none font-black text-sm transition-all ${
+                                                    formData.variants.length > 0
+                                                        ? 'bg-slate-100/80 border-2 border-slate-200 text-slate-400 cursor-not-allowed select-none'
+                                                        : 'bg-slate-50 border-2 border-transparent focus:border-primary text-slate-700'
+                                                }`}
+                                                placeholder={formData.variants.length > 0 ? "Precio administrado en las variantes abajo" : "Ej: 5.50 (Si bajas el precio actual, se creará una oferta autom.)"}
+                                            />
+                                        </div>
+                                        {formData.variants.length > 0 && (
+                                            <p className="text-[11px] text-slate-400 font-medium ml-2">
+                                                💡 El precio base se calcula automáticamente desde la presentación más económica configurada abajo.
+                                            </p>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -1294,6 +1311,97 @@ export default function ProductManagement() {
                 onClose={() => setIsCommonPickerOpen(false)}
                 onSelectProduct={handleSelectCommonProduct}
             />
+
+            {/* Modal para Ampliar y Ver Detalles de Imagen del Producto */}
+            {previewingProductImage && (
+                <div 
+                    className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200"
+                    onClick={() => {
+                        setPreviewingProductImage(null);
+                        setImageZoomScale(1);
+                    }}
+                >
+                    <div 
+                        className="relative max-w-4xl w-full bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col max-h-[92vh]"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Header con título y controles de zoom */}
+                        <div className="p-4 bg-slate-900/90 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
+                            <div className="min-w-0">
+                                <h3 className="text-sm sm:text-base font-black text-white truncate">
+                                    {previewingProductImage.name}
+                                </h3>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    Inspección de imagen en alta resolución
+                                </p>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setImageZoomScale(prev => Math.max(0.5, Number((prev - 0.25).toFixed(2))))}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                                    title="Alejar"
+                                >
+                                    <ZoomOut className="w-4 h-4" />
+                                </button>
+                                <span className="text-xs font-mono font-bold text-slate-300 min-w-[42px] text-center">
+                                    {Math.round(imageZoomScale * 100)}%
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => setImageZoomScale(prev => Math.min(3, Number((prev + 0.25).toFixed(2))))}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                                    title="Acercar"
+                                >
+                                    <ZoomIn className="w-4 h-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setImageZoomScale(1)}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors"
+                                    title="Restablecer tamaño"
+                                >
+                                    <RotateCcw className="w-4 h-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setPreviewingProductImage(null);
+                                        setImageZoomScale(1);
+                                    }}
+                                    className="p-2 rounded-xl bg-slate-800 hover:bg-rose-500 text-slate-200 hover:text-white transition-colors ml-1"
+                                    title="Cerrar"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Área de visualización interactiva con zoom */}
+                        <div className="flex-1 overflow-auto p-4 sm:p-8 flex items-center justify-center bg-radial from-slate-900 to-slate-950 min-h-[320px]">
+                            <div 
+                                className="transition-transform duration-200 ease-out origin-center cursor-grab active:cursor-grabbing flex items-center justify-center"
+                                style={{ transform: `scale(${imageZoomScale})` }}
+                            >
+                                <img
+                                    src={previewingProductImage.url}
+                                    alt={previewingProductImage.name}
+                                    className="max-h-[68vh] max-w-full object-contain rounded-2xl shadow-2xl select-none"
+                                    draggable={false}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Pie con sugerencia */}
+                        <div className="px-4 py-2.5 bg-slate-950/60 border-t border-slate-800 text-center">
+                            <span className="text-[11px] text-slate-400 font-medium">
+                                Usa los botones superiores para acercar o alejar y verificar la nitidez del producto.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
