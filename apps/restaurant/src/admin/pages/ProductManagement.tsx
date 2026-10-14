@@ -640,7 +640,7 @@ export default function ProductManagement() {
                             >
                                 {p.image ? (
                                     <>
-                                        <img src={p.image} alt={p.name} className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500" />
+                                        <img src={p.image} alt={p.name} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-[1.05] transition-transform duration-500" />
                                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                                             <span className="p-1.5 bg-white/90 backdrop-blur-md rounded-full text-slate-800 shadow-md">
                                                 <ZoomIn className="w-4 h-4" />

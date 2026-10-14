@@ -5,7 +5,7 @@ import {
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
   Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet, Lock,
-  Scale, Trash2
+  Scale, Trash2, Search
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -100,6 +100,8 @@ export default function OrderChatWindow({
   const [selectedDriverId, setSelectedDriverId] = useState<string>('');
   const [loadingDrivers, setLoadingDrivers] = useState(false);
   const [dispatchingStore, setDispatchingStore] = useState(false);
+  const [driverSearchQuery, setDriverSearchQuery] = useState('');
+  const [dispatchTab, setDispatchTab] = useState<'network' | 'external'>('network');
 
   // Modalidad B: Client Dispatch modal state (Client chooses vehicle category)
   const [showClientDispatchModal, setShowClientDispatchModal] = useState(false);
@@ -652,12 +654,18 @@ export default function OrderChatWindow({
   const fetchDrivers = async () => {
     setLoadingDrivers(true);
     try {
-      const { data } = await supabase.from('delivery_drivers').select('*');
-      if (data && data.length > 0) {
-        setDriversList(data);
+      // Prioritize drivers table from delivery app to get selfie_url and active driver profile
+      const { data: driversData } = await supabase.from('drivers').select('*');
+      if (driversData && driversData.length > 0) {
+        setDriversList(driversData);
       } else {
-        const { data: profs } = await supabase.from('profiles').select('*').eq('role', 'driver');
-        setDriversList(profs || []);
+        const { data } = await supabase.from('delivery_drivers').select('*');
+        if (data && data.length > 0) {
+          setDriversList(data);
+        } else {
+          const { data: profs } = await supabase.from('profiles').select('*').eq('role', 'driver');
+          setDriversList(profs || []);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -678,13 +686,45 @@ export default function OrderChatWindow({
     setDispatchingStore(true);
     try {
       const driverName = chosenDriver.name || chosenDriver.displayName || chosenDriver.full_name || 'Repartidor de la Red';
+      const driverPhone = chosenDriver.phone || chosenDriver.phoneNumber || chosenDriver.phone_number || chosenDriver.whatsapp || null;
+      const driverPhoto = chosenDriver.selfie_url || chosenDriver.documents?.selfieUrl || chosenDriver.selfieUrl || chosenDriver.photo_url || chosenDriver.photoURL || chosenDriver.avatar_url || null;
+      const vehicleType = chosenDriver.vehicleType || chosenDriver.vehicle_type || 'moto';
+      const vehicleModel = chosenDriver.vehicle_model || chosenDriver.vehicleModel || '';
+      const vehiclePlate = chosenDriver.vehicle_plate || chosenDriver.vehiclePlate || '';
+
       await supabase.from('orders').update({
         status: 'delivering',
+        delivery_status: 'in_transit',
+        delivery_type: 'network',
+        deliveryType: 'network',
+        is_external_delivery: false,
+        isExternalDelivery: false,
         driver_id: chosenDriver.id,
         driver_name: driverName,
+        driver_phone: driverPhone,
+        driver_photo: driverPhoto,
+        driver_photo_url: driverPhoto,
+        vehicle_type: vehicleType,
+        vehicle_model: vehicleModel,
+        vehicle_plate: vehiclePlate,
         dispatched_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
+
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        status: 'delivering',
+        delivery_status: 'in_transit',
+        delivery_type: 'network',
+        deliveryType: 'network',
+        is_external_delivery: false,
+        isExternalDelivery: false,
+        driver_id: chosenDriver.id,
+        driver_name: driverName,
+        driver_phone: driverPhone,
+        driver_photo: driverPhoto,
+        driver_photo_url: driverPhoto
+      }));
 
       await handleSendMessage(`🛵 *¡Tu pedido ha sido despachado!* Repartidor asignado por la tienda: **${driverName}**. Va en camino hacia tu dirección.`);
       toast.success(`Pedido despachado con ${driverName}`);
@@ -692,6 +732,45 @@ export default function OrderChatWindow({
     } catch (e) {
       console.error(e);
       toast.error("Error al despachar pedido");
+    } finally {
+      setDispatchingStore(false);
+    }
+  };
+
+  const handleStoreDispatchExternal = async () => {
+    setDispatchingStore(true);
+    try {
+      await supabase.from('orders').update({
+        status: 'delivering',
+        delivery_status: 'dispatched',
+        delivery_type: 'external',
+        deliveryType: 'external',
+        is_external_delivery: true,
+        isExternalDelivery: true,
+        driver_id: null,
+        driver_name: 'Delivery Propio del Negocio',
+        dispatched_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
+
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        status: 'delivering',
+        delivery_status: 'dispatched',
+        delivery_type: 'external',
+        deliveryType: 'external',
+        is_external_delivery: true,
+        isExternalDelivery: true,
+        driver_id: null,
+        driver_name: 'Delivery Propio del Negocio'
+      }));
+
+      await handleSendMessage(`📦 *¡Pedido en camino!* Tu pedido fue despachado directamente con el **Delivery Propio del Comercio**. En breve llegará a tu dirección.`);
+      toast.success("Pedido despachado con Delivery Externo.");
+      setShowStoreDispatchModal(false);
+    } catch (e) {
+      console.error(e);
+      toast.error("Error al despachar pedido con delivery externo");
     } finally {
       setDispatchingStore(false);
     }
@@ -1233,7 +1312,7 @@ export default function OrderChatWindow({
                 onClick={() => setViewingAttachment(msg.imageUrl || null)}
                 className="cursor-pointer group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 hover:opacity-95 transition-all text-center block"
               >
-                <img src={msg.imageUrl} alt="Adjunto" className="max-w-full rounded-2xl max-h-52 object-contain bg-slate-50 border border-slate-200 shadow-sm mx-auto" />
+                <img src={msg.imageUrl} alt="Adjunto" loading="lazy" decoding="async" className="max-w-full rounded-2xl max-h-52 object-contain bg-slate-50 border border-slate-200 shadow-sm mx-auto" />
                 <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1.5 backdrop-blur-[1px]">
                   <Eye className="w-4 h-4" /> Toca para ver comprobante
                 </div>
@@ -2240,83 +2319,318 @@ export default function OrderChatWindow({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
-              {/* Free Delivery Commission Notice */}
-              <div className={`p-2.5 rounded-2xl border ${
-                qualifiesForFreeDelivery
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                  : 'bg-slate-100 border-slate-200 text-slate-700'
-              }`}>
-                <p className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Esquema de Envío:
-                </p>
-                <p className="text-[11px] font-bold mt-1">
-                  {qualifiesForFreeDelivery
-                    ? `🎁 Envío Gratis activo: El monto de compra ($${orderSubtotal.toFixed(2)}) califica. El negocio asume la tarifa del driver.`
-                    : `🛵 Tarifa de delivery calculada: $${Number(liveOrder?.delivery_fee || liveOrder?.deliveryFee || 2.0).toFixed(2)}.`}
-                </p>
-              </div>
-
-              {/* Drivers List */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-700 block">
-                  Conductores Registrados Disponibles:
-                </label>
-                {loadingDrivers ? (
-                  <div className="text-center py-6 text-slate-400">
-                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" />
-                    <span className="text-[10px] font-bold mt-1 block">Buscando conductores...</span>
-                  </div>
-                ) : driversList.length === 0 ? (
-                  <p className="text-slate-400 text-center py-4 text-[11px]">No hay repartidores conectados en este momento.</p>
-                ) : (
-                  driversList.map((drv: any) => {
-                    const isSelected = selectedDriverId === drv.id;
-                    const name = drv.name || drv.displayName || drv.full_name || 'Driver';
-                    return (
-                      <div
-                        key={drv.id}
-                        onClick={() => setSelectedDriverId(drv.id)}
-                        className={`p-2.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-primary/10 border-primary shadow-sm'
-                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Bike className="w-4 h-4 text-slate-700" />
-                          <div>
-                            <p className="font-black text-slate-900 text-xs">{name}</p>
-                            <span className="text-[10px] text-slate-400 font-bold">{drv.vehicleType || drv.vehicle_type || 'Moto'}</span>
-                          </div>
-                        </div>
-                        <input
-                          type="radio"
-                          checked={isSelected}
-                          onChange={() => setSelectedDriverId(drv.id)}
-                          className="accent-primary"
-                        />
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+            {/* Pestañas de Selección de Esquema de Despacho */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl mb-3">
+              <button
+                type="button"
+                onClick={() => setDispatchTab('network')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  dispatchTab === 'network'
+                    ? 'bg-white text-slate-950 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Bike className="w-3.5 h-3.5 text-primary" /> Red Un 2x3
+              </button>
+              <button
+                type="button"
+                onClick={() => setDispatchTab('external')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  dispatchTab === 'external'
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" /> Delivery Externo (Propio)
+              </button>
             </div>
 
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+              {dispatchTab === 'network' ? (
+                <>
+                  {/* Free Delivery Commission Notice */}
+                  <div className={`p-2.5 rounded-2xl border ${
+                    qualifiesForFreeDelivery
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-slate-100 border-slate-200 text-slate-700'
+                  }`}>
+                    <p className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Esquema de Envío:
+                    </p>
+                    <p className="text-[11px] font-bold mt-1">
+                      {qualifiesForFreeDelivery
+                        ? `🎁 Envío Gratis activo: El monto de compra ($${orderSubtotal.toFixed(2)}) califica. El negocio asume la tarifa del driver.`
+                        : `🛵 Tarifa de delivery calculada: $${Number(liveOrder?.delivery_fee || liveOrder?.deliveryFee || 2.0).toFixed(2)}.`}
+                    </p>
+                  </div>
+
+                  {/* 1. BUSCADOR DE CONDUCTORES */}
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Buscar conductor por nombre..."
+                        value={driverSearchQuery}
+                        onChange={(e) => setDriverSearchQuery(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-8 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
+                      />
+                      {driverSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setDriverSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px] hover:bg-slate-300"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <label className="text-[11px] font-black text-slate-700 block mt-2">
+                      Conductores Registrados Disponibles:
+                    </label>
+
+                    {loadingDrivers ? (
+                      <div className="text-center py-6 text-slate-400">
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" />
+                        <span className="text-[10px] font-bold mt-1 block">Buscando conductores...</span>
+                      </div>
+                    ) : (() => {
+                      const filteredList = driversList.filter((drv: any) => {
+                        const name = (drv.name || drv.displayName || drv.full_name || '').toLowerCase();
+                        return name.includes(driverSearchQuery.toLowerCase());
+                      });
+
+                      if (filteredList.length === 0) {
+                        return (
+                          <p className="text-slate-400 text-center py-4 text-[11px]">
+                            {driverSearchQuery ? 'No se encontraron conductores con ese nombre.' : 'No hay repartidores conectados en este momento.'}
+                          </p>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {filteredList.map((drv: any) => {
+                            const isSelected = selectedDriverId === drv.id;
+                            const name = drv.name || drv.displayName || drv.full_name || 'Driver';
+                            const photoUrl = drv.selfie_url || drv.documents?.selfieUrl || drv.selfieUrl || drv.photo_url || drv.photoURL || drv.avatar_url;
+                            const vehicleLabel = drv.vehicleType || drv.vehicle_type || drv.vehicle_model || 'Moto';
+
+                            return (
+                              <div
+                                key={drv.id}
+                                onClick={() => setSelectedDriverId(drv.id)}
+                                className={`p-2.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                                  isSelected
+                                    ? 'bg-primary/10 border-primary shadow-sm'
+                                    : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  {/* 2. FOTO DE PERFIL DEL CONDUCTOR (Avatar circular) */}
+                                  <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-200 border border-slate-300 shrink-0 flex items-center justify-center">
+                                    {photoUrl ? (
+                                      <img 
+                                        src={photoUrl} 
+                                        alt={name} 
+                                        className="w-10 h-10 rounded-full object-cover" 
+                                        loading="lazy" 
+                                        decoding="async" 
+                                      />
+                                    ) : (
+                                      <span className="font-black text-slate-600 text-xs">{name.charAt(0).toUpperCase()}</span>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-black text-slate-900 text-xs truncate">{name}</p>
+                                    <span className="text-[10px] text-slate-500 font-bold capitalize block truncate">{vehicleLabel}</span>
+                                  </div>
+                                </div>
+                                <input
+                                  type="radio"
+                                  checked={isSelected}
+                                  onChange={() => setSelectedDriverId(drv.id)}
+                                  className="accent-primary shrink-0"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </>
+              ) : (
+                /* 3. PANEL DELIVERY EXTERNO / PROPIO DEL NEGOCIO */
+                <div className="space-y-3">
+                  <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-amber-950 space-y-1">
+                    <p className="font-black text-xs flex items-center gap-1.5 text-amber-800">
+                      <Store className="w-4 h-4" /> Despacho con Delivery Externo (Propio)
+                    </p>
+                    <p className="text-[11px] font-medium leading-relaxed">
+                      El pedido será entregado directamente por el personal del negocio. No se asignará driver de la red ni se activará GPS de conductor.
+                    </p>
+                  </div>
+
+                  {/* Recuadro Destacado con TODA la Información del Cliente */}
+                  {(() => {
+                    const clientFullName = liveOrder?.client_name || liveOrder?.customer_name || liveOrder?.user_name || liveOrder?.userName || orderInfo?.client_name || orderInfo?.userName || 'Cliente';
+                    const clientRawPhone = liveOrder?.client_phone || liveOrder?.customer_phone || liveOrder?.user_phone || liveOrder?.phone || orderInfo?.client_phone || orderInfo?.user_phone || '';
+                    const clientWrittenAddress = liveOrder?.delivery_address || liveOrder?.address?.address || liveOrder?.address?.name || liveOrder?.shipping_address || orderInfo?.deliveryAddress || orderInfo?.delivery_address || 'Dirección de entrega especificada en el pedido';
+                    const clientAddressRef = liveOrder?.address?.reference || liveOrder?.delivery_reference || liveOrder?.notes || orderInfo?.address?.reference || '';
+                    const clientGpsCoords = liveOrder?.delivery_coords || liveOrder?.address?.coords || null;
+                    const cleanPhone = clientRawPhone ? clientRawPhone.replace(/\D/g, '') : '';
+                    const waPhone = cleanPhone.startsWith('58') ? cleanPhone : cleanPhone.startsWith('0') ? `58${cleanPhone.slice(1)}` : cleanPhone ? `58${cleanPhone}` : '';
+                    const itemsList = liveOrder?.items || orderItems || [];
+                    const finalTotalUsd = Number(liveOrder?.total || liveOrder?.total_amount || orderSubtotal || 0);
+
+                    return (
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-3">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Datos del Cliente para Despacho:</p>
+
+                        {/* Nombre del Cliente */}
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0 text-slate-600">
+                            <User className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Nombre Completo</span>
+                            <p className="font-black text-slate-900 text-xs truncate">{clientFullName}</p>
+                          </div>
+                        </div>
+
+                        {/* Teléfono del Cliente */}
+                        <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl border border-slate-200">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase block">Teléfono</span>
+                              <p className="font-black text-slate-900 text-xs truncate">{clientRawPhone || 'No registrado'}</p>
+                            </div>
+                          </div>
+                          {clientRawPhone && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(clientRawPhone);
+                                  toast.success('Teléfono copiado');
+                                }}
+                                className="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-600"
+                                title="Copiar Teléfono"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              <a
+                                href={`tel:${clientRawPhone}`}
+                                className="w-7 h-7 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center"
+                                title="Llamar"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+                              {waPhone && (
+                                <a
+                                  href={`https://wa.me/${waPhone}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-7 h-7 bg-emerald-600 text-white rounded-lg flex items-center justify-center hover:bg-emerald-700"
+                                  title="WhatsApp"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Dirección Escrita Explícita */}
+                        <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1">
+                          <div className="flex items-center gap-1.5 text-slate-700 font-black text-[11px]">
+                            <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                            <span>Dirección de Entrega:</span>
+                          </div>
+                          <p className="text-xs font-bold text-slate-900 leading-snug">
+                            {clientWrittenAddress}
+                          </p>
+                          {clientAddressRef && (
+                            <p className="text-[10px] text-amber-700 font-bold bg-amber-50 p-1.5 rounded-lg border border-amber-100">
+                              📍 Ref: {clientAddressRef}
+                            </p>
+                          )}
+                          {clientGpsCoords?.lat && clientGpsCoords?.lng && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${clientGpsCoords.lat},${clientGpsCoords.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-black text-blue-600 hover:underline pt-0.5"
+                            >
+                              <ExternalLink className="w-3 h-3" /> Ver ubicación GPS en Google Maps
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Detalle Resumido de Productos y Monto */}
+                        <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+                          <div className="flex items-center justify-between pb-1 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase">
+                            <span>Productos a despachar</span>
+                            <span>{itemsList.length} items</span>
+                          </div>
+                          <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                            {itemsList.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between items-center text-[11px]">
+                                <span className="font-bold text-slate-800 truncate mr-2">
+                                  {item.quantity || 1}x {item.name || item.title || 'Producto'}
+                                </span>
+                                <span className="font-black text-slate-900 shrink-0">
+                                  ${(Number(item.price || 0) * (item.quantity || 1)).toFixed(2)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center text-xs font-black">
+                            <span className="text-slate-700">Total Pedido:</span>
+                            <span className="text-slate-950">${finalTotalUsd.toFixed(2)} USD ({(finalTotalUsd * bcvRate).toFixed(2)} Bs)</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Botón de Acción Principal */}
             <div className="pt-3 border-t border-slate-100 mt-2">
-              <button
-                onClick={handleStoreDispatchOrder}
-                disabled={dispatchingStore || !selectedDriverId}
-                className="w-full bg-slate-950 hover:bg-slate-900 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
-              >
-                {dispatchingStore ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Bike className="w-4 h-4 text-primary" /> Confirmar y Despachar
-                  </>
-                )}
-              </button>
+              {dispatchTab === 'network' ? (
+                <button
+                  onClick={handleStoreDispatchOrder}
+                  disabled={dispatchingStore || !selectedDriverId}
+                  className="w-full bg-slate-950 hover:bg-slate-900 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {dispatchingStore ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Bike className="w-4 h-4 text-primary" /> Confirmar y Despachar
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleStoreDispatchExternal}
+                  disabled={dispatchingStore}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {dispatchingStore ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" /> Confirmar Despacho Externo (Listo)
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2423,7 +2737,7 @@ export default function OrderChatWindow({
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {(p.image || p.image_url) && (
-                        <img src={p.image || p.image_url} alt={p.name} className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                        <img src={p.image || p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-10 h-10 rounded-xl object-cover shrink-0" />
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-black text-slate-800 truncate group-hover:text-slate-950">{p.name}</p>

@@ -1019,7 +1019,7 @@ export default function OrderChatWindow({
                 onClick={() => setViewingAttachment(msg.imageUrl || null)}
                 className="cursor-pointer group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 hover:opacity-95 transition-all text-center block"
               >
-                <img src={msg.imageUrl} alt="Adjunto" className="max-w-full rounded-2xl max-h-52 object-contain bg-slate-50 border border-slate-200 shadow-sm mx-auto" />
+                <img src={msg.imageUrl} alt="Adjunto" loading="lazy" decoding="async" className="max-w-full rounded-2xl max-h-52 object-contain bg-slate-50 border border-slate-200 shadow-sm mx-auto" />
                 <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1.5 backdrop-blur-[1px]">
                   <Eye className="w-4 h-4" /> Toca para ver comprobante
                 </div>
@@ -2012,7 +2012,7 @@ export default function OrderChatWindow({
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {(p.image || p.image_url) && (
-                        <img src={p.image || p.image_url} alt={p.name} className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                        <img src={p.image || p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-10 h-10 rounded-xl object-cover shrink-0" />
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-black text-slate-800 truncate group-hover:text-slate-950">{p.name}</p>

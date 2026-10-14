@@ -368,7 +368,7 @@ export default function Search() {
                                 >
                                     <div className="h-32 bg-slate-100 relative">
                                         {product.image ? (
-                                            <img src={product.image} alt={product.name} className="w-full h-full object-cover" />
+                                            <img src={product.image} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                         ) : (
                                             <div className="w-full h-full flex items-center justify-center opacity-30">
                                                 <Store className="w-8 h-8" />
@@ -486,7 +486,7 @@ export default function Search() {
                                             <Link to={`/restaurant/${res.id}`} key={res.id} onClick={() => vibrate(30)} className="block group relative bg-white rounded-[32px] overflow-hidden shadow-xl shadow-slate-200/50 border border-slate-100 hover:border-primary/20 transition-all hover:scale-[1.01] active:scale-[0.99] cursor-pointer">
                                                 <div className="relative h-48 overflow-hidden bg-slate-900">
                                                     {coverImg ? (
-                                                        <img src={coverImg} alt={res.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+                                                        <img src={coverImg} alt={res.name} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
                                                     ) : (
                                                         <div className="w-full h-full bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950 flex flex-col items-center justify-center text-slate-400 p-4">
                                                             <Store className="w-12 h-12 mb-2 text-white/30" />
@@ -504,6 +504,8 @@ export default function Search() {
                                                             <img
                                                                 src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                                                                 alt="Cashea"
+                                                                loading="lazy"
+                                                                decoding="async"
                                                                 className="w-full h-full object-contain"
                                                             />
                                                         </div>
@@ -512,7 +514,7 @@ export default function Search() {
                                                 <div className="p-6 flex items-center gap-4">
                                                     <div className="w-12 h-12 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
                                                         {logoImg ? (
-                                                            <img src={logoImg} alt="" className="w-full h-full object-cover rounded-full" />
+                                                            <img src={logoImg} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover rounded-full" />
                                                         ) : (
                                                             <Store className="w-6 h-6 text-slate-300" />
                                                         )}
@@ -566,7 +568,7 @@ export default function Search() {
                                             >
                                                 <div className="relative h-24 bg-slate-900 overflow-hidden">
                                                     {coverImg ? (
-                                                        <img src={coverImg} alt={res.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                                        <img src={coverImg} alt={res.name} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                                                     ) : (
                                                         <div className="w-full h-full bg-gradient-to-br from-slate-800 to-indigo-950 flex items-center justify-center p-2 text-white/40">
                                                             <Store className="w-8 h-8" />
@@ -583,6 +585,8 @@ export default function Search() {
                                                             <img
                                                                 src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                                                                 alt="Cashea"
+                                                                loading="lazy"
+                                                                decoding="async"
                                                                 className="w-full h-full object-contain"
                                                             />
                                                         </div>
@@ -591,7 +595,7 @@ export default function Search() {
                                                     {/* Mini Logo superpuesto */}
                                                     <div className="absolute -bottom-2.5 left-2 w-7 h-7 rounded-lg border-2 border-white shadow-sm overflow-hidden bg-white shrink-0">
                                                         {logoImg ? (
-                                                            <img src={logoImg} alt="" className="w-full h-full object-cover" />
+                                                            <img src={logoImg} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                                         ) : (
                                                             <Store className="w-4 h-4 text-slate-400 p-0.5" />
                                                         )}
@@ -646,7 +650,7 @@ export default function Search() {
                                                 {/* Logo Pequeño del Negocio */}
                                                 <div className="w-12 h-12 rounded-2xl border border-slate-100 shadow-xs overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
                                                     {logoImg ? (
-                                                        <img src={logoImg} alt={res.name} className="w-full h-full object-cover rounded-2xl" />
+                                                        <img src={logoImg} alt={res.name} loading="lazy" decoding="async" className="w-full h-full object-cover rounded-2xl" />
                                                     ) : (
                                                         <Store className="w-6 h-6 text-slate-300" />
                                                     )}

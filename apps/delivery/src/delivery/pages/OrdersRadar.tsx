@@ -1993,6 +1993,8 @@ export default function OrdersRadar() {
                                             <img 
                                                 src={activeTransport.payment_proof_url} 
                                                 alt="Comprobante" 
+                                                loading="lazy"
+                                                decoding="async"
                                                 className="max-h-48 object-contain hover:scale-105 transition-transform" 
                                             />
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
@@ -2991,6 +2993,8 @@ export default function OrdersRadar() {
                                                         <img 
                                                             src={item.payment_proof_url} 
                                                             alt="Capture de Pago" 
+                                                            loading="lazy"
+                                                            decoding="async"
                                                             className="w-full h-full object-cover group-hover:scale-110 transition-all duration-300"
                                                         />
                                                         <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3346,6 +3350,8 @@ export default function OrdersRadar() {
                                                     <img
                                                         src={req.mandado_details?.referenceUrl || req.reference_url}
                                                         alt="Referencia mandado"
+                                                        loading="lazy"
+                                                        decoding="async"
                                                         className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                                                     />
                                                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3846,6 +3852,8 @@ export default function OrdersRadar() {
                     <img 
                         src={previewProofUrl} 
                         alt="Comprobante de pago" 
+                        loading="lazy"
+                        decoding="async"
                         className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl" 
                     />
                 </div>

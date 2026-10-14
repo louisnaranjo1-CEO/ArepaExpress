@@ -67,6 +67,7 @@ export default function AvailableStoresRow({ restaurants, cityName }: AvailableS
                       alt={restaurant.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"
+                      decoding="async"
                     />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black text-xs shadow-inner">

@@ -757,6 +757,7 @@ export default function Home() {
               src={clientLogo}
               alt={branding.app_client_name || "Logo"}
               className="h-10 w-auto object-contain"
+              decoding="async"
             />
           </div>
 
@@ -887,6 +888,7 @@ export default function Home() {
                     src={clientLogo}
                     alt={branding.app_client_name || "Logo"}
                     className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,102,0,0.5)]"
+                    decoding="async"
                   />
                 </div>
                 <h2 className="text-2xl font-black text-slate-900 mt-5 text-center leading-tight">Tu Mundo en un Toque</h2>
@@ -997,6 +999,8 @@ export default function Home() {
                       alt={banner.title}
                       className="w-full h-full object-cover select-none pointer-events-none"
                       draggable={false}
+                      loading="lazy"
+                      decoding="async"
                     />
                   </a>
                 </div>
@@ -1034,7 +1038,7 @@ export default function Home() {
             >
               <div className="h-[72px] w-[72px] rounded-full bg-slate-50 border-2 border-slate-100 group-hover:border-primary/20 group-hover:scale-105 transition-all duration-300 flex items-center justify-center overflow-hidden">
                 {category.imageUrl ? (
-                  <img src={category.imageUrl} alt={category.name} className="w-full h-full object-cover" />
+                  <img src={category.imageUrl} alt={category.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                 ) : (
                   <span className="text-2xl">{category.icon || '🏷️'}</span>
                 )}
@@ -1154,6 +1158,8 @@ export default function Home() {
                                         src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                                         alt="Cashea"
                                         className="w-full h-full object-contain"
+                                        loading="lazy"
+                                        decoding="async"
                                       />
                                   </div>
                                 )}
@@ -1193,7 +1199,7 @@ export default function Home() {
                             <div className="px-1 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
                                   {logoImg ? (
-                                      <img src={logoImg} alt="" className="w-full h-full object-cover rounded-full" />
+                                      <img src={logoImg} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover rounded-full" />
                                   ) : (
                                       <Store className="w-5 h-5 text-slate-300" />
                                   )}
@@ -1231,7 +1237,7 @@ export default function Home() {
                           >
                             <div className="relative h-24 bg-slate-900 overflow-hidden">
                               {coverImg ? (
-                                <img src={coverImg} alt={restaurant.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                                <img src={coverImg} alt={restaurant.name} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                               ) : (
                                 <div className="w-full h-full bg-gradient-to-br from-slate-800 to-indigo-950 flex items-center justify-center p-2 text-white/40">
                                   <Store className="w-8 h-8" />
@@ -1247,12 +1253,14 @@ export default function Home() {
                                     src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                                     alt="Cashea"
                                     className="w-full h-full object-contain"
+                                    loading="lazy"
+                                    decoding="async"
                                   />
                                 </div>
                               )}
                               <div className="absolute -bottom-2.5 left-2 w-7 h-7 rounded-lg border-2 border-white shadow-sm overflow-hidden bg-white shrink-0">
                                 {logoImg ? (
-                                  <img src={logoImg} alt="" className="w-full h-full object-cover" />
+                                  <img src={logoImg} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                 ) : (
                                   <Store className="w-4 h-4 text-slate-400 p-0.5" />
                                 )}
@@ -1295,7 +1303,7 @@ export default function Home() {
                           >
                             <div className="w-12 h-12 rounded-2xl border border-slate-100 shadow-xs overflow-hidden shrink-0 bg-slate-50 flex items-center justify-center">
                               {logoImg ? (
-                                <img src={logoImg} alt={restaurant.name} className="w-full h-full object-cover rounded-2xl" />
+                                <img src={logoImg} alt={restaurant.name} loading="lazy" decoding="async" className="w-full h-full object-cover rounded-2xl" />
                               ) : (
                                 <Store className="w-6 h-6 text-slate-300" />
                               )}
@@ -1443,6 +1451,7 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
                   alt={product.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy"
+                  decoding="async"
                 />
                 
                 {/* Visual Indicators */}
@@ -1450,13 +1459,13 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
                   {/* Restaurant Logo Circle */}
                   {product.restaurantLogo && (
                     <div className="w-6 h-6 rounded-full bg-white shadow-sm border border-slate-100 overflow-hidden flex items-center justify-center" title="Comercio">
-                      <img src={product.restaurantLogo} alt="Logo" className="w-full h-full object-cover rounded-full" />
+                      <img src={product.restaurantLogo} alt="Logo" loading="lazy" decoding="async" className="w-full h-full object-cover rounded-full" />
                     </div>
                   )}
                   {/* Cashea Badge */}
                   {product.restaurantHasCashea && (
                     <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm" title="Cashea">
-                      <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} alt="Cashea" className="w-4 h-4 object-contain" />
+                      <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} alt="Cashea" loading="lazy" decoding="async" className="w-4 h-4 object-contain" />
                     </div>
                   )}
                   {/* 2x3 Resuelve Badge */}

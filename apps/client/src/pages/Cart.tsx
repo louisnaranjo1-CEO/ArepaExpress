@@ -259,6 +259,24 @@ export default function Cart({ hideHeader = false }: CartProps) {
             .eq('restaurant_id', items[0].restaurantId)
             .eq('is_active', true);
           if (rewSnap) setRestaurantRewards(rewSnap.map((d: any) => ({ id: d.id, ...d })));
+
+          // Validar disponibilidad de stock de los productos en el carrito
+          const productIds = items.map(it => it.productId || it.id);
+          if (productIds.length > 0) {
+            const { data: prods } = await supabase.from('products').select('*').in('id', productIds);
+            if (prods) {
+              prods.forEach((p: any) => {
+                const isUnavailable = p.is_available === false || p.isAvailable === false || p.is_active === false || p.isActive === false || p.stock === 0 || p.status === 'out_of_stock';
+                if (isUnavailable) {
+                  const foundInCart = items.find(it => (it.productId || it.id) === p.id);
+                  if (foundInCart) {
+                    removeItem(foundInCart.id, foundInCart.restaurantId);
+                    toast.error(`⚠️ "${foundInCart.name}" se agotó y fue retirado del carrito.`);
+                  }
+                }
+              });
+            }
+          }
         } catch (err) { console.error(err); } finally { setLoadingDistance(false); }
       }
     };
@@ -338,6 +356,25 @@ export default function Cart({ hideHeader = false }: CartProps) {
       if (!isWaiter && !rData?.whatsapp) throw new Error("No WhatsApp config");
 
       let addressStr = isWaiter ? `Mesa: ${tableNumber}` : (deliveryMethod === 'pickup' ? "Recoger en local" : (selectedAddress ? `${selectedAddress.name} - ${selectedAddress.reference || ''}` : "Recoger en local"));
+
+      // Validar disponibilidad de stock en tiempo real antes de procesar el pedido
+      const productIds = items.map(it => it.productId || it.id);
+      if (productIds.length > 0) {
+        const { data: latestProds } = await supabase.from('products').select('*').in('id', productIds);
+        if (latestProds && latestProds.length > 0) {
+          const outOfStockItems = items.filter(it => {
+            const p = latestProds.find((prod: any) => prod.id === (it.productId || it.id));
+            return p && (p.is_available === false || p.isAvailable === false || p.is_active === false || p.isActive === false || p.stock === 0 || p.status === 'out_of_stock');
+          });
+
+          if (outOfStockItems.length > 0) {
+            outOfStockItems.forEach(it => removeItem(it.id, it.restaurantId));
+            toast.error(`⚠️ "${outOfStockItems[0].name}" se agotó en el comercio y fue retirado. Revisa tu orden.`);
+            setIsCheckingOut(false);
+            return;
+          }
+        }
+      }
 
       // Sanitize items just in case they have undefined properties
       const sanitizedItems = items.map(item => {

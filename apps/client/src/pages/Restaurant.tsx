@@ -144,7 +144,7 @@ export default function RestaurantPage() {
   const isWaiter = localStorage.getItem('isWaiter') === 'true';
   const waiterData = JSON.parse(localStorage.getItem('waiterData') || '{}');
 
-  const { items, storeCarts, addItem, clearCart, clearStoreCart, setActiveRestaurantId } = useCart();
+  const { items, storeCarts, addItem, removeItem, clearCart, clearStoreCart, setActiveRestaurantId } = useCart();
   const storeItems = (restaurant?.id && storeCarts[restaurant.id]?.length) 
     ? storeCarts[restaurant.id] 
     : items.filter(it => it.restaurantId === restaurant?.id);
@@ -375,10 +375,80 @@ export default function RestaurantPage() {
       )
       .subscribe();
 
+    // Realtime channel: if the merchant updates products or stock status in catalog
+    const productsChannel = supabase
+      .channel(`restaurant-products-${id}-sync`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'products', filter: `restaurant_id=eq.${id}` },
+        (payload) => {
+          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
+            const updated = payload.new as any;
+            setProducts(prev => {
+              const idx = prev.findIndex(p => p.id === updated.id);
+              const mapped = {
+                id: updated.id,
+                name: updated.name,
+                price: Number(updated.price) || 0,
+                promoPrice: updated.promo_price !== undefined && updated.promo_price !== null ? Number(updated.promo_price) : (updated.promoPrice ? Number(updated.promoPrice) : undefined),
+                image: updated.image_url || updated.image,
+                images: updated.images || (updated.image_url ? [updated.image_url] : (updated.image ? [updated.image] : [])),
+                category: updated.category_name || updated.category,
+                description: updated.description,
+                consultPrice: updated.consult_price ?? updated.consultPrice ?? (updated.price === 0 && (!updated.variants || updated.variants.length === 0)),
+                variants: updated.variants || [],
+                modifiers: updated.modifiers || [],
+                pointsPrice: updated.points_price || updated.pointsPrice,
+                isAvailable: updated.is_available ?? updated.isAvailable ?? true,
+                isActive: updated.is_active ?? updated.isActive ?? true,
+                ...updated
+              };
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = mapped;
+                return next;
+              }
+              return [...prev, mapped];
+            });
+          } else if (payload.eventType === 'DELETE') {
+            const deletedId = (payload.old as any)?.id;
+            if (deletedId) {
+              setProducts(prev => prev.filter(p => p.id !== deletedId));
+            }
+          }
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(restChannel);
+      supabase.removeChannel(productsChannel);
     };
   }, [id, user]);
+
+  // Depuración automática de productos agotados en el carrito para recalcular "VER MI ORDEN"
+  useEffect(() => {
+    if (!products || products.length === 0 || !restaurant?.id || storeItems.length === 0) return;
+
+    storeItems.forEach((cartItem) => {
+      const prodId = cartItem.productId || cartItem.id;
+      const matchedProd = products.find(p => p.id === prodId || p.id === cartItem.id || p.id === (cartItem as any).productId);
+      if (matchedProd) {
+        const isUnavailable = 
+          matchedProd.isAvailable === false || 
+          matchedProd.is_available === false || 
+          matchedProd.isActive === false || 
+          matchedProd.is_active === false || 
+          matchedProd.stock === 0 ||
+          matchedProd.status === 'out_of_stock';
+
+        if (isUnavailable) {
+          removeItem(cartItem.id, restaurant.id);
+          toast.error(`⚠️ "${cartItem.name}" se agotó en la tienda y fue retirado de tu orden.`);
+        }
+      }
+    });
+  }, [products, storeItems, restaurant?.id, removeItem]);
 
   useEffect(() => {
     const fetchReviews = async () => {
@@ -876,7 +946,7 @@ export default function RestaurantPage() {
           <div className="relative shrink-0">
             <div className="w-24 h-24 md:w-28 md:h-28 bg-white rounded-full p-1.5 shadow-xl border-4 border-white overflow-hidden animate-in zoom-in-95 duration-500 flex items-center justify-center">
               {restaurant.logoUrl ? (
-                <img src={restaurant.logoUrl} alt={restaurant.name} className="w-full h-full object-contain rounded-full" />
+                <img src={restaurant.logoUrl} alt={restaurant.name} loading="lazy" decoding="async" className="w-full h-full object-contain rounded-full" />
               ) : (
                 <Store className="w-10 h-10 text-slate-300" />
               )}
@@ -893,6 +963,8 @@ export default function RestaurantPage() {
                 <img
                   src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"}
                   alt="Cashea"
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
               </div>
@@ -1132,7 +1204,7 @@ export default function RestaurantPage() {
                   rel="noopener noreferrer"
                   className="w-10 h-10 rounded-full bg-slate-50 border border-slate-100 flex items-center justify-center p-2.5 hover:bg-white hover:shadow-md hover:border-primary/30 transition-all shrink-0"
                 >
-                  <img src={social.imageUrl} alt={social.name} className="w-full h-full object-contain" />
+                  <img src={social.imageUrl} alt={social.name} loading="lazy" decoding="async" className="w-full h-full object-contain" />
                 </motion.a>
               ))}
             </div>
@@ -1239,7 +1311,7 @@ export default function RestaurantPage() {
 
                   {restaurant.activeRaffle.image && (
                     <div className="w-full aspect-[16/9] md:aspect-[21/9] rounded-[2.5rem] overflow-hidden mb-8 shadow-2xl border-2 border-white/10 group-hover:scale-[1.02] transition-transform duration-700 ease-out">
-                      <img src={restaurant.activeRaffle.image} className="w-full h-full object-cover transform scale-105 group-hover:scale-110 transition-transform duration-[2s]" alt="Sorteo" />
+                      <img src={restaurant.activeRaffle.image} loading="lazy" decoding="async" className="w-full h-full object-cover transform scale-105 group-hover:scale-110 transition-transform duration-[2s]" alt="Sorteo" />
                     </div>
                   )}
 
@@ -1371,6 +1443,7 @@ export default function RestaurantPage() {
                           alt={product.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           loading="lazy"
+                          decoding="async"
                         />
                         
                         {/* Botón de Favoritos */}
@@ -1390,12 +1463,12 @@ export default function RestaurantPage() {
                         <div className="absolute top-2 right-2 flex flex-col gap-1 items-end z-10 pointer-events-none">
                           {restaurant.logoUrl && (
                             <div className="w-6 h-6 rounded-full bg-white shadow-sm border border-slate-100 overflow-hidden flex items-center justify-center" title="Comercio">
-                              <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover rounded-full" />
+                              <img src={restaurant.logoUrl} alt="Logo" loading="lazy" decoding="async" className="w-full h-full object-cover rounded-full" />
                             </div>
                           )}
                           {restaurant.hasCashea && (
                             <div className="w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center shadow-sm overflow-hidden" title="Cashea">
-                              <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} alt="Cashea" className="w-full h-full object-cover" />
+                              <img src={casheaIcon || "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp"} alt="Cashea" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                             </div>
                           )}
                           {restaurant.hasTwoByThree && (
@@ -1531,6 +1604,7 @@ export default function RestaurantPage() {
                           alt={product.name}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                           loading="lazy"
+                          decoding="async"
                         />
                         {product.isAvailable === false && (
                           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center">
@@ -1722,6 +1796,8 @@ export default function RestaurantPage() {
                               <img
                                 src={img}
                                 alt={`${product.name} ${idx + 1}`}
+                                loading="lazy"
+                                decoding="async"
                                 className="w-full h-full object-cover"
                               />
                             </div>
@@ -1756,7 +1832,7 @@ export default function RestaurantPage() {
                       {/* Restaurant Logo Overlay on Product */}
                       {restaurant.logoUrl && (
                         <div className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-lg p-1 shadow-sm border border-white/50 z-10 pointer-events-none group-hover/img:scale-110 transition-transform">
-                          <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                          <img src={restaurant.logoUrl} alt="Logo" loading="lazy" decoding="async" className="w-full h-full object-contain" />
                         </div>
                       )}
 
@@ -1808,7 +1884,7 @@ export default function RestaurantPage() {
                 <div key={review.id} className="bg-white border text-left border-slate-100 p-4 rounded-2xl shadow-sm">
                   <div className="flex items-center gap-3 mb-3">
                     {review.userPhoto ? (
-                      <img src={review.userPhoto} alt={review.userName} className="w-10 h-10 rounded-full object-cover" />
+                      <img src={review.userPhoto} alt={review.userName} loading="lazy" decoding="async" className="w-10 h-10 rounded-full object-cover" />
                     ) : (
                       <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
                         <UserIcon className="w-5 h-5 text-slate-400" />
@@ -1832,7 +1908,7 @@ export default function RestaurantPage() {
                     <div className="flex gap-2 overflow-x-auto hide-scrollbar">
                       {review.photos.map((photo: string, idx: number) => (
                         <a key={idx} href={photo} target="_blank" rel="noopener noreferrer" className="shrink-0">
-                          <img src={photo} alt="Review photo" className="w-20 h-20 rounded-xl object-cover border border-slate-100" />
+                          <img src={photo} alt="Review photo" loading="lazy" decoding="async" className="w-20 h-20 rounded-xl object-cover border border-slate-100" />
                         </a>
                       ))}
                     </div>
@@ -2103,6 +2179,8 @@ export default function RestaurantPage() {
                           <img
                             src={img}
                             alt={`${selectedProduct.name} ${idx + 1}`}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-cover"
                           />
                         </div>

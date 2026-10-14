@@ -124,6 +124,9 @@ export default function LiveTripMap({
 
         return () => {
             resizeObserver.disconnect();
+            if (originMarkerRef.current) { originMarkerRef.current.remove(); originMarkerRef.current = null; }
+            if (destMarkerRef.current) { destMarkerRef.current.remove(); destMarkerRef.current = null; }
+            if (driverMarkerRef.current) { driverMarkerRef.current.remove(); driverMarkerRef.current = null; }
             map.remove();
             mapRef.current = null;
         };
@@ -346,9 +349,9 @@ export default function LiveTripMap({
     };
 
     return (
-        <div className="relative w-full h-full overflow-hidden bg-slate-100 select-none">
+        <div className="relative w-full h-full overflow-hidden bg-slate-100 select-none transform-gpu will-change-transform">
             {/* Mapbox Canvas Container */}
-            <div ref={mapContainerRef} className="w-full h-full" />
+            <div ref={mapContainerRef} className="w-full h-full transform-gpu" />
 
             {!isLoaded && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-slate-900/60 backdrop-blur-sm text-white gap-2">

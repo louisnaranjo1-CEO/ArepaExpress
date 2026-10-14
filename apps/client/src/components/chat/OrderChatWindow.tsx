@@ -56,6 +56,7 @@ export default function OrderChatWindow({
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [showSubstituteModal, setShowSubstituteModal] = useState(false);
   const [waTimeoutPassed, setWaTimeoutPassed] = useState(false);
+  const [hideSlowReplyNotice, setHideSlowReplyNotice] = useState(false);
   const [viewingAttachment, setViewingAttachment] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -907,9 +908,25 @@ export default function OrderChatWindow({
   };
 
   const handlePhoneCall = () => {
-    const rawPhone = liveOrder?.restaurant_phone || orderInfo?.restaurantPhone || orderInfo?.restaurantWhatsapp || storeData?.phone;
+    const rawPhone = 
+      liveOrder?.restaurant_phone || 
+      liveOrder?.restaurant_whatsapp || 
+      liveOrder?.restaurantPhone || 
+      liveOrder?.restaurantWhatsapp || 
+      storeData?.phone || 
+      storeData?.telefono || 
+      storeData?.whatsapp || 
+      storeData?.contactPhone || 
+      storeData?.phone_number || 
+      orderInfo?.restaurantPhone || 
+      orderInfo?.restaurantWhatsapp || 
+      orderInfo?.phone || 
+      orderInfo?.telefono || 
+      orderInfo?.whatsapp || 
+      orderInfo?.contactPhone;
+
     if (rawPhone) {
-      const num = rawPhone.replace(/[^\d+]/g, '');
+      const num = String(rawPhone).replace(/[^\d+]/g, '');
       window.location.href = `tel:${num}`;
     } else {
       toast.error('Número de teléfono no disponible para llamar.');
@@ -1068,7 +1085,7 @@ export default function OrderChatWindow({
   };
 
   // Financial and Qualification Calculations
-  const effectiveRate = Number(liveOrder?.exchange_rate || liveOrder?.custom_exchange_rate || bcvRate || 855.66);
+  const effectiveRate = Number(liveOrder?.custom_exchange_rate || liveOrder?.customExchangeRate || liveOrder?.exchange_rate || liveOrder?.exchangeRate || bcvRate || 855.66);
   const isPickupOrder = liveOrder?.delivery_method === 'pickup' || liveOrder?.deliveryMethod === 'pickup';
   const calculatedItemsTotal = (orderItems && orderItems.length > 0)
     ? orderItems.reduce((acc, it) => acc + (Number(it.price || 0) * Number(it.quantity || 1)), 0)
@@ -1092,6 +1109,12 @@ export default function OrderChatWindow({
     (m.text && (m.text.includes('PAGO REPORTADO') || m.text.includes('He realizado el pago')))
   );
 
+  const hasRecentPaymentRejection = Boolean(
+    liveOrder?.payment_status === 'pending' ||
+    liveOrder?.status === 'awaiting_payment' ||
+    messages.some(m => m.action === 'payment_rejected' || (m.text && m.text.includes('no pudo validar tu comprobante')))
+  ) && !liveOrder?.payment_proof_url;
+
   // Three clean mutually exclusive payment states
   const isPaymentVerifiedByStore = Boolean(
     ['awaiting_delivery_driver', 'preparing', 'ready', 'buscando_piloto', 'delivering', 'delivered', 'completed', 'paid', 'payment_confirmed'].includes(liveOrder?.status) ||
@@ -1103,7 +1126,8 @@ export default function OrderChatWindow({
   );
 
   const isPaymentReportedWaitingStore = Boolean(
-    !isPaymentVerifiedByStore && (
+    !isPaymentVerifiedByStore && 
+    !hasRecentPaymentRejection && (
       liveOrder?.status === 'pending_verification' ||
       liveOrder?.payment_status === 'verifying' ||
       liveOrder?.restaurant_payment_client_confirmed ||
@@ -1284,7 +1308,7 @@ export default function OrderChatWindow({
 
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Direct Call Button (Replaces WhatsApp) */}
-          {(liveOrder?.restaurant_phone || orderInfo?.restaurantPhone || orderInfo?.restaurantWhatsapp || storeData?.phone || liveOrder?.user_phone || orderInfo?.userPhone) && (
+          {(liveOrder?.restaurant_phone || liveOrder?.restaurant_whatsapp || orderInfo?.restaurantPhone || orderInfo?.restaurantWhatsapp || storeData?.phone || storeData?.telefono || storeData?.whatsapp || storeData?.contactPhone || storeData?.phone_number || liveOrder?.user_phone || orderInfo?.userPhone) && (
             <button
               onClick={handlePhoneCall}
               className="flex items-center gap-1 text-xs font-black text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 px-2.5 py-1.5 rounded-xl transition-all active:scale-95"
@@ -1537,7 +1561,9 @@ export default function OrderChatWindow({
                 ${orderDisplayTotal.toFixed(2)} USD
               </span>
               <span className="text-slate-500 text-[10px]">
-                ({effectiveRate > 0 ? (orderDisplayTotal * effectiveRate).toFixed(0) : '0'} Bs)
+                ({(liveOrder?.total_bs != null || liveOrder?.totalBs != null) 
+                  ? Number(liveOrder.total_bs ?? liveOrder.totalBs).toLocaleString('es-VE', { maximumFractionDigits: 0 }) 
+                  : (effectiveRate > 0 ? (orderDisplayTotal * effectiveRate).toFixed(0) : '0')} Bs)
               </span>
             </div>
 
@@ -1572,18 +1598,27 @@ export default function OrderChatWindow({
       </div>
 
       {/* Phone Call Fallback Button for Client if store is slow */}
-      {currentUserRole === 'client' && waTimeoutPassed && (
-        <div className="bg-blue-50 border border-blue-200 p-2.5 px-4 flex items-center justify-between text-xs text-blue-900 rounded-2xl mx-3 mb-2 shadow-sm shrink-0">
-          <span className="font-bold flex items-center gap-1.5 text-[11px]">
+      {currentUserRole === 'client' && waTimeoutPassed && !hideSlowReplyNotice && (
+        <div className="bg-blue-50 border border-blue-200 p-2.5 px-4 flex items-center justify-between text-xs text-blue-900 rounded-2xl mx-3 mb-2 shadow-sm shrink-0 relative">
+          <span className="font-bold flex items-center gap-1.5 text-[11px] pr-2">
             <Phone className="w-4 h-4 text-blue-600 shrink-0" />
             ¿El comercio tarda en responder?
           </span>
-          <button
-            onClick={handlePhoneCall}
-            className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all text-xs"
-          >
-            <Phone className="w-3.5 h-3.5" /> Llamar por teléfono
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handlePhoneCall}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-black px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 shadow-sm active:scale-95 transition-all text-xs"
+            >
+              <Phone className="w-3.5 h-3.5" /> Llamar por teléfono
+            </button>
+            <button
+              onClick={() => setHideSlowReplyNotice(true)}
+              className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-blue-100/60 transition-colors"
+              title="Cerrar aviso"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1639,7 +1674,7 @@ export default function OrderChatWindow({
                   </div>
                 </div>
                 <span className="text-xs font-black text-slate-900 bg-white border border-emerald-200 px-2 py-0.5 rounded-lg shadow-xs">
-                  ${orderDisplayTotal.toFixed(2)} USD {effectiveRate > 0 && `• ${(orderDisplayTotal * effectiveRate).toFixed(2)} Bs`}
+                  ${orderDisplayTotal.toFixed(2)} USD {effectiveRate > 0 && `• ${(liveOrder?.total_bs != null || liveOrder?.totalBs != null) ? Number(liveOrder.total_bs ?? liveOrder.totalBs).toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : (orderDisplayTotal * effectiveRate).toFixed(2)} Bs`}
                 </span>
               </div>
 

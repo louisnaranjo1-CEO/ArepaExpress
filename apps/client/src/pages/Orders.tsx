@@ -7,6 +7,10 @@ import { useCurrency } from '../context/CurrencyContext';
 import { sendAppNotification } from '../services/nativeNotificationService';
 import Cart from './Cart';
 
+// Global in-memory cache for profiles across renders and tab switches (mobile-native-perf)
+const businessProfileCache = new Map<string, string>();
+const driverPhotoCache = new Map<string, string>();
+
 type TabType = 'cart' | 'active';
 
 export default function Orders() {
@@ -19,7 +23,16 @@ export default function Orders() {
     const [activeTransports, setActiveTransports] = useState<any[]>([]);
     const [recentOrders, setRecentOrders] = useState<any[]>([]);
     const [recentTransportsMap, setRecentTransportsMap] = useState<Record<string, any>>({});
-    const [restaurantLogos, setRestaurantLogos] = useState<Record<string, string>>({});
+    const [restaurantLogos, setRestaurantLogos] = useState<Record<string, string>>(() => {
+        const initial: Record<string, string> = {};
+        businessProfileCache.forEach((logo, id) => { initial[id] = logo; });
+        return initial;
+    });
+    const [driverPhotos, setDriverPhotos] = useState<Record<string, string>>(() => {
+        const initial: Record<string, string> = {};
+        driverPhotoCache.forEach((photo, id) => { initial[id] = photo; });
+        return initial;
+    });
     const [loadingOrders, setLoadingOrders] = useState(true);
     const notifiedOrdersRef = useRef<Set<string>>(new Set());
     const navigate = useNavigate();
@@ -98,6 +111,7 @@ export default function Orders() {
                 }
 
                 const { data: recData } = await recentQuery;
+
                 if (recData && recData.length > 0) {
                     setRecentOrders(recData);
 
@@ -111,7 +125,7 @@ export default function Orders() {
                     try {
                         const { data: trRecData } = await supabase
                             .from('transport_requests')
-                            .select('id, order_id, driver_id, driver_name, driver_phone, driver_photo, vehicle_type')
+                            .select('id, order_id, driver_id, driver_name, driver_phone, driver_photo, vehicle_type, delivery_type')
                             .in('order_id', orderIds);
                         
                         if (trRecData) {
@@ -174,42 +188,105 @@ export default function Orders() {
         };
     }, [authUUID, validLocalOrderUUID, tabParam]);
 
-    // Fetch restaurant logos when orders change
+    // In-memory cache + Batch fetch for restaurant logos & driver photos (mobile-native-perf)
     useEffect(() => {
-        const fetchLogos = async () => {
-            const newLogos = { ...restaurantLogos };
-            let changed = false;
-
+        const fetchProfiles = async () => {
             const allOrdersToInspect = [...activeOrders, ...recentOrders];
+            if (allOrdersToInspect.length === 0) return;
+
+            const newLogos = { ...restaurantLogos };
+            const newDriverPhotos = { ...driverPhotos };
+            const missingRestIds = new Set<string>();
+            const missingDriverIds = new Set<string>();
+
             for (const order of allOrdersToInspect) {
                 const restId = order.restaurant_id || order.restaurantId;
-                if (restId && !newLogos[restId]) {
-                    try {
-                        const { data } = await supabase
-                            .from('comercios')
-                            .select('logo_url, logoUrl, logo')
-                            .eq('id', restId)
-                            .maybeSingle();
+                const directLogo = order.restaurant_logo || order.restaurantLogo || order.business_logo || order.businessLogo || order.logo;
+                if (restId) {
+                    if (directLogo) {
+                        businessProfileCache.set(restId, directLogo);
+                        newLogos[restId] = directLogo;
+                    } else if (businessProfileCache.has(restId)) {
+                        newLogos[restId] = businessProfileCache.get(restId)!;
+                    } else {
+                        missingRestIds.add(restId);
+                    }
+                }
 
-                        if (data) {
-                            newLogos[restId] = data.logo_url || data.logoUrl || data.logo || '';
-                            changed = true;
-                        }
-                    } catch (err) {
-                        console.error("Error fetching restaurant logo:", err);
+                // Drivers
+                const trLinked = recentTransportsMap[order.id];
+                const dId = order.driver_id || order.delivery_driver_id || trLinked?.driver_id;
+                const directDriverPhoto = order.driver_photo || order.driver_photo_url || trLinked?.driver_photo;
+                if (dId) {
+                    if (directDriverPhoto) {
+                        driverPhotoCache.set(dId, directDriverPhoto);
+                        newDriverPhotos[dId] = directDriverPhoto;
+                    } else if (driverPhotoCache.has(dId)) {
+                        newDriverPhotos[dId] = driverPhotoCache.get(dId)!;
+                    } else {
+                        missingDriverIds.add(dId);
                     }
                 }
             }
 
-            if (changed) {
+            let logosChanged = false;
+            let driversChanged = false;
+
+            // Batch fetch missing restaurant logos
+            if (missingRestIds.size > 0) {
+                try {
+                    const { data: stores } = await supabase
+                        .from('comercios')
+                        .select('id, logo_url, logoUrl, logo')
+                        .in('id', Array.from(missingRestIds));
+
+                    if (stores) {
+                        stores.forEach((st: any) => {
+                            const lUrl = st.logo_url || st.logoUrl || st.logo || '';
+                            if (lUrl) {
+                                businessProfileCache.set(st.id, lUrl);
+                                newLogos[st.id] = lUrl;
+                                logosChanged = true;
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error batch fetching restaurant logos:", err);
+                }
+            }
+
+            // Batch fetch missing driver photos (drivers table selfie_url is source of truth)
+            if (missingDriverIds.size > 0) {
+                try {
+                    const { data: drvList } = await supabase
+                        .from('drivers')
+                        .select('id, selfie_url, vehicle_image_url')
+                        .in('id', Array.from(missingDriverIds));
+
+                    if (drvList) {
+                        drvList.forEach((d: any) => {
+                            const dPhoto = d.selfie_url || d.vehicle_image_url || '';
+                            if (dPhoto) {
+                                driverPhotoCache.set(d.id, dPhoto);
+                                newDriverPhotos[d.id] = dPhoto;
+                                driversChanged = true;
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.error("Error batch fetching driver photos:", err);
+                }
+            }
+
+            if (logosChanged || Object.keys(newLogos).length !== Object.keys(restaurantLogos).length) {
                 setRestaurantLogos(newLogos);
             }
+            if (driversChanged || Object.keys(newDriverPhotos).length !== Object.keys(driverPhotos).length) {
+                setDriverPhotos(newDriverPhotos);
+            }
         };
-
-        if (activeOrders.length > 0 || recentOrders.length > 0) {
-            fetchLogos();
-        }
-    }, [activeOrders, recentOrders]);
+        fetchProfiles();
+    }, [activeOrders, recentOrders, recentTransportsMap]);
 
     // Update URL when tab changes
     const handleTabChange = (tab: TabType) => {
@@ -442,10 +519,20 @@ export default function Orders() {
                         {activeOrders.map((order) => {
                             const isPendingPayment = order.status === 'pending' || order.status === 'pendiente_pago';
                             const orderTotal = Number(order.total || 0);
-                            const bsTotal = bcvRate > 0 ? (orderTotal * bcvRate).toFixed(0) : '0';
-                            const deliveryLabel = order.delivery_method === 'pickup' 
-                                ? 'Retiro en tienda (PickUp)' 
-                                : (order.delivery_address || order.address?.name || 'Entrega a domicilio');
+                            const orderRate = Number(order.custom_exchange_rate || order.customExchangeRate || order.exchange_rate || order.exchangeRate || bcvRate || 0);
+                            const bsTotal = (order.total_bs != null || order.totalBs != null)
+                                ? Number(order.total_bs ?? order.totalBs).toLocaleString('es-VE', { maximumFractionDigits: 0 })
+                                : (orderRate > 0 ? (orderTotal * orderRate).toFixed(0) : '0');
+                            const hasActiveDriver = Boolean(order.driver_id || order.delivery_driver_id || order.preferred_driver_id || order.driver_name || order.driverName);
+                            const isActiveExternal = Boolean(
+                                order.delivery_type === 'external' || 
+                                order.is_external_delivery || 
+                                (order.driver_name && order.driver_name.toLowerCase().includes('delivery propio'))
+                            );
+                            const isTrulyDelivery = hasActiveDriver || isActiveExternal || order.delivery_method === 'delivery' || order.delivery_type === 'external' || Boolean(order.delivery_address || order.address?.name);
+                            const deliveryLabel = isTrulyDelivery
+                                ? (order.delivery_address || order.address?.name || 'Entrega a domicilio (Delivery)')
+                                : 'Retiro en tienda (PickUp)';
 
                             // High-visibility Material 3 Card for Pending Payment Orders (Synced with Home card)
                             if (isPendingPayment) {
@@ -529,9 +616,17 @@ export default function Orders() {
                                         <div className="flex items-center gap-3">
                                             <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-primary/10 transition-all overflow-hidden border border-slate-100 shadow-inner">
                                                 {restaurantLogos[order.restaurant_id || order.restaurantId] ? (
-                                                    <img src={restaurantLogos[order.restaurant_id || order.restaurantId]} alt="Logo" className="w-full h-full object-cover" />
+                                                    <img 
+                                                        src={restaurantLogos[order.restaurant_id || order.restaurantId]} 
+                                                        alt="Logo" 
+                                                        loading="lazy" 
+                                                        decoding="async" 
+                                                        className="w-full h-full object-cover" 
+                                                    />
                                                 ) : (
-                                                    <ShoppingBag className="w-7 h-7" />
+                                                    <div className="w-full h-full flex items-center justify-center font-black text-slate-400 bg-slate-100 text-lg">
+                                                        {(order.restaurant_name || order.restaurantName || 'C').charAt(0).toUpperCase()}
+                                                    </div>
                                                 )}
                                             </div>
                                             <div>
@@ -599,28 +694,53 @@ export default function Orders() {
 
                                 {recentOrders.map((order) => {
                                     const orderTotal = Number(order.total || 0);
-                                    const bsTotal = bcvRate > 0 ? (orderTotal * bcvRate).toFixed(0) : '0';
+                                    const orderRate = Number(order.custom_exchange_rate || order.customExchangeRate || order.exchange_rate || order.exchangeRate || bcvRate || 0);
+                                    const bsTotal = (order.total_bs != null || order.totalBs != null)
+                                        ? Number(order.total_bs ?? order.totalBs).toLocaleString('es-VE', { maximumFractionDigits: 0 })
+                                        : (orderRate > 0 ? (orderTotal * orderRate).toFixed(0) : '0');
                                     const trLinked = recentTransportsMap[order.id];
                                     const driverName = order.driver_name || order.driverName || trLinked?.driver_name || '';
                                     const driverPhone = order.driver_phone || trLinked?.driver_phone || '';
                                     const hasDriver = Boolean(order.driver_id || order.delivery_driver_id || order.preferred_driver_id || trLinked?.driver_id || driverName);
-                                    const deliveryLabel = order.delivery_method === 'pickup' 
-                                        ? 'Retiro en tienda (PickUp)' 
-                                        : (order.delivery_address || order.address?.name || 'Entrega a domicilio');
+
+                                    const isExternal = Boolean(
+                                        order.delivery_type === 'external' || 
+                                        order.is_external_delivery || 
+                                        trLinked?.delivery_type === 'external' || 
+                                        (driverName && driverName.toLowerCase().includes('delivery propio'))
+                                    );
+
+                                    const isTrulyDelivery = hasDriver || isExternal || order.delivery_method === 'delivery' || order.delivery_type === 'external' || Boolean(order.delivery_address || order.address?.name);
+                                    const deliveryLabel = isTrulyDelivery
+                                        ? (order.delivery_address || order.address?.name || 'Entrega a domicilio (Delivery)')
+                                        : 'Retiro en tienda (PickUp)';
+
+                                    const isTerminal = ['delivered', 'completed', 'cancelled', 'cancelled_by_client', 'cancelled_by_store', 'rejected'].includes(order.status);
+                                    const driverId = order.driver_id || order.delivery_driver_id || trLinked?.driver_id;
+                                    const driverPhoto = driverPhotos[driverId] || order.driver_photo || order.driver_photo_url || trLinked?.driver_photo;
+                                    const storeLogo = restaurantLogos[order.restaurant_id || order.restaurantId];
 
                                     return (
                                         <div
                                             key={order.id}
-                                            className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 relative overflow-hidden"
+                                            className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 relative overflow-hidden transform-gpu"
                                         >
                                             {/* Header Row */}
                                             <div className="flex justify-between items-start mb-3">
                                                 <div className="flex items-center gap-3 min-w-0">
                                                     <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 overflow-hidden border border-slate-100 shrink-0">
-                                                        {restaurantLogos[order.restaurant_id || order.restaurantId] ? (
-                                                            <img src={restaurantLogos[order.restaurant_id || order.restaurantId]} alt="Logo" className="w-full h-full object-cover" />
+                                                        {storeLogo ? (
+                                                            <img 
+                                                                src={storeLogo} 
+                                                                alt="Logo" 
+                                                                loading="lazy" 
+                                                                decoding="async" 
+                                                                className="w-full h-full object-cover" 
+                                                            />
                                                         ) : (
-                                                            <ShoppingBag className="w-6 h-6" />
+                                                            <div className="w-full h-full flex items-center justify-center font-black text-slate-400 bg-slate-100 text-base">
+                                                                {(order.restaurant_name || order.restaurantName || 'C').charAt(0).toUpperCase()}
+                                                            </div>
                                                         )}
                                                     </div>
                                                     <div className="min-w-0">
@@ -680,12 +800,50 @@ export default function Orders() {
                                                 )}
                                             </div>
 
-                                            {/* Dedicated Driver Contact Box */}
-                                            {hasDriver && (
+                                            {/* Dedicated Driver / External Delivery Contact Box (Only shown if truly delivery) */}
+                                            {isTrulyDelivery && isExternal ? (
                                                 <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/90 mb-3 flex items-center justify-between gap-2">
                                                     <div className="flex items-center gap-2.5 min-w-0">
-                                                        <div className="w-9 h-9 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-sm shrink-0 shadow-xs">
-                                                            🛵
+                                                        <div className="w-9 h-9 rounded-xl overflow-hidden bg-white border border-slate-200 shrink-0 flex items-center justify-center">
+                                                            {storeLogo ? (
+                                                                <img 
+                                                                    src={storeLogo} 
+                                                                    alt="Logo" 
+                                                                    loading="lazy" 
+                                                                    decoding="async" 
+                                                                    className="w-full h-full object-cover" 
+                                                                />
+                                                            ) : (
+                                                                <Store className="w-4 h-4 text-slate-500" />
+                                                            )}
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Delivery Propio</p>
+                                                            <p className="text-xs font-black text-slate-900 truncate mt-0.5">Enviado por el negocio</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        onClick={() => navigate(`/track/${order.id}`)}
+                                                        className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black flex items-center gap-1.5 shadow-xs transition-all active:scale-95 shrink-0"
+                                                    >
+                                                        <span>Ver Detalle</span>
+                                                    </button>
+                                                </div>
+                                            ) : isTrulyDelivery && hasDriver && (
+                                                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/90 mb-3 flex items-center justify-between gap-2">
+                                                    <div className="flex items-center gap-2.5 min-w-0">
+                                                        <div className="w-9 h-9 rounded-full overflow-hidden bg-amber-400 text-slate-950 flex items-center justify-center font-black text-xs shrink-0 shadow-xs border border-amber-300">
+                                                            {driverPhoto ? (
+                                                                <img 
+                                                                    src={driverPhoto} 
+                                                                    alt={driverName} 
+                                                                    loading="lazy" 
+                                                                    decoding="async" 
+                                                                    className="w-full h-full object-cover" 
+                                                                />
+                                                            ) : (
+                                                                <span>{(driverName || 'D').charAt(0).toUpperCase()}</span>
+                                                            )}
                                                         </div>
                                                         <div className="min-w-0">
                                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider leading-none">Repartidor asignado</p>
@@ -703,14 +861,16 @@ export default function Orders() {
                                                                 <Phone className="w-4 h-4 fill-white" />
                                                             </a>
                                                         )}
-                                                        <button
-                                                            onClick={() => navigate(`/track/${order.id}?chat=true`)}
-                                                            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
-                                                            title="Abrir chat con el repartidor"
-                                                        >
-                                                            <MessageCircle className="w-3.5 h-3.5 text-primary" />
-                                                            <span>Chat</span>
-                                                        </button>
+                                                        {!isTerminal && (
+                                                            <button
+                                                                onClick={() => navigate(`/track/${order.id}?chat=true`)}
+                                                                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-black flex items-center gap-1.5 shadow-xs transition-all active:scale-95"
+                                                                title="Abrir chat con el repartidor"
+                                                            >
+                                                                <MessageCircle className="w-3.5 h-3.5 text-primary" />
+                                                                <span>Chat</span>
+                                                            </button>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
