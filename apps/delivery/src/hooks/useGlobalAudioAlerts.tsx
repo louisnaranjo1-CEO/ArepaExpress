@@ -140,11 +140,11 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           schema: 'public',
           table: 'transport_requests'
         }, (payload: any) => {
-          if (payload.new?.status === 'searching') {
+          if (payload.new?.status === 'searching' || payload.new?.driver_id === userId || payload.new?.preferred_driver_id === userId) {
             playAlert();
             sendAppNotification({
-              title: '🚨 ¡Nueva Solicitud Disponible!',
-              body: 'Hay una nueva solicitud de viaje cerca de tu ubicación.',
+              title: payload.new?.driver_id === userId ? '⭐ ¡Servicio Asignado Directamente!' : '🚨 ¡Nueva Solicitud Disponible!',
+              body: payload.new?.driver_id === userId ? 'Un cliente te ha solicitado un servicio directo.' : 'Hay una nueva solicitud de viaje cerca de tu ubicación.',
               soundType: 'driver'
             });
           }
@@ -184,12 +184,36 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           schema: 'public',
           table: 'orders'
         }, (payload: any) => {
-          if (payload.new?.status === 'buscando_piloto') {
+          const isDirectlyAssigned = payload.new?.driver_id === userId || 
+                                     payload.new?.delivery_driver_id === userId || 
+                                     payload.new?.preferred_driver_id === userId;
+          
+          if (isDirectlyAssigned && (payload.eventType === 'INSERT' || payload.old?.delivery_driver_id !== userId)) {
+            playAlert();
+            sendAppNotification({
+              title: '⭐ ¡Nuevo Pedido Asignado!',
+              body: `Un comercio te ha asignado el pedido #${payload.new?.id?.slice(-4) || ''} directamente.`,
+              soundType: 'driver'
+            });
+          } else if (payload.new?.status === 'buscando_piloto') {
             playAlert();
             sendAppNotification({
               title: '🛍️ ¡Nuevo Delivery Disponible!',
-              body: 'Un comercio tiene un pedido listo para recoger y entregar.',
+              body: 'Un comercio tiene un pedido listo en el radar para recoger y entregar.',
               soundType: 'driver'
+            });
+          }
+        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages'
+        }, (payload: any) => {
+          if (payload.new?.sender_id !== userId && payload.new?.text) {
+            sendAppNotification({
+              title: `💬 Mensaje de ${payload.new?.sender_name || 'Cliente'}`,
+              body: payload.new.text,
+              soundType: 'chat'
             });
           }
         })

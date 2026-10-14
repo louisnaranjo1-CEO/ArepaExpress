@@ -116,16 +116,31 @@ export const driversApi = {
      * Actualizar ubicación GPS del driver — Llamado con frecuencia adaptativa:
      */
     updateLocation: async (uid: string, lat: number, lng: number, heading?: number, speed?: number) => {
-        const { error } = await supabase
+        const nowIso = new Date().toISOString();
+        const { error: err1 } = await supabase
             .from('drivers')
             .update({ 
                 current_location: { lat, lng }, 
                 current_heading: heading, 
                 current_speed: speed,
-                updated_at: new Date().toISOString()
+                updated_at: nowIso
             })
             .eq('id', uid);
-        if (error) throw error;
+
+        try {
+            await supabase
+                .from('driver_locations')
+                .upsert({
+                    driver_id: uid,
+                    latitude: lat,
+                    longitude: lng,
+                    updated_at: nowIso
+                }, { onConflict: 'driver_id' });
+        } catch (e) {
+            console.warn("Could not upsert driver_locations:", e);
+        }
+
+        if (err1) throw err1;
     },
 
     /**

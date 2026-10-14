@@ -1,4 +1,10 @@
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { handleDeepLinkAuthUrl } from '../lib/auth-service';
+import { useRealtimeResilience } from '../hooks/useRealtimeResilience';
+import { setupBackButtonHandler } from '../utils/backButtonManager';
 import { useAuth } from '../context/AuthContext';
 import AdminAuth from './AdminAuth';
 import AdminLayout from './components/AdminLayout';
@@ -39,6 +45,15 @@ function AdminRoutes() {
 
     const rid = userData?.managedRestaurantId || user?.uid || (user as any)?.id;
 
+    useRealtimeResilience();
+
+    useEffect(() => {
+        return setupBackButtonHandler(
+            () => window.history.back(),
+            () => window.location.pathname === '/' || window.location.pathname === '/admin' || window.location.pathname === '/admin/' || window.location.pathname.endsWith('/orders')
+        );
+    }, []);
+
     return (
         <AdminLayout>
             <Routes>
@@ -71,6 +86,20 @@ export default function AdminApp() {
     const isAdminSubdomain = window.location.hostname.startsWith('restaurante.') || window.location.hostname.startsWith('negocios.');
 
     const basename = isDevAdminPath && !isAdminSubdomain ? '/admin' : '/';
+
+    useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+
+        const sub = CapApp.addListener('appUrlOpen', async (event) => {
+            if (event.url && event.url.includes('auth/callback')) {
+                await handleDeepLinkAuthUrl(event.url);
+            }
+        });
+
+        return () => {
+            sub.then(s => s.remove());
+        };
+    }, []);
 
     return (
         <Router basename={basename}>

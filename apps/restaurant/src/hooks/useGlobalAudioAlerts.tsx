@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
+import { sendAppNotification } from '../services/nativeNotificationService';
 
 export const NOTIFICATION_SOUND_URL = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/Digital_Cascade_01.mp3";
 export const CPANEL_SOUND_URL = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/telefono_off.mp3";
@@ -118,23 +119,63 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           }
         })
         .on('postgres_changes', {
-          event: 'INSERT',
+          event: '*',
           schema: 'public',
           table: 'orders',
           filter: `restaurant_id=eq.${userId}`
         }, (payload: any) => {
-          if (['pending', 'pendiente_pago', 'confirmed', 'preparing'].includes(payload.new?.status)) {
+          const newOrd = payload.new;
+          const oldOrd = payload.old;
+          const shortId = newOrd?.id?.slice(-4) || '';
+
+          if (payload.eventType === 'INSERT') {
             playAlert();
+            sendAppNotification({
+              title: '🛎️ ¡Nuevo Pedido Recibido!',
+              body: `Orden #${shortId} ingresada. Verifica el stock de los productos.`,
+              soundType: 'driver'
+            });
+          } else if (payload.eventType === 'UPDATE') {
+            // Comprobante de pago reportado
+            if (newOrd?.payment_status === 'reported' && oldOrd?.payment_status !== 'reported') {
+              playAlert();
+              sendAppNotification({
+                title: '💵 Comprobante de Pago Reportado',
+                body: `El cliente reportó el pago para el pedido #${shortId}. Revisa y valida.`,
+                soundType: 'client'
+              });
+            }
+            // Conductor asignado / en camino al comercio
+            if (newOrd?.driver_id && !oldOrd?.driver_id) {
+              playAlert();
+              sendAppNotification({
+                title: '🛵 Conductor Asignado',
+                body: `El repartidor ${newOrd.driver_name || ''} ha tomado el pedido #${shortId}.`,
+                soundType: 'client'
+              });
+            }
+            // Conductor llegó al comercio
+            if (newOrd?.driver_arrived_at && !oldOrd?.driver_arrived_at) {
+              playAlert();
+              sendAppNotification({
+                title: '📍 ¡Repartidor en Tienda!',
+                body: `El repartidor ${newOrd.driver_name || ''} ya está en tu local esperando el pedido #${shortId}.`,
+                soundType: 'driver'
+              });
+            }
           }
         })
         .on('postgres_changes', {
           event: 'INSERT',
           schema: 'public',
-          table: 'notifications',
-          filter: `restaurant_id=eq.${userId}`
+          table: 'messages'
         }, (payload: any) => {
-          if (payload.new?.type === 'order') {
-            playAlert();
+          if (payload.new?.sender_id !== userId && payload.new?.text) {
+            sendAppNotification({
+              title: `💬 Mensaje de ${payload.new?.sender_name || 'Cliente'}`,
+              body: payload.new.text,
+              soundType: 'chat'
+            });
           }
         })
         .subscribe();

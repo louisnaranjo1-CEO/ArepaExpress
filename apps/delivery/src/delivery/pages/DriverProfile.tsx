@@ -61,6 +61,48 @@ export default function DriverProfile() {
         photoUrl: ''
     });
 
+    const [uploadingDirectPhoto, setUploadingDirectPhoto] = useState(false);
+
+    const handleDirectDriverPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!user || !file) return;
+        setUploadingDirectPhoto(true);
+        try {
+            const ext = file.name.split('.').pop() || 'jpg';
+            const filePath = `delivery_docs/${user.uid}/selfie_${Date.now()}.${ext}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            const newPhotoUrl = pubData.publicUrl;
+
+            const updatedDocs = {
+                ...(driverProfile?.documents || {}),
+                selfieUrl: newPhotoUrl,
+                selfie_url: newPhotoUrl
+            };
+
+            await supabase.from('drivers').update({
+                photo_url: newPhotoUrl,
+                documents: updatedDocs,
+                updated_at: new Date().toISOString()
+            }).eq('id', user.uid);
+
+            setDriverProfile((prev: any) => ({
+                ...prev,
+                photo_url: newPhotoUrl,
+                documents: updatedDocs
+            }));
+
+            alert('¡Foto de conductor actualizada exitosamente!');
+        } catch (error) {
+            console.error('Error al subir foto de perfil del conductor:', error);
+            alert('Error al subir la foto de conductor.');
+        } finally {
+            setUploadingDirectPhoto(false);
+        }
+    };
+
     // Fetch driver-specific profile
     React.useEffect(() => {
         if (!user) return;
@@ -963,6 +1005,7 @@ export default function DriverProfile() {
                 if (!upErr) {
                     const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
                     documents.selfieUrl = pubData.publicUrl;
+                    documents.selfie_url = pubData.publicUrl;
                 }
             }
 
@@ -996,7 +1039,7 @@ export default function DriverProfile() {
                 vehicle_plate: updateForm.vehiclePlate,
                 vehicle_color: updateForm.vehicleColor,
                 has_ac: updateForm.hasAc,
-                selfie_url: documents.selfieUrl || null,
+                selfie_url: documents.selfie_url || documents.selfieUrl || null,
                 license_url: documents.licenseUrl || null,
                 vehicle_photo_url: documents.vehicleUrl || null,
                 status: 'pending',
@@ -1010,15 +1053,22 @@ export default function DriverProfile() {
                 await supabase.from('profiles').update({ phone: updateForm.phone }).eq('id', user.uid);
             }
 
-            await supabase.from('drivers').update({
+            const driverUpdates: any = {
                 vehicle_color: updateForm.vehicleColor,
                 vehicleColor: updateForm.vehicleColor,
                 has_ac: updateForm.hasAc,
                 hasAc: updateForm.hasAc,
+                documents: documents,
                 updated_at: new Date().toISOString()
-            }).eq('id', user.uid);
+            };
 
-            alert('Datos del vehículo actualizados correctamente.');
+            if (documents.selfie_url || documents.selfieUrl) {
+                driverUpdates.photo_url = documents.selfie_url || documents.selfieUrl;
+            }
+
+            await supabase.from('drivers').update(driverUpdates).eq('id', user.uid);
+
+            alert('Datos del vehículo y perfil actualizados correctamente.');
             setSelfieFile(null);
             setSelfiePreview(null);
             setLicenseFile(null);
@@ -2822,15 +2872,32 @@ export default function DriverProfile() {
             {/* Header YANGO Pro */}
             <div className="bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 rounded-[32px] p-6 text-white text-center relative overflow-hidden shadow-xl shadow-slate-900/10">
                 <div className="absolute top-0 right-0 w-36 h-36 bg-primary/10 rounded-full blur-2xl pointer-events-none"></div>
-                <div className="relative w-24 h-24 mx-auto mb-3">
+                <div className="relative w-24 h-24 mx-auto mb-3 group">
                     <img
-                        src={(userData?.photoURL && userData.photoURL.trim() !== "") ? userData.photoURL : (driverProfile?.documents?.selfieUrl && driverProfile.documents.selfieUrl.trim() !== "") ? driverProfile.documents.selfieUrl : (user?.photoURL && user.photoURL.trim() !== "") ? user.photoURL : `https://ui-avatars.com/api/?name=${encodeURIComponent(driverProfile?.fullName || user?.displayName || user?.email || 'Conductor')}&background=FACC15&color=000&bold=true`}
+                        src={(driverProfile?.photo_url && driverProfile.photo_url.trim() !== "") 
+                            ? driverProfile.photo_url 
+                            : (driverProfile?.documents?.selfie_url && driverProfile.documents.selfie_url.trim() !== "") 
+                            ? driverProfile.documents.selfie_url 
+                            : (driverProfile?.documents?.selfieUrl && driverProfile.documents.selfieUrl.trim() !== "") 
+                            ? driverProfile.documents.selfieUrl 
+                            : `https://ui-avatars.com/api/?name=${encodeURIComponent(driverProfile?.fullName || user?.displayName || user?.email || 'Conductor')}&background=FACC15&color=000&bold=true`}
                         alt="Foto Conductor"
                         className="w-full h-full rounded-full object-cover border-4 border-primary/40 shadow-lg"
                     />
-                    <div className="absolute bottom-0 right-1 w-6 h-6 bg-emerald-500 border-2 border-slate-900 rounded-full flex items-center justify-center shadow">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                    </div>
+                    <label className="absolute bottom-0 right-0 w-8 h-8 bg-amber-500 hover:bg-amber-400 border-2 border-slate-900 rounded-full flex items-center justify-center shadow-lg cursor-pointer transition-transform active:scale-90" title="Cambiar foto de perfil de conductor">
+                        {uploadingDirectPhoto ? (
+                            <div className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                        ) : (
+                            <Camera className="w-4 h-4 text-slate-950" />
+                        )}
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handleDirectDriverPhotoUpload}
+                            className="hidden"
+                            disabled={uploadingDirectPhoto}
+                        />
+                    </label>
                 </div>
 
                 <h3 className="text-xl font-black text-white tracking-tight">{driverProfile?.fullName || user?.displayName || 'Conductor Pro'}</h3>

@@ -19,6 +19,7 @@ import { playChatChime, playCallAlertChime } from '../../utils/audioChimes';
 import { supabase } from '../../lib/supabase';
 import { driversApi } from '../../lib/api';
 import { vibrate } from '../../utils/haptics';
+import { acquireWakeLock, releaseWakeLock, requestIgnoreBatteryOptimizations, triggerHaptic } from '../../services/nativeNotificationService';
 
 export default function OrdersRadar() {
     const { user } = useAuth();
@@ -481,7 +482,7 @@ export default function OrdersRadar() {
             const { data } = await supabase
                 .from('orders')
                 .select('*')
-                .eq('delivery_driver_id', myDriverId)
+                .or(`driver_id.eq.${myDriverId},delivery_driver_id.eq.${myDriverId},preferred_driver_id.eq.${myDriverId}`)
                 .in('status', ['en_camino', 'in_transit', 'delivering'])
                 .limit(1);
             if (data && data.length > 0) {
@@ -761,11 +762,18 @@ export default function OrdersRadar() {
         };
     }, [user]);
 
-    // 4. Geolocalización constante si el conductor está en línea o en viaje activo
+    // 4. Geolocalización constante si el conductor está en línea o en viaje activo con WakeLock
     useEffect(() => {
         if (!user) return;
         const isOnline = driverProfile?.is_online ?? driverProfile?.isOnline ?? true;
-        if (!isOnline && !activeOrder && !activeTransport) return;
+        if (!isOnline && !activeOrder && !activeTransport) {
+            releaseWakeLock();
+            return;
+        }
+
+        // Mantener WakeLock activo y solicitar exención de optimización de batería
+        acquireWakeLock();
+        requestIgnoreBatteryOptimizations();
 
         const reportLocation = () => {
             if (navigator.geolocation) {
@@ -776,7 +784,7 @@ export default function OrdersRadar() {
                         updateDriverLocation(user.uid, latitude, longitude, heading || undefined, speed || undefined);
                     },
                     (err) => console.warn("Aviso obteniendo ubicación GPS del piloto:", err.message),
-                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
+                    { enableHighAccuracy: true, maximumAge: 5000, timeout: 8000 }
                 );
             }
         };
@@ -784,10 +792,14 @@ export default function OrdersRadar() {
         // Reportar de inmediato al conectar
         reportLocation();
 
-        // Actualizar cada 30 segundos mientras esté conectado
-        const locInterval = setInterval(reportLocation, 30000);
+        // 5s durante viaje/pedido activo para mapa en tiempo real, 15s en patrullaje
+        const intervalMs = (activeOrder || activeTransport) ? 5000 : 15000;
+        const locInterval = setInterval(reportLocation, intervalMs);
 
-        return () => clearInterval(locInterval);
+        return () => {
+            clearInterval(locInterval);
+            releaseWakeLock();
+        };
     }, [user, driverProfile?.is_online, driverProfile?.isOnline, activeOrder, activeTransport]);
 
     // 5. Cargar sonido de notificación y escuchar chat
@@ -923,6 +935,10 @@ export default function OrdersRadar() {
                 return;
             }
 
+            const driverDocs = driverProfile?.documents || {};
+            const realSelfie = driverProfile?.photo_url || driverDocs?.selfie_url || driverDocs?.selfieUrl || driverProfile?.photoURL || driverProfile?.avatar_url || null;
+            const driverName = driverProfile?.full_name || driverProfile?.fullName || driverProfile?.displayName || driverProfile?.name || 'Conductor';
+
             // 2. Asignar orden al conductor
             const { data: updatedOrders, error: updateErr } = await supabase
                 .from('orders')
@@ -930,10 +946,14 @@ export default function OrdersRadar() {
                     status: 'en_camino', 
                     delivery_driver_id: myDriverId, 
                     driver_id: myDriverId,
+                    driver_name: driverName,
+                    driver_photo: realSelfie,
                     driver_assigned_at: new Date().toISOString() 
                 })
                 .eq('id', orderId)
                 .select();
+
+            await triggerHaptic('success');
                 
             if (updateErr || !updatedOrders || updatedOrders.length === 0) {
                 throw new Error("ALREADY_TAKEN");
@@ -1048,11 +1068,17 @@ export default function OrdersRadar() {
         }
         setProcessingAction(reqId);
         try {
+            const driverDocs = driverProfile?.documents || {};
+            const realSelfie = driverProfile?.photo_url || driverDocs?.selfie_url || driverDocs?.selfieUrl || driverProfile?.photoURL || driverProfile?.avatar_url || null;
+            const driverName = driverProfile?.full_name || driverProfile?.fullName || driverProfile?.displayName || driverProfile?.name || 'Conductor';
+
             const { data, error } = await supabase
                 .from('transport_requests')
                 .update({ 
                     status: 'accepted', 
                     driver_id: user.uid, 
+                    driver_name: driverName,
+                    driver_photo: realSelfie,
                     driver_assigned_at: new Date().toISOString() 
                 })
                 .eq('id', reqId)
@@ -1061,6 +1087,8 @@ export default function OrdersRadar() {
                 
             if (error || !data || data.length === 0) {
                 alert("Este viaje ya fue tomado por otro conductor.");
+            } else {
+                await triggerHaptic('success');
             }
         } catch (error) {
             console.error("Error al aceptar viaje:", error);
@@ -1413,7 +1441,7 @@ export default function OrdersRadar() {
         try {
             const bidId = crypto.randomUUID();
             const driverDocs = driverProfile?.documents || {};
-            const realSelfie = driverDocs?.selfieUrl || driverDocs?.selfie_url || driverProfile?.photoURL || driverProfile?.avatar_url || driverProfile?.photo_url || null;
+            const realSelfie = driverProfile?.photo_url || driverDocs?.selfie_url || driverDocs?.selfieUrl || driverProfile?.photoURL || driverProfile?.avatar_url || null;
 
             const insertPayload = {
                 id: bidId,

@@ -1035,10 +1035,19 @@ export default function TrackOrder() {
                 status: 'buscando_piloto',
                 updated_at: new Date().toISOString()
             };
+            let assignedDriverName = 'Conductor';
+            let assignedDriverPhoto: string | null = null;
             if (selectedDriverId) {
+                const selectedDriverObj = availableDrivers.find(d => d.id === selectedDriverId);
+                assignedDriverName = selectedDriverObj?.full_name || selectedDriverObj?.fullName || selectedDriverObj?.name || 'Conductor';
+                assignedDriverPhoto = selectedDriverObj?.photo_url || selectedDriverObj?.documents?.selfie_url || selectedDriverObj?.documents?.selfieUrl || null;
+
                 orderUpdates.preferred_driver_id = selectedDriverId;
                 orderUpdates.eligible_drivers = [selectedDriverId];
                 orderUpdates.delivery_driver_id = selectedDriverId;
+                orderUpdates.driver_id = selectedDriverId;
+                orderUpdates.driver_name = assignedDriverName;
+                orderUpdates.driver_photo = assignedDriverPhoto;
             } else {
                 orderUpdates.preferred_driver_id = null;
                 orderUpdates.eligible_drivers = null;
@@ -1064,7 +1073,10 @@ export default function TrackOrder() {
                 ...(selectedDriverId ? {
                     preferred_driver_id: selectedDriverId,
                     eligible_drivers: [selectedDriverId],
-                    delivery_driver_id: selectedDriverId
+                    delivery_driver_id: selectedDriverId,
+                    driver_id: selectedDriverId,
+                    driver_name: assignedDriverName,
+                    driver_photo: assignedDriverPhoto
                 } : {})
             }) : prev);
 

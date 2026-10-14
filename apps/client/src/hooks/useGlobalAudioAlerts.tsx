@@ -197,30 +197,94 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           table: 'orders',
           filter: `user_id=eq.${userId}`
         }, (payload: any) => {
-          const status = payload.new?.status;
-          if (status === 'preparing') {
+          const newOrd = payload.new;
+          const oldOrd = payload.old;
+          const status = newOrd?.status;
+
+          // 1. Stock Confirmado / Rechazado
+          if (newOrd?.stock_confirmed === true && !oldOrd?.stock_confirmed) {
+            sendAppNotification({
+              title: '✅ ¡Stock Confirmado!',
+              body: 'El comercio tiene disponibles todos los productos de tu orden.',
+              soundType: 'client'
+            });
+          } else if (status === 'stock_rejected' && oldOrd?.status !== 'stock_rejected') {
+            sendAppNotification({
+              title: '❌ Stock No Disponible',
+              body: 'El comercio no cuenta con el stock necesario para completar la orden.',
+              soundType: 'client'
+            });
+          }
+
+          // 2. Pago Validado / Rechazado
+          if (newOrd?.payment_status === 'approved' && oldOrd?.payment_status !== 'approved') {
+            sendAppNotification({
+              title: '💰 ¡Pago Aprobado!',
+              body: 'Tu comprobante de pago fue validado exitosamente.',
+              soundType: 'client'
+            });
+          } else if (newOrd?.payment_status === 'rejected' && oldOrd?.payment_status !== 'rejected') {
+            sendAppNotification({
+              title: '⚠️ Pago Rechazado',
+              body: 'El comercio no pudo validar tu pago. Por favor revisa el comprobante o método.',
+              soundType: 'client'
+            });
+          }
+
+          // 3. Conductor asignado / en camino / llegó
+          if (newOrd?.driver_arrived_at && !oldOrd?.driver_arrived_at) {
+            sendAppNotification({
+              title: '🛵 ¡El Repartidor Ha Llegado!',
+              body: 'El conductor ya está en el punto de entrega con tu pedido.',
+              soundType: 'client'
+            });
+          } else if (status === 'preparing' && oldOrd?.status !== 'preparing') {
             sendAppNotification({
               title: 'Pedido en Preparación 👨‍🍳',
               body: 'El comercio ha recibido tu orden y la está preparando.',
               soundType: 'client'
             });
-          } else if (status === 'ready' || status === 'buscando_piloto') {
+          } else if ((status === 'ready' || status === 'buscando_piloto') && oldOrd?.status !== status) {
             sendAppNotification({
               title: 'Pedido Listo 📦',
               body: 'Tu orden está lista y buscando repartidor para la entrega.',
               soundType: 'client'
             });
-          } else if (status === 'delivering') {
+          } else if (status === 'delivering' && oldOrd?.status !== 'delivering') {
             sendAppNotification({
               title: '¡Tu Pedido va en Camino! 🛵',
-              body: 'El repartidor lleva tu pedido directamente hacia tu dirección.',
+              body: `El repartidor ${newOrd.driver_name || ''} lleva tu pedido directamente hacia tu dirección.`,
               soundType: 'client'
             });
-          } else if (status === 'delivered') {
+          } else if (status === 'delivered' && oldOrd?.status !== 'delivered') {
             sendAppNotification({
               title: '¡Pedido Entregado! 🎉',
-              body: 'El repartidor ha llegado con tu pedido. ¡Buen provecho!',
+              body: 'El repartidor ha completado la entrega de tu pedido. ¡Buen provecho!',
               soundType: 'client'
+            });
+          }
+        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'transport_bids'
+        }, (payload: any) => {
+          sendAppNotification({
+            title: '⭐ ¡Nueva Oferta de Conductor!',
+            body: `${payload.new?.driver_name || 'Un conductor'} ofreció su servicio por $${payload.new?.amount || payload.new?.offered_price || ''}.`,
+            soundType: 'client'
+          });
+        })
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages'
+        }, (payload: any) => {
+          if (payload.new?.sender_id !== userId && payload.new?.text) {
+            sendAppNotification({
+              title: `💬 Mensaje de ${payload.new?.sender_name || 'Soporte / Repartidor'}`,
+              body: payload.new.text,
+              soundType: 'chat'
             });
           }
         })

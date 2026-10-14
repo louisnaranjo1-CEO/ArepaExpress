@@ -22,6 +22,53 @@ export const processReferralCode = async (newUserId: string, referralCode: strin
 
 import { Browser } from '@capacitor/browser';
 
+export const handleDeepLinkAuthUrl = async (urlStr: string): Promise<boolean> => {
+    try {
+        if (!urlStr) return false;
+        try {
+            await Browser.close();
+        } catch (e) {}
+
+        const hashIdx = urlStr.indexOf('#');
+        const queryIdx = urlStr.indexOf('?');
+        let paramsStr = '';
+        if (hashIdx !== -1) {
+            paramsStr = urlStr.substring(hashIdx + 1);
+        } else if (queryIdx !== -1) {
+            paramsStr = urlStr.substring(queryIdx + 1);
+        }
+
+        const params = new URLSearchParams(paramsStr);
+        const accessToken = params.get('access_token');
+        const refreshToken = params.get('refresh_token');
+        const code = params.get('code');
+
+        if (accessToken && refreshToken) {
+            const { data: authData, error: authErr } = await supabase.auth.setSession({
+                access_token: accessToken,
+                refresh_token: refreshToken
+            });
+            if (!authErr && authData?.session) {
+                if (authData.user) {
+                    localStorage.setItem('deliexpress_uid', authData.user.id);
+                }
+                return true;
+            }
+        } else if (code) {
+            const { data: authData, error: authErr } = await supabase.auth.exchangeCodeForSession(code);
+            if (!authErr && authData?.session) {
+                if (authData.user) {
+                    localStorage.setItem('deliexpress_uid', authData.user.id);
+                }
+                return true;
+            }
+        }
+    } catch (err) {
+        console.error('Error handling deep link auth URL:', err);
+    }
+    return false;
+};
+
 export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolean }> => {
     try {
         if (Capacitor.isNativePlatform()) {
@@ -52,12 +99,6 @@ export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolea
             if (error) throw error;
             return { user: null, isNewUser: false };
         }
-
-        if (user) {
-            localStorage.setItem('deliexpress_uid', user.id);
-        }
-
-        return { user, isNewUser };
     } catch (error: any) {
         console.error("Error al iniciar sesión con Google (Supabase):", error);
         throw error;

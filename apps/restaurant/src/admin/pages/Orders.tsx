@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import ComandaPreview from '../components/ComandaPreview';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';
 import { useHaptics } from '../../hooks/useHaptics';
+import { triggerHaptic } from '../../services/nativeNotificationService';
 
 interface OrderItem {
     id: string;
@@ -872,11 +873,13 @@ export default function Orders() {
                 updates.driver_id = driverObj.id;
                 updates.delivery_driver_id = driverObj.id;
                 updates.driver_name = realDriverName;
+                updates.driver_photo = driverObj.photo_url || driverObj.documents?.selfie_url || driverObj.documents?.selfieUrl || null;
                 updates.preferred_driver_id = driverObj.id;
                 updates.preferred_driver_name = realDriverName;
                 updates.eligible_drivers = [driverObj.id];
                 updates.driver_payout = payout;
                 updates.dispatched_at = new Date().toISOString();
+                triggerHaptic('success').catch(() => {});
 
                 // Enlazar transport_requests exclusivo evitando DUPLICADOS
                 try {

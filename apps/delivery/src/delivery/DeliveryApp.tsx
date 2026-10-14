@@ -3,6 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { useAuth } from '../context/AuthContext';
 import { driversApi } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { handleDeepLinkAuthUrl } from '../lib/auth-service';
+import { useRealtimeResilience } from '../hooks/useRealtimeResilience';
+import { setupBackButtonHandler } from '../utils/backButtonManager';
 import DeliveryLayout from './components/DeliveryLayout';
 import Login from './pages/Login';
 import Onboarding from './pages/Onboarding';
@@ -20,6 +25,15 @@ function DeliveryRoutes() {
 
     const isProfileComplete = !!(userData?.displayName || driverProfile?.fullName) && !!(userData?.phone || driverProfile?.phone);
     const isDriverProfileComplete = isProfileComplete;
+
+    useRealtimeResilience();
+
+    useEffect(() => {
+        return setupBackButtonHandler(
+            () => window.history.back(),
+            () => window.location.pathname.endsWith('/radar') || window.location.pathname === '/' || window.location.pathname === '/delivery'
+        );
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -135,6 +149,21 @@ export default function DeliveryApp() {
         document.body.className = 'bg-slate-50';
         return () => {
             document.body.className = '';
+        };
+    }, []);
+
+    // Deep link OAuth callback handler for Capacitor Android
+    React.useEffect(() => {
+        if (!Capacitor.isNativePlatform()) return;
+
+        const sub = CapApp.addListener('appUrlOpen', async (event) => {
+            if (event.url && event.url.includes('auth/callback')) {
+                await handleDeepLinkAuthUrl(event.url);
+            }
+        });
+
+        return () => {
+            sub.then(s => s.remove());
         };
     }, []);
 

@@ -23,6 +23,9 @@ import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
 import { supabase } from './lib/supabase';
+import { handleDeepLinkAuthUrl } from './lib/auth-service';
+import { useRealtimeResilience } from './hooks/useRealtimeResilience';
+import { setupBackButtonHandler } from './utils/backButtonManager';
 import toast from 'react-hot-toast';
 import WhatsAppPurchaseConfirmationModal from './components/WhatsAppPurchaseConfirmationModal';
 import LockScreen from './components/LockScreen';
@@ -35,6 +38,15 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
     
     useGlobalAudioAlerts('user', user?.uid);
     usePushCampaigns(userData, user?.uid);
+    useRealtimeResilience();
+
+    // Android physical back button handler
+    useEffect(() => {
+        return setupBackButtonHandler(
+            () => navigate(-1),
+            () => window.location.pathname === '/' || window.location.pathname === ''
+        );
+    }, [navigate]);
 
     // Deep linking handler for In-App Native Google Auth
     useEffect(() => {
@@ -42,41 +54,10 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
 
         const handleUrl = async (urlStr: string) => {
             if (!urlStr || !urlStr.includes('auth/callback')) return;
-
-            try {
-                await Browser.close();
-            } catch (e) {}
-
-            try {
-                const hashIdx = urlStr.indexOf('#');
-                const queryIdx = urlStr.indexOf('?');
-                let paramsStr = '';
-                if (hashIdx !== -1) {
-                    paramsStr = urlStr.substring(hashIdx + 1);
-                } else if (queryIdx !== -1) {
-                    paramsStr = urlStr.substring(queryIdx + 1);
-                }
-
-                const params = new URLSearchParams(paramsStr);
-                const accessToken = params.get('access_token');
-                const refreshToken = params.get('refresh_token');
-
-                if (accessToken && refreshToken) {
-                    const { data: authData, error: authErr } = await supabase.auth.setSession({
-                        access_token: accessToken,
-                        refresh_token: refreshToken
-                    });
-
-                    if (!authErr && authData?.user) {
-                        toast.success('¡Bienvenido! Sesión iniciada');
-                        navigate('/profile');
-                    } else if (authErr) {
-                        console.error('Error setting session from deep link:', authErr);
-                        toast.error('Error al iniciar sesión');
-                    }
-                }
-            } catch (err) {
-                console.error('Error processing deep link:', err);
+            const ok = await handleDeepLinkAuthUrl(urlStr);
+            if (ok) {
+                toast.success('¡Bienvenido! Sesión iniciada');
+                navigate('/profile');
             }
         };
 
