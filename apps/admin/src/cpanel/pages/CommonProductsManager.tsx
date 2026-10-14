@@ -88,6 +88,36 @@ export default function CommonProductsManager() {
 
     const [newVariantName, setNewVariantName] = useState('');
     const [newVariantPrice, setNewVariantPrice] = useState('');
+    const [imageSize, setImageSize] = useState<number | null>(null);
+    const [checkingImageSize, setCheckingImageSize] = useState(false);
+
+    const formatFileSize = (bytes: number) => {
+        if (!bytes || bytes <= 0) return '0 B';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    };
+
+    const fetchImageSizeFromUrl = async (url: string) => {
+        if (!url || !url.startsWith('http')) {
+            setImageSize(null);
+            return;
+        }
+        setCheckingImageSize(true);
+        try {
+            const res = await fetch(url, { method: 'HEAD' });
+            const contentLength = res.headers.get('content-length');
+            if (contentLength) {
+                setImageSize(parseInt(contentLength, 10));
+            } else {
+                setImageSize(null);
+            }
+        } catch {
+            setImageSize(null);
+        } finally {
+            setCheckingImageSize(false);
+        }
+    };
 
     const fetchProducts = async () => {
         setLoading(true);
@@ -124,6 +154,7 @@ export default function CommonProductsManager() {
 
     const openCreateModal = () => {
         setEditingProduct(null);
+        setImageSize(null);
         setFormData({
             name: '',
             category: 'Víveres',
@@ -154,6 +185,11 @@ export default function CommonProductsManager() {
         setNewVariantName('');
         setNewVariantPrice('');
         setIsModalOpen(true);
+        if (product.image_url) {
+            fetchImageSizeFromUrl(product.image_url);
+        } else {
+            setImageSize(null);
+        }
     };
 
     const handleAddVariant = () => {
@@ -181,6 +217,7 @@ export default function CommonProductsManager() {
         const file = e.target.files?.[0];
         if (!file) return;
 
+        setImageSize(file.size);
         setUploadingImage(true);
         try {
             const ext = file.name.split('.').pop() || 'jpg';
@@ -520,14 +557,38 @@ export default function CommonProductsManager() {
                                             type="text"
                                             placeholder="URL de imagen pública o sube una foto..."
                                             value={formData.image_url}
-                                            onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                                            onChange={(e) => {
+                                                const newUrl = e.target.value;
+                                                setFormData({ ...formData, image_url: newUrl });
+                                                fetchImageSizeFromUrl(newUrl);
+                                            }}
                                             className="w-full bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-medium text-slate-800"
                                         />
-                                        <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg cursor-pointer">
-                                            {uploadingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                                            <span>Subir foto a Storage</span>
-                                            <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
-                                        </label>
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg cursor-pointer transition-colors">
+                                                {uploadingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                                                <span>Subir foto a Storage</span>
+                                                <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
+                                            </label>
+
+                                            {/* Tamaño / Peso de la imagen */}
+                                            {formData.image_url && (
+                                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200/80 rounded-lg text-[11px] font-black text-amber-900 shadow-2xs">
+                                                    <span className="text-[10px] uppercase tracking-wider text-amber-700 font-bold">Peso:</span>
+                                                    {checkingImageSize ? (
+                                                        <span className="flex items-center gap-1 text-amber-600">
+                                                            <Loader2 className="w-3 h-3 animate-spin" /> Calculando...
+                                                        </span>
+                                                    ) : imageSize !== null ? (
+                                                        <span className={imageSize > 1024 * 1024 ? 'text-rose-600 font-extrabold' : 'text-emerald-700 font-extrabold'}>
+                                                            {formatFileSize(imageSize)}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-slate-400 font-medium">Desconocido</span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             </div>

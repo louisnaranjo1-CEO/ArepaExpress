@@ -88,11 +88,42 @@ export default function CommonProductsPickerModal({
         included: boolean;
     }[]>([]);
     const [singlePrice, setSinglePrice] = useState<string>('0');
+    const [imageSize, setImageSize] = useState<number | null>(null);
+    const [checkingImageSize, setCheckingImageSize] = useState(false);
+
+    const formatFileSize = (bytes: number) => {
+        if (!bytes || bytes <= 0) return '0 B';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    };
+
+    const fetchImageSizeFromUrl = async (url: string) => {
+        if (!url || !url.startsWith('http')) {
+            setImageSize(null);
+            return;
+        }
+        setCheckingImageSize(true);
+        try {
+            const res = await fetch(url, { method: 'HEAD' });
+            const contentLength = res.headers.get('content-length');
+            if (contentLength) {
+                setImageSize(parseInt(contentLength, 10));
+            } else {
+                setImageSize(null);
+            }
+        } catch {
+            setImageSize(null);
+        } finally {
+            setCheckingImageSize(false);
+        }
+    };
 
     useEffect(() => {
         if (isOpen) {
             fetchCommonProducts();
             setSelectedProduct(null);
+            setImageSize(null);
             setSearchQuery('');
             setSelectedCategory('Todos');
         }
@@ -132,6 +163,11 @@ export default function CommonProductsPickerModal({
     // Handle picking a common product to configure
     const handlePickProduct = (product: CommonProduct) => {
         setSelectedProduct(product);
+        if (product.image_url) {
+            fetchImageSizeFromUrl(product.image_url);
+        } else {
+            setImageSize(null);
+        }
 
         const variantsList = Array.isArray(product.variants) && product.variants.length > 0
             ? product.variants
@@ -322,9 +358,27 @@ export default function CommonProductsPickerModal({
                                 className="w-16 h-16 sm:w-20 sm:h-20 object-contain rounded-xl bg-white p-1 border border-slate-200 shrink-0"
                             />
                             <div className="min-w-0 flex-1">
-                                <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                                    {selectedProduct.category}
-                                </span>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                        {selectedProduct.category}
+                                    </span>
+                                    {selectedProduct.image_url && (
+                                        <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                                            <span className="text-slate-400 font-bold">Peso foto:</span>
+                                            {checkingImageSize ? (
+                                                <span className="flex items-center gap-1 text-amber-600">
+                                                    <Loader2 className="w-2.5 h-2.5 animate-spin" /> ...
+                                                </span>
+                                            ) : imageSize !== null ? (
+                                                <span className={imageSize > 1024 * 1024 ? 'text-rose-600 font-black' : 'text-emerald-700 font-black'}>
+                                                    {formatFileSize(imageSize)}
+                                                </span>
+                                            ) : (
+                                                <span className="text-slate-400">N/D</span>
+                                            )}
+                                        </span>
+                                    )}
+                                </div>
                                 <h3 className="text-base sm:text-lg font-black text-slate-900 truncate mt-1">
                                     {selectedProduct.name}
                                 </h3>
