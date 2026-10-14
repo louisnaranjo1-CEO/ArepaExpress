@@ -178,7 +178,7 @@ export default function ActiveTasksWidget() {
                 let ordersQuery = supabase
                     .from('orders')
                     .select('*')
-                    .not('status', 'in', '("completed","cancelled","rejected","delivered")')
+                    .not('status', 'in', '("completed","cancelled","cancelled_by_client","cancelled_by_store","rejected","delivered")')
                     .order('created_at', { ascending: false })
                     .limit(5);
 
@@ -193,6 +193,22 @@ export default function ActiveTasksWidget() {
                 const { data: ordData, error: ordErr } = await ordersQuery;
                 if (ordErr) console.warn('Error fetching orders for widget:', ordErr);
                 orders = ordData || [];
+
+                // Sync localStorage: if local order is completed or cancelled, clean it up
+                if (validLocalOrderUUID) {
+                    const foundInActive = orders.find((o: any) => o.id === validLocalOrderUUID);
+                    if (!foundInActive) {
+                        supabase.from('orders')
+                            .select('status')
+                            .eq('id', validLocalOrderUUID)
+                            .maybeSingle()
+                            .then(({ data }) => {
+                                if (data && ['completed', 'cancelled', 'cancelled_by_client', 'cancelled_by_store', 'rejected', 'delivered'].includes(data.status)) {
+                                    localStorage.removeItem('active_order_id');
+                                }
+                            });
+                    }
+                }
             }
 
             // 3. For any active mandados in searching state, fetch incoming bids
@@ -398,6 +414,9 @@ export default function ActiveTasksWidget() {
 
             // Map store orders
             (orders || []).forEach((o: any) => {
+                if (['completed', 'cancelled', 'cancelled_by_client', 'cancelled_by_store', 'rejected', 'delivered'].includes(o.status)) {
+                    return;
+                }
                 if (activeTransportOrderIds.has(o.id)) {
                     return;
                 }

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
+import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 
 export interface EmergencyServiceItem {
     id?: string;
@@ -69,8 +70,8 @@ const INITIAL_FORM: EmergencyServiceItem = {
     zone: '',
     priority: false,
     scope: 'local',
-    city: 'Calabozo',
-    state: 'Guárico',
+    city: '',
+    state: '',
     is_active: true
 };
 
@@ -83,6 +84,7 @@ export default function EmergenciesManager() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingService, setEditingService] = useState<EmergencyServiceItem | null>(null);
     const [formData, setFormData] = useState<EmergencyServiceItem>(INITIAL_FORM);
+    const [isCustomCity, setIsCustomCity] = useState(false);
     const [saving, setSaving] = useState(false);
 
     // Fetch emergency services
@@ -124,11 +126,19 @@ export default function EmergenciesManager() {
     const openCreateModal = () => {
         setEditingService(null);
         setFormData(INITIAL_FORM);
+        setIsCustomCity(false);
         setIsModalOpen(true);
     };
 
     const openEditModal = (item: EmergencyServiceItem) => {
         setEditingService(item);
+        const hasCustomCity = Boolean(
+            item.city && 
+            item.state && 
+            VENEZUELA_DATA[item.state] && 
+            !VENEZUELA_DATA[item.state].includes(item.city)
+        );
+        setIsCustomCity(hasCustomCity);
         setFormData({
             ...item,
             category_label: item.category_label || CATEGORIES.find(c => c.id === item.category)?.label || 'Emergencias 24/7'
@@ -143,7 +153,28 @@ export default function EmergenciesManager() {
             return;
         }
 
+        const isNational = formData.scope === 'nacional';
+        if (!isNational && !formData.state?.trim()) {
+            toast.error('Por favor selecciona un Estado para el servicio');
+            return;
+        }
+
         const cat = CATEGORIES.find(c => c.id === formData.category);
+        const derivedScope: 'nacional' | 'estado' | 'local' = isNational 
+            ? 'nacional' 
+            : (formData.city && formData.city.trim() !== '' ? 'local' : 'estado');
+
+        let derivedZone = formData.zone?.trim();
+        if (!derivedZone) {
+            if (isNational) {
+                derivedZone = 'Nivel Nacional';
+            } else if (formData.city && formData.city.trim()) {
+                derivedZone = `${formData.city.trim()}, ${formData.state}`;
+            } else {
+                derivedZone = `Estado ${formData.state}`;
+            }
+        }
+
         const payload = {
             name: formData.name.trim(),
             category: formData.category,
@@ -154,11 +185,11 @@ export default function EmergenciesManager() {
             address: formData.address?.trim() || null,
             is_24_hours: formData.is_24_hours,
             badge_text: formData.badge_text?.trim() || null,
-            zone: formData.zone?.trim() || (formData.scope === 'nacional' ? 'Nivel Nacional' : formData.city || formData.state || 'Local'),
+            zone: derivedZone,
             priority: formData.priority,
-            scope: formData.scope,
-            city: formData.scope === 'local' ? (formData.city?.trim() || 'Calabozo') : null,
-            state: formData.scope !== 'nacional' ? (formData.state?.trim() || 'Guárico') : null,
+            scope: derivedScope,
+            city: !isNational && formData.city?.trim() ? formData.city.trim() : null,
+            state: !isNational && formData.state?.trim() ? formData.state.trim() : null,
             is_active: formData.is_active,
             updated_at: new Date().toISOString()
         };
@@ -593,50 +624,128 @@ export default function EmergenciesManager() {
 
                                 <div>
                                     <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
-                                        Alcance Geográfico *
+                                        Estado *
                                     </label>
                                     <select
-                                        value={formData.scope}
-                                        onChange={(e) => setFormData({ ...formData, scope: e.target.value as any })}
+                                        required
+                                        value={formData.scope === 'nacional' ? 'nacional' : (formData.state || '')}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            setIsCustomCity(false);
+                                            if (!val) {
+                                                setFormData({ ...formData, state: '', city: '', scope: 'local', zone: '' });
+                                            } else if (val === 'nacional') {
+                                                setFormData({ ...formData, state: '', city: '', scope: 'nacional', zone: 'Nivel Nacional' });
+                                            } else {
+                                                setFormData({ 
+                                                    ...formData, 
+                                                    state: val, 
+                                                    city: '', 
+                                                    scope: 'estado',
+                                                    zone: `Estado ${val}`
+                                                });
+                                            }
+                                        }}
                                         className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary"
                                     >
-                                        <option value="nacional">🇻🇪 Nacional (Para todo el país)</option>
-                                        <option value="estado">🗺️ Estadal (Guárico / Regional)</option>
-                                        <option value="local">📍 Local (Solo para la ciudad)</option>
+                                        <option value="">Selecciona un Estado...</option>
+                                        <option value="nacional">🇻🇪 Nivel Nacional (Todo el país)</option>
+                                        <optgroup label="── Estados de Venezuela ──">
+                                            {VENEZUELA_STATES.map((st) => (
+                                                <option key={st} value={st}>
+                                                    📍 Estado {st}
+                                                </option>
+                                            ))}
+                                        </optgroup>
                                     </select>
                                 </div>
                             </div>
 
-                            {/* Estado y Ciudad (si es local o estadal) */}
+                            {/* Ciudad / Cobertura dependiente del Estado */}
                             {formData.scope !== 'nacional' && (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-amber-50/50 border border-amber-100">
+                                <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-3">
                                     <div>
-                                        <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1">
-                                            Estado
+                                        <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                                            Ciudad / Municipio / Caserío *
                                         </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Ej: Guárico"
-                                            value={formData.state || ''}
-                                            onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                                            className="w-full bg-white border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800"
-                                        />
-                                    </div>
+                                        {!formData.state ? (
+                                            <div className="w-full bg-white border border-slate-200 px-4 py-3 rounded-xl text-xs font-bold text-slate-400 italic">
+                                                Selecciona primero un Estado arriba para desplegar sus ciudades, pueblos y caseríos
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2">
+                                                <select
+                                                    value={isCustomCity ? '__custom__' : (formData.city || (formData.scope === 'estado' ? 'TODAS' : ''))}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        if (val === '__custom__') {
+                                                            setIsCustomCity(true);
+                                                            setFormData({ ...formData, city: '', scope: 'local' });
+                                                        } else if (val === 'TODAS') {
+                                                            setIsCustomCity(false);
+                                                            setFormData({ 
+                                                                ...formData, 
+                                                                city: '', 
+                                                                scope: 'estado',
+                                                                zone: `Todo el Estado ${formData.state}`
+                                                            });
+                                                        } else {
+                                                            setIsCustomCity(false);
+                                                            setFormData({ 
+                                                                ...formData, 
+                                                                city: val, 
+                                                                scope: 'local',
+                                                                zone: `${val}, ${formData.state}`
+                                                            });
+                                                        }
+                                                    }}
+                                                    className="w-full bg-white border border-slate-200 px-4 py-3 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary"
+                                                >
+                                                    <option value="">Selecciona una Ciudad o Caserío...</option>
+                                                    <option value="TODAS">🗺️ Todo el Estado {formData.state} (Cobertura Estadal Completa)</option>
+                                                    <optgroup label={`── Ciudades y Caseríos de ${formData.state} ──`}>
+                                                        {(VENEZUELA_DATA[formData.state] || []).map((city) => (
+                                                            <option key={city} value={city}>
+                                                                📍 {city}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                    <option value="__custom__">➕ Escribir otro caserío, pueblo o sector...</option>
+                                                </select>
 
-                                    {formData.scope === 'local' && (
-                                        <div>
-                                            <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1">
-                                                Ciudad / Municipio
-                                            </label>
-                                            <input
-                                                type="text"
-                                                placeholder="Ej: Calabozo"
-                                                value={formData.city || ''}
-                                                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                                                className="w-full bg-white border border-slate-200 px-3 py-2 rounded-xl text-xs font-bold text-slate-800"
-                                            />
-                                        </div>
+                                                {isCustomCity && (
+                                                    <input
+                                                        type="text"
+                                                        required
+                                                        placeholder={`Escribe el nombre del caserío o pueblo en ${formData.state}...`}
+                                                        value={formData.city || ''}
+                                                        onChange={(e) => {
+                                                            const c = e.target.value;
+                                                            setFormData({ 
+                                                                ...formData, 
+                                                                city: c, 
+                                                                scope: 'local',
+                                                                zone: c ? `${c}, ${formData.state}` : `Estado ${formData.state}`
+                                                            });
+                                                        }}
+                                                        className="w-full bg-white border-2 border-primary px-4 py-2.5 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary placeholder-slate-400"
+                                                    />
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {formData.state && (
+                                        <p className="text-[11px] text-amber-900/80 font-bold">
+                                            ℹ️ Cobertura: {formData.scope === 'estado' ? `Todo el Estado ${formData.state}` : `${formData.city || 'Ciudad seleccionada'} (${formData.state})`} — Se mostrará en la app a los usuarios de esta zona.
+                                        </p>
                                     )}
+                                </div>
+                            )}
+
+                            {formData.scope === 'nacional' && (
+                                <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-2 text-xs font-bold text-blue-800">
+                                    <Globe className="w-4 h-4 text-blue-600 shrink-0" />
+                                    <span>Servicio de alcance Nacional: visible para todos los usuarios en cualquier estado de Venezuela.</span>
                                 </div>
                             )}
 

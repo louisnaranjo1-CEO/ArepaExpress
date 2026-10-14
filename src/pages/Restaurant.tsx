@@ -285,7 +285,7 @@ export default function RestaurantPage() {
                   .select('id, status, total, created_at')
                   .eq('user_id', uid)
                   .eq('restaurant_id', id)
-                  .not('status', 'in', '("completed","cancelled","rejected")')
+                  .not('status', 'in', '("completed","cancelled","cancelled_by_client","cancelled_by_store","rejected","delivered")')
                   .order('created_at', { ascending: false })
                   .limit(1)
                   .maybeSingle();

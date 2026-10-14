@@ -1,7 +1,10 @@
 export const VENEZUELA_DATA: Record<string, string[]> = {
     "Amazonas": ["Puerto Ayacucho", "San Fernando de Atabapo", "Maroa", "San Juan de Manapiare", "San Carlos de Río Negro"],
     "Anzoátegui": ["Barcelona", "Puerto La Cruz", "Lechería", "Guanta", "El Tigre", "Anaco", "Cantaura", "El Tigrito", "Puerto Píritu", "Valle de Guanape", "Clarines", "Aragua de Barcelona", "Pariaguán", "San Mateo"],
-    "Apure": ["San Fernando de Apure", "Guasdualito", "Achaguas", "Elorza", "San Juan de Payara", "Mantecal", "Biruaca", "El Nula"],
+    "Apure": [
+        "San Fernando de Apure", "Guasdualito", "Achaguas", "Elorza", "San Juan de Payara", "Mantecal", "Biruaca", "El Nula",
+        "Bruzual", "Palmarito", "San Rafael de Atamaica", "Apurito", "Puerto Páez", "Arichuna", "La Estacada", "El Yagual", "Cunaviche", "San Juan de Dios", "Aramendi"
+    ],
     "Aragua": ["Maracay", "Turmero", "La Victoria", "Cagua", "Villa de Cura", "El Limón", "Palo Negro", "Santa Cruz", "San Mateo", "Las Tejerías", "Colonia Tovar", "Choroní", "Ocumare de la Costa", "Barbacoas"],
     "Barinas": ["Barinas", "Socopó", "Sabaneta", "Santa Bárbara", "Barinitas", "Ciudad Bolivia", "Barrancas", "Obispos", "Libertad"],
     "Bolívar": ["Ciudad Bolívar", "Puerto Ordaz", "San Félix", "Upata", "Caicara del Orinoco", "Tumeremo", "Guasipati", "El Callao", "Santa Elena de Uairén", "El Dorado", "Ciudad Piar", "Los Pijiguaos"],
@@ -16,7 +19,8 @@ export const VENEZUELA_DATA: Record<string, string[]> = {
         "Ortiz", "Santa María de Ipire", "Cabruta", "Las Mercedes del Llano", "El Calvario", "El Rastro",
         "Guardatinajas", "Cantagallo", "Parapara", "San Francisco de Tiznados", "San José de Tiznados",
         "San Lorenzo de Tiznados", "Sosa", "Puerto Miranda", "Uverito", "Paso Real de Macaira",
-        "San Francisco de Macaira", "San Rafael de Orituco", "Libertad de Orituco", "Lezama", "Espino"
+        "San Francisco de Macaira", "San Rafael de Orituco", "Libertad de Orituco", "Lezama", "Espino",
+        "Corozo Pando", "Palenque"
     ],
     "Lara": ["Barquisimeto", "Cabudare", "Carora", "El Tocuyo", "Quíbor", "Duaca", "Sanare", "Siquisique", "Sarare", "Cubiro", "Tintorero"],
     "Mérida": ["Mérida", "El Vigía", "Ejido", "Tovar", "Lagunillas", "Mucuchíes", "Timotes", "Bailadores", "Tabay", "Santo Domingo", "Nueva Bolivia", "Santa Cruz de Mora"],

@@ -6,7 +6,7 @@ import {
     Navigation, Clock, CheckCircle2, Bike, Motorbike, MapPin, Phone, ArrowLeft,
     Store, Star, Wallet, X, Loader2, Upload, AlertCircle, Copy,
     ChevronRight, Package, CreditCard, CheckCircle, Check, Radio,
-    Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink, Trash2
+    Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink, Trash2, ShoppingBag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useCurrency } from '../context/CurrencyContext';
@@ -353,6 +353,11 @@ export default function TrackOrder() {
         supabase.from('orders').select('*').eq('id', orderId).maybeSingle().then(async ({ data: orderData }) => {
             if (orderData) {
                 setOrder(orderData);
+                if (['cancelled', 'cancelled_by_client', 'cancelled_by_store', 'completed', 'delivered'].includes(orderData.status)) {
+                    if (localStorage.getItem('active_order_id') === orderId) {
+                        localStorage.removeItem('active_order_id');
+                    }
+                }
                 const rId = orderData.restaurantId || orderData.restaurant_id;
                 if (rId) {
                     const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
@@ -371,6 +376,11 @@ export default function TrackOrder() {
                     if (payload.new) {
                         const orderData: any = payload.new;
                         setOrder(orderData);
+                        if (['cancelled', 'cancelled_by_client', 'cancelled_by_store', 'completed', 'delivered'].includes(orderData.status)) {
+                            if (localStorage.getItem('active_order_id') === orderId) {
+                                localStorage.removeItem('active_order_id');
+                            }
+                        }
                         const rId = orderData.restaurantId || orderData.restaurant_id;
                         if (rId && (!restaurant || restaurant.id !== rId)) {
                             const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
@@ -765,6 +775,8 @@ export default function TrackOrder() {
             });
 
             toast.success('Pedido cancelado y eliminado con éxito');
+            localStorage.removeItem('active_order_id');
+            localStorage.removeItem('active_transport_req_id');
             setShowCancelModal(false);
             setOrder((prev: any) => ({ ...prev, status: 'cancelled_by_client', cancellation_reason: reason }));
         } catch (error) {
@@ -1334,26 +1346,169 @@ export default function TrackOrder() {
     }
 
     if (order.status === 'cancelled' || order.status === 'cancelled_by_client' || order.status === 'cancelled_by_store') {
+        const orderTotal = Number(order.total || 0);
+        const bsTotal = bcvRate > 0 ? (orderTotal * bcvRate).toFixed(0) : '0';
+        const deliveryLabel = order.delivery_method === 'pickup'
+            ? 'Retiro en tienda (PickUp)'
+            : (order.delivery_address || order.address?.name || 'Entrega a domicilio');
+
         return (
-            <div className="flex flex-col items-center justify-center min-h-screen px-6 text-center bg-slate-50">
-                <div className="w-20 h-20 bg-rose-100 text-rose-500 flex items-center justify-center rounded-3xl mb-4 shadow-xl shadow-rose-500/20">
-                    <Trash2 className="w-10 h-10" />
-                </div>
-                <h2 className="text-2xl font-black text-slate-900 mb-2">Pedido Cancelado y Eliminado</h2>
-                <p className="text-slate-500 font-medium mb-3 text-sm">
-                    {order.status === 'cancelled_by_client' 
-                        ? 'Cancelaste y eliminaste este pedido exitosamente.' 
-                        : 'Este pedido fue cancelado y retirado del sistema.'}
-                </p>
-                {order.cancellation_reason && (
-                    <div className="bg-red-50/80 border border-red-200/60 rounded-2xl p-3 mb-6 max-w-sm text-xs text-red-800 font-bold">
-                        <span className="opacity-70 block text-[10px] uppercase tracking-wider mb-0.5">Motivo:</span>
-                        {order.cancellation_reason}
+            <div className="w-full min-h-screen bg-slate-50 flex flex-col pb-20">
+                {/* Header */}
+                <div className="bg-white px-4 py-4 flex items-center justify-between sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                    <button
+                        onClick={() => {
+                            localStorage.removeItem('active_order_id');
+                            window.history.length > 1 ? window.history.back() : navigate('/orders?tab=active');
+                        }}
+                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                    >
+                        <ArrowLeft className="w-5 h-5 text-slate-700" />
+                    </button>
+                    <div className="text-center">
+                        <h1 className="text-sm font-black text-slate-900 leading-tight">Detalle del Pedido</h1>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">#{orderId?.slice(-6).toUpperCase()}</p>
                     </div>
-                )}
-                <button onClick={() => navigate('/')} className="bg-slate-900 text-white rounded-2xl px-8 py-4 font-black shadow-xl hover:bg-slate-800 transition-colors">
-                    Volver al inicio
-                </button>
+                    <div className="w-10" />
+                </div>
+
+                <div className="p-4 space-y-4 max-w-lg mx-auto w-full">
+                    {/* Cancellation Banner Card */}
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-rose-100 text-center space-y-3 relative overflow-hidden">
+                        <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+                            <Trash2 className="w-8 h-8" />
+                        </div>
+                        <div>
+                            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200 inline-block mb-1.5">
+                                ❌ {order.status === 'cancelled_by_client' ? 'Cancelado por ti' : order.status === 'cancelled_by_store' ? 'Cancelado por el comercio' : 'Pedido Cancelado'} (Cerrado)
+                            </span>
+                            <h2 className="text-xl font-black text-slate-900">
+                                {order.status === 'cancelled_by_client' 
+                                    ? 'Cancelaste y eliminaste este pedido' 
+                                    : 'Este pedido fue cancelado y cerrado'}
+                            </h2>
+                            <p className="text-xs font-medium text-slate-500 mt-1">
+                                {order.cancelled_at 
+                                    ? `Registrado el ${new Date(order.cancelled_at).toLocaleDateString()} a las ${new Date(order.cancelled_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                                    : 'Este pedido ya no se encuentra en curso.'}
+                            </p>
+                        </div>
+
+                        {order.cancellation_reason && (
+                            <div className="bg-rose-50/80 border border-rose-200/80 rounded-2xl p-3.5 text-left text-xs text-rose-900 font-bold">
+                                <span className="opacity-70 block text-[10px] uppercase tracking-wider mb-0.5">Motivo de Cancelación:</span>
+                                {order.cancellation_reason}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Store Card */}
+                    <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-100 flex items-center gap-3.5">
+                        <div className="w-14 h-14 bg-slate-50 rounded-2xl overflow-hidden flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
+                            {restaurant?.logoUrl
+                                ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                                : <Store className="w-7 h-7 text-slate-400" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                            <p className="font-black text-base text-slate-900 truncate">{restaurant?.name || order.restaurantName || 'Comercio'}</p>
+                            <p className="text-xs font-bold text-slate-400 truncate">{restaurant?.address || restaurant?.location?.address || 'Comercio afiliado'}</p>
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">{deliveryLabel}</p>
+                        </div>
+                    </div>
+
+                    {/* Order Items Breakdown */}
+                    <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-100 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <p className="text-xs font-black uppercase tracking-wider text-slate-400">Productos del Pedido</p>
+                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                                {(order.items || []).length} {((order.items || []).length === 1) ? 'producto' : 'productos'}
+                            </span>
+                        </div>
+
+                        <div className="divide-y divide-slate-100">
+                            {(order.items || []).map((item: any, idx: number) => (
+                                <div key={idx} className="py-2.5 flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2.5 min-w-0 flex-1 mr-2">
+                                        <span className="w-6 h-6 bg-slate-100 rounded-lg flex items-center justify-center text-[11px] font-black text-slate-700 shrink-0">
+                                            {item.quantity}x
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="font-black text-slate-800 truncate">{item.name}</p>
+                                            {item.selectedVariants && item.selectedVariants.length > 0 && (
+                                                <p className="text-[10px] text-slate-400 truncate">
+                                                    {item.selectedVariants.map((v: any) => v.name || v.option).join(', ')}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <span className="font-black text-slate-900 shrink-0 text-xs">
+                                        ${(Number(item.price || item.unitPrice || 0) * Number(item.quantity || 1)).toFixed(2)}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-100 space-y-1.5 text-xs">
+                            <div className="flex justify-between items-center text-slate-500 font-bold">
+                                <span>Subtotal</span>
+                                <span>${Number(order.subtotal || orderTotal).toFixed(2)}</span>
+                            </div>
+                            {Number(order.delivery_fee || order.deliveryFee || 0) > 0 && (
+                                <div className="flex justify-between items-center text-slate-500 font-bold">
+                                    <span>Envío / Delivery</span>
+                                    <span>${Number(order.delivery_fee || order.deliveryFee).toFixed(2)}</span>
+                                </div>
+                            )}
+                            <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                                <span className="font-black text-sm text-slate-900">Total del Pedido</span>
+                                <div className="text-right">
+                                    <p className="font-black text-base text-slate-900">${orderTotal.toFixed(2)}</p>
+                                    <p className="text-[10px] font-bold text-slate-400">{bsTotal} Bs</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="space-y-2 pt-2">
+                        {(order.restaurant_id || order.restaurantId) && (
+                            <button
+                                onClick={() => {
+                                    localStorage.removeItem('active_order_id');
+                                    navigate(`/restaurant/${order.restaurant_id || order.restaurantId}`);
+                                }}
+                                className="w-full bg-primary hover:bg-primary/90 text-slate-900 py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 active:scale-95"
+                            >
+                                <ShoppingBag className="w-4 h-4" />
+                                <span>Ver Tienda para Ordenar de Nuevo</span>
+                            </button>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={() => {
+                                    localStorage.removeItem('active_order_id');
+                                    navigate('/orders?tab=active');
+                                }}
+                                className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 py-3.5 rounded-2xl font-black text-xs transition-colors flex items-center justify-center gap-1.5"
+                            >
+                                <Clock className="w-4 h-4 text-slate-500" />
+                                <span>Mis Pedidos</span>
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    localStorage.removeItem('active_order_id');
+                                    navigate('/');
+                                }}
+                                className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3.5 rounded-2xl font-black text-xs transition-colors flex items-center justify-center gap-1.5"
+                            >
+                                <span>Ir al Inicio</span>
+                                <ChevronRight className="w-4 h-4" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }

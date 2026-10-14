@@ -79,7 +79,7 @@ export default function BottomNav() {
         let ordQuery = supabase
           .from('orders')
           .select('id, status')
-          .not('status', 'in', '("completed","cancelled","rejected","delivered")')
+          .not('status', 'in', '("completed","cancelled","cancelled_by_client","cancelled_by_store","rejected","delivered")')
           .order('created_at', { ascending: false })
           .limit(1);
 
@@ -101,6 +101,15 @@ export default function BottomNav() {
             });
             return;
           }
+        }
+
+        // Clean up completed or cancelled local orders from localStorage
+        if (localOrderId) {
+          supabase.from('orders').select('status').eq('id', localOrderId).maybeSingle().then(({ data }) => {
+            if (data && ['completed', 'cancelled', 'cancelled_by_client', 'cancelled_by_store', 'rejected', 'delivered'].includes(data.status)) {
+              localStorage.removeItem('active_order_id');
+            }
+          });
         }
 
         setActiveService(null);

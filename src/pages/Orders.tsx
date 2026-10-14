@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { ShoppingBag, Clock, ChevronRight, Bike, Navigation, Store, MessageCircle, ArrowRight, Phone, CheckCircle } from 'lucide-react';
+import { ShoppingBag, Clock, ChevronRight, Bike, Navigation, Store, MessageCircle, ArrowRight, Phone, CheckCircle, XCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
@@ -51,7 +51,7 @@ export default function Orders() {
                 let ordersQuery = supabase
                     .from('orders')
                     .select('*')
-                    .not('status', 'in', '("completed","cancelled","rejected","delivered")')
+                    .not('status', 'in', '("completed","cancelled","cancelled_by_client","cancelled_by_store","rejected","delivered")')
                     .order('created_at', { ascending: false })
                     .limit(10);
 
@@ -81,13 +81,13 @@ export default function Orders() {
                     setActiveTransports(trData);
                 }
 
-                // Also fetch recent completed / delivered orders (Historial)
+                // Also fetch recent completed / delivered / cancelled orders (Historial)
                 let recentQuery = supabase
                     .from('orders')
                     .select('*')
-                    .in('status', ['completed', 'delivered'])
+                    .in('status', ['completed', 'delivered', 'cancelled', 'cancelled_by_client', 'cancelled_by_store', 'rejected'])
                     .order('created_at', { ascending: false })
-                    .limit(15);
+                    .limit(20);
 
                 if (authUUID && validLocalOrderUUID && authUUID !== validLocalOrderUUID) {
                     recentQuery = recentQuery.or(`user_id.eq.${authUUID},id.eq.${validLocalOrderUUID}`);
@@ -100,6 +100,11 @@ export default function Orders() {
                 const { data: recData } = await recentQuery;
                 if (recData && recData.length > 0) {
                     setRecentOrders(recData);
+
+                    // If local order is found in recent/terminal orders, clear active_order_id from localStorage
+                    if (validLocalOrderUUID && recData.some((o: any) => o.id === validLocalOrderUUID)) {
+                        localStorage.removeItem('active_order_id');
+                    }
 
                     // Fetch linked transport_requests to have driver phone / driver details
                     const orderIds = recData.map((o: any) => o.id).filter(Boolean);
@@ -630,9 +635,27 @@ export default function Orders() {
                                                 </div>
 
                                                 <div className="text-right shrink-0">
-                                                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                                                        <CheckCircle className="w-3 h-3 text-emerald-600" /> Entregado
-                                                    </span>
+                                                    {order.status === 'cancelled_by_client' ? (
+                                                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                                                            <XCircle className="w-3 h-3 text-rose-600" /> Cancelado por ti
+                                                        </span>
+                                                    ) : order.status === 'cancelled_by_store' ? (
+                                                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                                                            <XCircle className="w-3 h-3 text-rose-600" /> Cancelado por tienda
+                                                        </span>
+                                                    ) : order.status === 'cancelled' ? (
+                                                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                                                            <XCircle className="w-3 h-3 text-rose-600" /> Cancelado
+                                                        </span>
+                                                    ) : order.status === 'rejected' ? (
+                                                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                                                            <XCircle className="w-3 h-3 text-rose-600" /> Rechazado
+                                                        </span>
+                                                    ) : (
+                                                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                                                            <CheckCircle className="w-3 h-3 text-emerald-600" /> Entregado
+                                                        </span>
+                                                    )}
                                                     <p className="text-xs font-black text-slate-900 mt-1">${orderTotal.toFixed(2)}</p>
                                                     <p className="text-[9px] font-bold text-slate-400">{bsTotal} Bs</p>
                                                 </div>
@@ -645,9 +668,15 @@ export default function Orders() {
                                                     <span className="truncate font-medium">{deliveryLabel}</span>
                                                 </div>
                                                 {order.items && order.items.length > 0 && (
-                                                    <p className="text-[11px] text-slate-400 truncate pl-5">
+                                                    <p className="text-[11px] text-slate-500 font-medium truncate pl-5">
                                                         {order.items.map((it: any) => `${it.quantity}x ${it.name}`).join(', ')}
                                                     </p>
+                                                )}
+                                                {order.cancellation_reason && (
+                                                    <div className="mt-1.5 p-2 rounded-xl bg-rose-50/70 border border-rose-200/60 text-[10px] font-bold text-rose-800 flex items-start gap-1.5">
+                                                        <XCircle className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                                                        <span><span className="opacity-70 font-semibold uppercase">Motivo:</span> {order.cancellation_reason}</span>
+                                                    </div>
                                                 )}
                                             </div>
 
@@ -689,7 +718,11 @@ export default function Orders() {
                                             {/* Footer: Detail navigation */}
                                             <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                                                 <span className="text-[10px] font-bold text-slate-400">
-                                                    {order.has_reviewed ? '⭐ Calificación registrada' : 'Ciclo completado'}
+                                                    {(order.status === 'cancelled' || order.status === 'cancelled_by_client' || order.status === 'cancelled_by_store')
+                                                        ? '❌ Pedido Cerrado'
+                                                        : order.has_reviewed 
+                                                            ? '⭐ Calificación registrada' 
+                                                            : 'Ciclo completado'}
                                                 </span>
                                                 <button
                                                     onClick={() => navigate(`/track/${order.id}`)}

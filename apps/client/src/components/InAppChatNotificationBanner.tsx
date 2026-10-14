@@ -43,7 +43,7 @@ export default function InAppChatNotificationBanner() {
             .from('orders')
             .select('id')
             .eq('user_id', rawUserId)
-            .not('status', 'in', '("completed","cancelled","rejected","delivered")')
+            .not('status', 'in', '("completed","cancelled","cancelled_by_client","cancelled_by_store","rejected","delivered")')
         ]);
 
         if (trRes.data) {

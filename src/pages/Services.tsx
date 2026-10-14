@@ -350,8 +350,8 @@ export default function Services() {
     const [dbServices, setDbServices] = useState<ServiceItem[]>([]);
     const [loading, setLoading] = useState(false);
 
-    const [userCity, setUserCity] = useState<string>(() => localStorage.getItem('userCity') || 'Valencia');
-    const [userState, setUserState] = useState<string>(() => localStorage.getItem('userState') || 'Carabobo');
+    const [userCity, setUserCity] = useState<string>(() => localStorage.getItem('userCity') || 'Calabozo');
+    const [userState, setUserState] = useState<string>(() => localStorage.getItem('userState') || 'Guárico');
     const [zoneFilter, setZoneFilter] = useState<'all' | 'local' | 'nacional'>('all');
 
     // Sync detected GPS location from localStorage or Supabase profile
@@ -366,7 +366,7 @@ export default function Services() {
                 supabase.from('profiles').select('last_city, last_state, lastCity, lastState').eq('id', user.id).maybeSingle()
                     .then(({ data }) => {
                         if (data) {
-                            const city = data.last_city || data.lastCity;
+                             const city = data.last_city || data.lastCity;
                             const state = data.last_state || data.lastState;
                             if (city) {
                                 setUserCity(city);
@@ -455,7 +455,7 @@ export default function Services() {
         const normUserCity = (userCity || '').trim().toLowerCase();
 
         return allServices.filter((item) => {
-            const isNational = item.scope === 'nacional';
+            const isNational = item.scope === 'nacional' || !item.state;
             const itemState = (item.state || '').trim().toLowerCase();
             const itemCity = (item.city || '').trim().toLowerCase();
             const itemZone = (item.zone || '').trim().toLowerCase();
@@ -463,24 +463,24 @@ export default function Services() {
             let isLocationMatch = false;
             if (isNational) {
                 isLocationMatch = true;
-            } else {
-                // Coincidencia por ciudad
+            } else if (item.city && item.city.trim() !== '') {
+                // Servicio con ciudad o caserío específico
                 const matchesCity = Boolean(normUserCity && (
                     itemCity === normUserCity ||
                     itemCity.includes(normUserCity) ||
                     normUserCity.includes(itemCity) ||
                     itemZone.includes(normUserCity)
                 ));
-
-                // Coincidencia por estado
+                isLocationMatch = matchesCity;
+            } else {
+                // Servicio a nivel de todo el estado
                 const matchesState = Boolean(normUserState && (
                     itemState === normUserState ||
                     itemState.includes(normUserState) ||
                     normUserState.includes(itemState) ||
                     itemZone.includes(normUserState)
                 ));
-
-                isLocationMatch = matchesCity || matchesState;
+                isLocationMatch = matchesState;
             }
 
             if (!isLocationMatch) return false;
