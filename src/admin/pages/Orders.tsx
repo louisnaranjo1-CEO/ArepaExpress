@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft, Info, Scale, Gift, AlertTriangle } from 'lucide-react';
+import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, Loader2, Bell, ExternalLink, X, ShoppingCart, Plus, Minus, Trash2, User, CreditCard, Store, ShoppingBag, Users, Upload, Image as ImageIcon, DollarSign, Edit, MessageCircle, Package, Eye, Download, Star, Sparkles, Navigation, ArrowLeft, Info, Scale, Gift, AlertTriangle, Phone, Check, XCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
@@ -150,10 +150,34 @@ export default function Orders() {
     const [orderRateOverride, setOrderRateOverride] = useState<Record<string, boolean>>({});
     const [orderCustomRates, setOrderCustomRates] = useState<Record<string, number>>({});
 
+    // Customer profile & purchase count stats for Order Detail Modal
+    const [customerStats, setCustomerStats] = useState<{
+        orderCount: number;
+        photoUrl?: string;
+        ci?: string;
+        phone?: string;
+        loading: boolean;
+    }>({ orderCount: 0, loading: false });
+
+    // Quick Product Edit Modal (Triggered by Cart button)
+    const [quickEditProductModal, setQuickEditProductModal] = useState<{
+        orderId: string;
+        item: any;
+        catalogProduct: any | null;
+        price: number;
+        isAvailable: boolean;
+        updateOrderPrice: boolean;
+    } | null>(null);
+    const [isSavingProductEdit, setIsSavingProductEdit] = useState(false);
+
+    // Custom Rejection Reason State
+    const [customRejectReason, setCustomRejectReason] = useState('');
+    const [isRejectingOrder, setIsRejectingOrder] = useState(false);
+
     // Smart Rejection State (Fase 2.3)
     const [smartRejectModalOpen, setSmartRejectModalOpen] = useState(false);
     const [selectedOrderForReject, setSelectedOrderForReject] = useState<Order | null>(null);
-    const [smartRejectReason, setSmartRejectReason] = useState<'closed' | 'no_stock' | null>(null);
+    const [smartRejectReason, setSmartRejectReason] = useState<'closed' | 'no_stock' | 'coverage' | 'busy' | 'other' | null>(null);
 
     // ── Client Cancelled Notice (Fase Cancelación en Checkout) ───────────────
     const [clientCancelledNotice, setClientCancelledNotice] = useState<{
@@ -1061,15 +1085,256 @@ export default function Orders() {
         setEditAddNote('');
     };
 
-    const toggleItemStock = (orderId: string, itemId: string) => {
+    // Helper to find corresponding catalog product
+    const findCatalogProduct = (item: any) => {
+        if (item.productId) {
+            const found = posProducts.find(p => p.id === item.productId);
+            if (found) return found;
+        }
+        const baseId = String(item.id || '').split('-')[0];
+        const foundById = posProducts.find(p => p.id === item.id || p.id === baseId);
+        if (foundById) return foundById;
+        return posProducts.find(p => p.name?.toLowerCase().trim() === item.name?.toLowerCase().trim()) || null;
+    };
+
+    // Stock selection: Positive (En Stock) vs Negative (Sin Stock)
+    // When marked Sin Stock (false), automatically disables in store catalog!
+    const handleSetItemStock = async (orderId: string, item: any, inStock: boolean) => {
+        // 1. Update order missing items state
         setMissingItemsByOrder(prev => {
             const current = prev[orderId] || [];
-            if (current.includes(itemId)) {
-                return { ...prev, [orderId]: current.filter(id => id !== itemId) };
+            if (inStock) {
+                return { ...prev, [orderId]: current.filter(id => id !== item.id) };
             } else {
-                return { ...prev, [orderId]: [...current, itemId] };
+                return current.includes(item.id) ? prev : { ...prev, [orderId]: [...current, item.id] };
             }
         });
+
+        // 2. Automatically update catalog product availability in database
+        const catalogProd = findCatalogProduct(item);
+        const prodId = catalogProd?.id || item.productId || String(item.id || '').split('-')[0];
+
+        if (prodId) {
+            try {
+                await supabase
+                    .from('products')
+                    .update({ 
+                        is_available: inStock,
+                        updated_at: new Date().toISOString() 
+                    })
+                    .eq('id', prodId);
+
+                setPosProducts(prev => prev.map(p => p.id === prodId ? { ...p, isAvailable: inStock } : p));
+
+                if (!inStock) {
+                    toast.error(`"${item.name}" marcado sin stock y deshabilitado en la app.`);
+                } else {
+                    toast.success(`"${item.name}" marcado en stock y habilitado en la app.`);
+                }
+            } catch (e) {
+                console.error("Error updating catalog product availability:", e);
+            }
+        } else {
+            if (!inStock) {
+                toast.error(`"${item.name}" marcado sin stock.`);
+            } else {
+                toast.success(`"${item.name}" marcado en stock.`);
+            }
+        }
+    };
+
+    const toggleItemStock = (orderId: string, itemId: string) => {
+        const order = orders.find(o => o.id === orderId);
+        const item = order?.items?.find((i: any) => i.id === itemId) || { id: itemId, name: 'Producto' };
+        const isCurrentlyMissing = (missingItemsByOrder[orderId] || []).includes(itemId);
+        handleSetItemStock(orderId, item, isCurrentlyMissing);
+    };
+
+    // Open Quick Product Edit Modal (Triggered by Cart icon button)
+    const handleOpenProductEdit = async (orderId: string, item: any) => {
+        let catalogProd = findCatalogProduct(item);
+
+        if (!catalogProd) {
+            const baseId = item.productId || String(item.id || '').split('-')[0];
+            try {
+                const { data } = await supabase.from('products').select('*').eq('id', baseId).maybeSingle();
+                if (data) {
+                    catalogProd = {
+                        id: data.id,
+                        name: data.name,
+                        price: Number(data.price) || 0,
+                        isAvailable: data.is_available ?? true,
+                        image: data.image_url || data.image || '',
+                        variants: data.variants || []
+                    };
+                }
+            } catch (e) {
+                console.warn("Error fetching product for edit:", e);
+            }
+        }
+
+        setQuickEditProductModal({
+            orderId,
+            item,
+            catalogProduct: catalogProd,
+            price: Number(catalogProd?.price ?? item.price ?? 0),
+            isAvailable: catalogProd ? (catalogProd.isAvailable ?? true) : true,
+            updateOrderPrice: true
+        });
+    };
+
+    // Save Quick Product Edit (Updates Supabase products + this order if configured)
+    const handleSaveProductEdit = async () => {
+        if (!quickEditProductModal) return;
+        const { orderId, item, catalogProduct, price, isAvailable, updateOrderPrice } = quickEditProductModal;
+        setIsSavingProductEdit(true);
+
+        try {
+            const prodId = catalogProduct?.id || item.productId || String(item.id || '').split('-')[0];
+
+            // 1. Update in Supabase products table
+            if (prodId) {
+                await supabase
+                    .from('products')
+                    .update({
+                        price: Number(price),
+                        is_available: isAvailable,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', prodId);
+
+                setPosProducts(prev => prev.map(p => p.id === prodId ? { ...p, price: Number(price), isAvailable } : p));
+            }
+
+            // 2. Synchronize stock state in this order
+            if (!isAvailable) {
+                setMissingItemsByOrder(prev => {
+                    const cur = prev[orderId] || [];
+                    return cur.includes(item.id) ? prev : { ...prev, [orderId]: [...cur, item.id] };
+                });
+            } else {
+                setMissingItemsByOrder(prev => {
+                    const cur = prev[orderId] || [];
+                    return { ...prev, [orderId]: cur.filter(id => id !== item.id) };
+                });
+            }
+
+            // 3. Update item price in the active order if checked
+            if (updateOrderPrice) {
+                const targetOrder = orders.find(o => o.id === orderId);
+                if (targetOrder) {
+                    const updatedItems = (targetOrder.items || []).map((it: any) => {
+                        if (it.id === item.id) {
+                            return { ...it, price: Number(price) };
+                        }
+                        return it;
+                    });
+                    const newSubtotal = updatedItems.reduce((acc, it) => acc + (Number(it.price) * Number(it.quantity)), 0);
+                    const fee = Number(targetOrder.deliveryFee || 0);
+                    const newTotal = Number((newSubtotal + fee).toFixed(2));
+
+                    await supabase.from('orders').update({
+                        items: updatedItems,
+                        subtotal: newSubtotal,
+                        total: newTotal,
+                        updated_at: new Date().toISOString()
+                    }).eq('id', orderId);
+                }
+            }
+
+            toast.success(`Producto "${item.name}" guardado exitosamente.`);
+            setQuickEditProductModal(null);
+            fetchOrders();
+        } catch (err) {
+            console.error("Error saving quick product edit:", err);
+            toast.error("Error al guardar cambios");
+        } finally {
+            setIsSavingProductEdit(false);
+        }
+    };
+
+    // Open detailed order & customer modal
+    const handleOpenOrderDetail = async (order: Order) => {
+        setSelectedOrderForDetail(order);
+        setCustomerStats({ orderCount: 1, loading: true });
+
+        try {
+            let orderCount = 1;
+            let photoUrl = (order as any).userPhoto || (order as any).user_photo || '';
+            let ci = order.clientDNI || (order as any).user_cedula || '';
+            let phone = order.userPhone || (order as any).user_phone || '';
+
+            if (order.userId && order.userId !== 'pos_customer') {
+                const { count } = await supabase
+                    .from('orders')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('restaurant_id', rid)
+                    .eq('user_id', order.userId);
+                if (count !== null && count !== undefined && count > 0) {
+                    orderCount = count;
+                }
+
+                const { data: prof } = await supabase
+                    .from('profiles')
+                    .select('photo_url, avatar_url, full_name, cedula, phone')
+                    .eq('id', order.userId)
+                    .maybeSingle();
+
+                if (prof) {
+                    if (!photoUrl) photoUrl = prof.photo_url || prof.avatar_url || '';
+                    if (!ci) ci = prof.cedula || '';
+                    if (!phone) phone = prof.phone || '';
+                }
+            }
+
+            setCustomerStats({
+                orderCount,
+                photoUrl,
+                ci,
+                phone,
+                loading: false
+            });
+        } catch (e) {
+            console.warn("Error loading customer stats:", e);
+            setCustomerStats(prev => ({ ...prev, loading: false }));
+        }
+    };
+
+    // Execute order rejection with motive
+    const handleExecuteReject = async (reasonText: string) => {
+        if (!selectedOrderForReject) return;
+        setIsRejectingOrder(true);
+        try {
+            const finalReason = reasonText.trim() || 'Motivos operativos';
+            await supabase.from('orders').update({
+                status: 'rejected',
+                rejection_reason: finalReason,
+                cancellation_reason: finalReason,
+                rejected_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            }).eq('id', selectedOrderForReject.id);
+
+            await supabase.from('messages').insert({
+                order_id: selectedOrderForReject.id,
+                sender_id: user?.uid,
+                sender_name: 'Restaurante',
+                sender_role: 'restaurant',
+                text: `❌ *Pedido rechazado:* El negocio ha rechazado el pedido por: "${finalReason}". Inténtalo de nuevo más tarde.`,
+                created_at: new Date().toISOString()
+            });
+
+            toast.success("Pedido rechazado y notificado al cliente.");
+            setSmartRejectModalOpen(false);
+            setSelectedOrderForReject(null);
+            setSmartRejectReason(null);
+            setCustomRejectReason('');
+            fetchOrders();
+        } catch (e) {
+            console.error("Error rejecting order:", e);
+            toast.error("Error al rechazar pedido");
+        } finally {
+            setIsRejectingOrder(false);
+        }
     };
 
     // ── Open Add Product / Gift Modal ───────────────────────────────────────
@@ -1823,18 +2088,27 @@ export default function Orders() {
                 </div>
             </div>
 
-            {/* Barra Superior de la Orden: Agregar Producto */}
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+            {/* Barra Superior de la Orden: Detalle y Agregar Producto */}
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100 flex-wrap gap-2">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">Productos del Pedido</span>
-                {(!order.stockConfirmed || order.status === 'pending') && (
+                <div className="flex items-center gap-1.5">
                     <button
-                        onClick={() => handleOpenAddProduct(order)}
-                        className="bg-primary/20 hover:bg-primary text-slate-900 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs active:scale-95 transition-all"
-                        title="Agregar producto o cortesía"
+                        onClick={() => handleOpenOrderDetail(order)}
+                        className="bg-slate-900 hover:bg-slate-800 text-white px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                        title="Ver lista detallada, variantes, notas del cliente e historial de compras"
                     >
-                        <Plus className="w-3.5 h-3.5" /> Agregar Producto
+                        <Eye className="w-3.5 h-3.5 text-primary" /> Ver Detalle y Cliente
                     </button>
-                )}
+                    {(!order.stockConfirmed || order.status === 'pending') && (
+                        <button
+                            onClick={() => handleOpenAddProduct(order)}
+                            className="bg-primary/20 hover:bg-primary text-slate-900 px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-2xs active:scale-95 transition-all"
+                            title="Agregar producto o cortesía"
+                        >
+                            <Plus className="w-3.5 h-3.5" /> Agregar Producto
+                        </button>
+                    )}
+                </div>
             </div>
 
             <div className="space-y-2 mb-3 sm:mb-5">
@@ -1844,61 +2118,101 @@ export default function Orders() {
                     const isPricePending = !isGift && (item.consultPrice || item.consultar_precio || item.price_pending || item.is_weighted || Number(item.price) === 0);
 
                     return (
-                        <div key={idx} className={`flex items-center gap-3 p-3 rounded-2xl transition-all ${isMissing ? 'bg-red-50 border border-red-100 opacity-60' : 'bg-slate-50 border border-transparent'}`}>
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black border shadow-sm ${isMissing ? 'bg-red-100 text-red-600 border-red-200' : 'bg-white text-slate-900 border-slate-100'}`}>
-                                {item.quantity}x
-                            </div>
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 flex-wrap">
-                                    <p className={`font-black text-sm ${isMissing ? 'text-red-700' : 'text-slate-800'} truncate`}>{item.name}</p>
-                                    {isGift && (
-                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                                            <Gift className="w-3 h-3 text-emerald-600" /> Cortesía / Obsequio
-                                        </span>
-                                    )}
-                                    {isPricePending && (
-                                        <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
-                                            <AlertTriangle className="w-3 h-3 text-amber-600" /> Precio pendiente por asignar
-                                        </span>
-                                    )}
+                        <div key={idx} className={`p-3 rounded-2xl transition-all ${isMissing ? 'bg-red-50/80 border border-red-200' : 'bg-slate-50 border border-transparent'}`}>
+                            <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-black border shadow-sm shrink-0 ${isMissing ? 'bg-red-100 text-red-600 border-red-200' : 'bg-white text-slate-900 border-slate-100'}`}>
+                                    {item.quantity}x
                                 </div>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                    <p className="text-xs text-slate-500 font-bold">
-                                        {isGift 
-                                            ? '$0.00 c/u' 
-                                            : isPricePending 
-                                                ? 'Requiere pesaje o precio' 
-                                                : `$${Number(item.price).toFixed(2)} c/u • Subtotal: $${(Number(item.price) * Number(item.quantity)).toFixed(2)}`}
-                                    </p>
-                                    {item.weight_value && (
-                                        <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">
-                                            Peso: {item.weight_value}
-                                        </span>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <p className={`font-black text-sm ${isMissing ? 'text-red-700 line-through' : 'text-slate-800'} truncate`}>{item.name}</p>
+                                        {isMissing && (
+                                            <span className="bg-red-100 text-red-800 text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider shrink-0">
+                                                Sin Stock
+                                            </span>
+                                        )}
+                                        {isGift && (
+                                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                                                <Gift className="w-3 h-3 text-emerald-600" /> Cortesía / Obsequio
+                                            </span>
+                                        )}
+                                        {isPricePending && (
+                                            <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0">
+                                                <AlertTriangle className="w-3 h-3 text-amber-600" /> Precio pendiente por asignar
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                        <p className="text-xs text-slate-500 font-bold">
+                                            {isGift 
+                                                ? '$0.00 c/u' 
+                                                : isPricePending 
+                                                    ? 'Requiere pesaje o precio' 
+                                                    : `$${Number(item.price).toFixed(2)} c/u • Subtotal: $${(Number(item.price) * Number(item.quantity)).toFixed(2)}`}
+                                        </p>
+                                        {item.variant && (
+                                            <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">
+                                                {item.variant}
+                                            </span>
+                                        )}
+                                        {item.weight_value && (
+                                            <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded font-bold">
+                                                Peso: {item.weight_value}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Acciones del Ítem */}
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                    {isPricePending && (!order.stockConfirmed || order.status === 'pending') && (
+                                        <button
+                                            onClick={() => handleOpenAssignPrice(order.id, item)}
+                                            className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-2.5 py-1.5 rounded-xl font-black text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all"
+                                            title="Definir precio o peso"
+                                        >
+                                            <Scale className="w-3.5 h-3.5" /> Asignar Precio
+                                        </button>
+                                    )}
+
+                                    {/* Botón Carrito: Abre modal de edición del producto */}
+                                    <button
+                                        onClick={() => handleOpenProductEdit(order.id, item)}
+                                        className="p-2 rounded-xl bg-white text-slate-600 hover:text-primary hover:border-primary border border-slate-200 transition-all active:scale-95 shadow-xs"
+                                        title="Editar producto en catálogo (precio, stock, etc.)"
+                                    >
+                                        <ShoppingCart className="w-4 h-4" />
+                                    </button>
+
+                                    {/* Selector de Stock: Positivo (En Stock) / Negativo (Sin Stock) */}
+                                    {(!order.stockConfirmed || order.status === 'pending') && (
+                                        <div className="flex items-center bg-white p-0.5 rounded-xl border border-slate-200 shadow-2xs gap-0.5">
+                                            <button
+                                                onClick={() => handleSetItemStock(order.id, item, true)}
+                                                className={`p-1.5 rounded-lg transition-all ${!isMissing ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-400 hover:text-emerald-600'}`}
+                                                title="En Stock (Positivo)"
+                                            >
+                                                <Check className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleSetItemStock(order.id, item, false)}
+                                                className={`p-1.5 rounded-lg transition-all ${isMissing ? 'bg-red-600 text-white shadow-xs' : 'text-slate-400 hover:text-red-600'}`}
+                                                title="Sin Stock (Negativo - Deshabilita en tienda)"
+                                            >
+                                                <X className="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                             </div>
 
-                            {/* Acciones del Ítem */}
-                            <div className="flex items-center gap-1.5 shrink-0">
-                                {isPricePending && (!order.stockConfirmed || order.status === 'pending') && (
-                                    <button
-                                        onClick={() => handleOpenAssignPrice(order.id, item)}
-                                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 px-2.5 py-1.5 rounded-xl font-black text-xs flex items-center gap-1 shadow-sm active:scale-95 transition-all"
-                                        title="Definir precio o peso"
-                                    >
-                                        <Scale className="w-3.5 h-3.5" /> Asignar Precio
-                                    </button>
-                                )}
-                                {(!order.stockConfirmed || order.status === 'pending') && (
-                                    <button
-                                        onClick={() => toggleItemStock(order.id, item.id)}
-                                        className={`p-2 rounded-xl transition-all ${isMissing ? 'bg-red-500 text-white' : 'bg-white text-slate-400 hover:text-red-500 border border-slate-100'}`}
-                                        title={isMissing ? "Marcar como disponible" : "Marcar como sin stock"}
-                                    >
-                                        <ShoppingCart className="w-4 h-4" />
-                                    </button>
-                                )}
-                            </div>
+                            {/* Comentario / Instrucción del Cliente para este producto */}
+                            {(item.notes || item.note || item.comment || item.instructions) && (
+                                <div className="mt-2 p-2 bg-amber-50/90 border border-amber-200/80 rounded-xl text-[11px] font-bold text-amber-900 flex items-start gap-1.5">
+                                    <span className="text-amber-700 font-black shrink-0">💬 Nota cliente:</span>
+                                    <span className="italic leading-snug">{item.notes || item.note || item.comment || item.instructions}</span>
+                                </div>
+                            )}
                         </div>
                     );
                 })}
@@ -4058,7 +4372,7 @@ export default function Orders() {
                 )}
             </AnimatePresence>
 
-            {/* Modal Detalle de Pedido Entregado (Requerimiento 5) */}
+            {/* Modal Detalle de Pedido & Cliente (Requerimiento Ampliado) */}
             <AnimatePresence>
                 {selectedOrderForDetail && (
                     <motion.div 
@@ -4077,15 +4391,21 @@ export default function Orders() {
                             onClick={(e) => e.stopPropagation()}
                         >
                             {/* Modal Header */}
-                            <div className="p-6 pb-4 border-b border-slate-100 flex items-center justify-between shrink-0">
+                            <div className="p-5 pb-4 border-b border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
                                 <div>
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                        <span className="text-[10px] font-black text-slate-500 bg-slate-200/70 px-2 py-0.5 rounded-md uppercase tracking-widest">
                                             #{selectedOrderForDetail.id.slice(-6).toUpperCase()}
                                         </span>
-                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                                            <CheckCircle className="w-3 h-3" /> Entregado
-                                        </span>
+                                        {selectedOrderForDetail.stockConfirmed ? (
+                                            <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                                <CheckCircle className="w-3 h-3" /> Stock Confirmado
+                                            </span>
+                                        ) : (
+                                            <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                                <Clock className="w-3 h-3 text-amber-600" /> Pendiente Confirmar Stock
+                                            </span>
+                                        )}
                                         {selectedOrderForDetail.paymentStatus === 'sold' && (
                                             <span className="bg-green-100 text-green-700 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                                                 Venta Exitosa
@@ -4093,91 +4413,311 @@ export default function Orders() {
                                         )}
                                     </div>
                                     <h3 className="text-xl font-black text-slate-900">
-                                        Detalle de Entrega
+                                        Detalle del Pedido & Cliente
                                     </h3>
                                 </div>
                                 <button 
                                     onClick={() => setSelectedOrderForDetail(null)}
-                                    className="w-9 h-9 rounded-2xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors"
+                                    className="w-9 h-9 rounded-2xl bg-white hover:bg-slate-200 flex items-center justify-center text-slate-500 transition-colors shadow-2xs border border-slate-200"
                                 >
                                     <X className="w-5 h-5" />
                                 </button>
                             </div>
 
                             {/* Modal Scrollable Content */}
-                            <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-5">
-                                {/* Cliente info */}
-                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Datos del Cliente</p>
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <h4 className="font-black text-slate-900 text-base">{selectedOrderForDetail.userName || 'Usuario'}</h4>
-                                            {selectedOrderForDetail.clientDNI && (
-                                                <p className="text-xs font-bold text-slate-600 mt-0.5">C.I.: {selectedOrderForDetail.clientDNI}</p>
+                            <div className="flex-1 overflow-y-auto overscroll-contain p-5 sm:p-6 space-y-5">
+                                {/* Ficha Detallada del Cliente con Avatar e Historial */}
+                                <div className="bg-gradient-to-br from-slate-50 to-slate-100/70 border border-slate-200/80 rounded-3xl p-4 sm:p-5 space-y-3.5 shadow-2xs">
+                                    <div className="flex items-start gap-3.5">
+                                        {/* Avatar / Foto de Perfil */}
+                                        <div className="relative shrink-0">
+                                            {customerStats.photoUrl ? (
+                                                <img 
+                                                    src={customerStats.photoUrl} 
+                                                    alt={selectedOrderForDetail.userName || 'Cliente'} 
+                                                    className="w-14 h-14 rounded-2xl object-cover border-2 border-primary shadow-sm"
+                                                />
+                                            ) : (
+                                                <div className="w-14 h-14 rounded-2xl bg-white border-2 border-slate-200 flex items-center justify-center text-slate-400 shadow-2xs">
+                                                    <User className="w-7 h-7 text-slate-500" />
+                                                </div>
                                             )}
-                                            {selectedOrderForDetail.userPhone && (
-                                                <p className="text-xs font-bold text-slate-600">Teléfono: {selectedOrderForDetail.userPhone}</p>
+                                            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center text-[9px] text-white font-black" title="Cliente Activo">
+                                                ✓
+                                            </div>
+                                        </div>
+
+                                        {/* Nombre y Estadísticas de Compras */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <h4 className="font-black text-slate-900 text-base truncate">
+                                                    {selectedOrderForDetail.userName || 'Usuario'}
+                                                </h4>
+                                                <span className="text-[11px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-lg border border-slate-100 shrink-0">
+                                                    {selectedOrderForDetail.createdAt?.toDate 
+                                                        ? selectedOrderForDetail.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                                                        : (selectedOrderForDetail.createdAt ? new Date(selectedOrderForDetail.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                                                </span>
+                                            </div>
+
+                                            {/* Badge: Cuántas veces ha comprado en la tienda */}
+                                            <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs">
+                                                    🏆 {customerStats.loading 
+                                                        ? 'Consultando historial...' 
+                                                        : customerStats.orderCount > 1 
+                                                            ? `Ha comprado ${customerStats.orderCount} veces en tu tienda` 
+                                                            : '✨ 1ra compra en tu tienda'}
+                                                </span>
+                                            </div>
+
+                                            {/* Cédula y Teléfono con botón de llamada */}
+                                            <div className="mt-2 flex items-center gap-3 text-xs font-bold text-slate-600 flex-wrap">
+                                                {(customerStats.ci || selectedOrderForDetail.clientDNI) && (
+                                                    <span className="bg-white px-2 py-1 rounded-lg border border-slate-200/70">
+                                                        C.I.: <strong className="text-slate-900">{customerStats.ci || selectedOrderForDetail.clientDNI}</strong>
+                                                    </span>
+                                                )}
+                                                {(customerStats.phone || selectedOrderForDetail.userPhone) && (
+                                                    <a 
+                                                        href={`tel:${customerStats.phone || selectedOrderForDetail.userPhone}`}
+                                                        className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-2 py-1 rounded-lg transition-colors"
+                                                    >
+                                                        <Phone className="w-3 h-3" />
+                                                        <span>{customerStats.phone || selectedOrderForDetail.userPhone}</span>
+                                                    </a>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Dirección de Entrega / Modalidad */}
+                                    <div className="pt-2.5 border-t border-slate-200/70 flex items-center justify-between gap-2 text-xs font-bold text-slate-600">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            {selectedOrderForDetail.delivery_method === 'pickup' || selectedOrderForDetail.order_type === 'pickup' ? (
+                                                <>
+                                                    <Store className="w-4 h-4 text-primary shrink-0" />
+                                                    <span className="truncate">Retiro en Tienda / PickUp</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
+                                                    <span className="truncate">{selectedOrderForDetail.deliveryAddress || 'Sin dirección registrada'}</span>
+                                                </>
                                             )}
                                         </div>
-                                        <span className="text-xs font-bold text-slate-500 bg-white px-3 py-1 rounded-xl border border-slate-100">
-                                            {selectedOrderForDetail.createdAt?.toDate 
-                                                ? selectedOrderForDetail.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-                                                : (selectedOrderForDetail.createdAt ? new Date(selectedOrderForDetail.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
-                                        </span>
-                                    </div>
-                                    <div className="pt-2 border-t border-slate-200/60 flex items-center gap-2 text-xs font-bold text-slate-600">
-                                        {selectedOrderForDetail.delivery_method === 'pickup' || selectedOrderForDetail.order_type === 'pickup' ? (
-                                            <>
-                                                <Store className="w-4 h-4 text-primary shrink-0" />
-                                                <span>Retiro en Tienda / Entrega Propia</span>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <MapPin className="w-4 h-4 text-slate-400 shrink-0" />
-                                                <span>{selectedOrderForDetail.deliveryAddress || 'Sin dirección registrada'}</span>
-                                            </>
+                                        {selectedOrderForDetail.deliveryCoords?.lat && (
+                                            <a
+                                                href={`https://www.google.com/maps?q=${selectedOrderForDetail.deliveryCoords.lat},${selectedOrderForDetail.deliveryCoords.lng}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="shrink-0 bg-primary/20 hover:bg-primary text-slate-900 px-2.5 py-1 rounded-lg font-black text-[11px] transition-all flex items-center gap-1 shadow-2xs"
+                                            >
+                                                🗺️ GPS
+                                            </a>
                                         )}
                                     </div>
                                 </div>
 
-                                {/* Desglose de Productos */}
+                                {/* Lista Detallada de Productos con Precio, Variante, Comentario y Gestión de Stock */}
                                 <div className="space-y-3">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
-                                        Productos ({selectedOrderForDetail.items?.length || 0})
-                                    </p>
-                                    <div className="space-y-2">
-                                        {(selectedOrderForDetail.items || []).map((item: any, idx: number) => (
-                                            <div key={idx} className="flex items-center justify-between p-3.5 bg-white border border-slate-100 rounded-2xl shadow-xs">
-                                                <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center font-black text-xs text-slate-900">
-                                                        {item.quantity}x
+                                    <div className="flex items-center justify-between px-1">
+                                        <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                                            Productos ({selectedOrderForDetail.items?.length || 0})
+                                        </p>
+                                        <span className="text-[10px] text-slate-400 font-bold">
+                                            🛒 Click en carrito para editar producto
+                                        </span>
+                                    </div>
+
+                                    <div className="space-y-2.5">
+                                        {(selectedOrderForDetail.items || []).map((item: any, idx: number) => {
+                                            const isMissing = (missingItemsByOrder[selectedOrderForDetail.id] || []).includes(item.id);
+                                            const isGift = item.isGift || item.is_gift || Number(item.price) === 0;
+                                            const itemSubtotal = Number(item.price || 0) * Number(item.quantity || 1);
+
+                                            return (
+                                                <div 
+                                                    key={idx} 
+                                                    className={`p-3.5 rounded-2xl border transition-all ${
+                                                        isMissing 
+                                                            ? 'bg-red-50/70 border-red-200' 
+                                                            : 'bg-white border-slate-200/80 shadow-2xs'
+                                                    }`}
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="flex items-start gap-3 min-w-0">
+                                                            <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-black text-xs shrink-0 border ${
+                                                                isMissing ? 'bg-red-100 text-red-600 border-red-200' : 'bg-slate-100 text-slate-900 border-slate-200'
+                                                            }`}>
+                                                                {item.quantity}x
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    <p className={`font-black text-sm ${isMissing ? 'text-red-700' : 'text-slate-900'} leading-tight`}>
+                                                                        {item.name}
+                                                                    </p>
+                                                                    {isMissing && (
+                                                                        <span className="text-[10px] font-black bg-red-600 text-white px-2 py-0.5 rounded-full">
+                                                                            Sin Stock
+                                                                        </span>
+                                                                    )}
+                                                                    {isGift && (
+                                                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                                            <Gift className="w-3 h-3 text-emerald-600" /> Obsequio
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+
+                                                                {/* Precio y Variantes */}
+                                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                                    <p className="text-xs text-slate-500 font-bold">
+                                                                        {isGift ? '$0.00 c/u' : `$${Number(item.price || 0).toFixed(2)} c/u • Subtotal: $${itemSubtotal.toFixed(2)}`}
+                                                                    </p>
+                                                                    {item.variant && (
+                                                                        <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-bold">
+                                                                            {item.variant}
+                                                                        </span>
+                                                                    )}
+                                                                    {item.weight_value && (
+                                                                        <span className="text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded-md font-bold">
+                                                                            Peso: {item.weight_value}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Acciones de Producto: Editar en Catálogo y Selección Positiva / Negativa de Stock */}
+                                                        <div className="flex items-center gap-1.5 shrink-0">
+                                                            {/* Botón Carrito: Abre modal de edición rápida */}
+                                                            <button
+                                                                onClick={() => handleOpenProductEdit(selectedOrderForDetail.id, item)}
+                                                                className="p-2 rounded-xl bg-slate-50 text-slate-600 hover:text-primary hover:border-primary border border-slate-200 transition-all active:scale-95 shadow-2xs"
+                                                                title="Editar este producto en el catálogo (precio, stock disponible)"
+                                                            >
+                                                                <ShoppingCart className="w-4 h-4" />
+                                                            </button>
+
+                                                            {/* Selector Positivo (En Stock) / Negativo (Sin Stock) */}
+                                                            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                                                                <button
+                                                                    onClick={() => handleSetItemStock(selectedOrderForDetail.id, item, true)}
+                                                                    className={`p-1.5 rounded-lg transition-all ${
+                                                                        !isMissing 
+                                                                            ? 'bg-emerald-600 text-white shadow-xs' 
+                                                                            : 'text-slate-400 hover:text-emerald-600'
+                                                                    }`}
+                                                                    title="En Stock (Positivo)"
+                                                                >
+                                                                    <Check className="w-3.5 h-3.5" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleSetItemStock(selectedOrderForDetail.id, item, false)}
+                                                                    className={`p-1.5 rounded-lg transition-all ${
+                                                                        isMissing 
+                                                                            ? 'bg-red-600 text-white shadow-xs' 
+                                                                            : 'text-slate-400 hover:text-red-600'
+                                                                    }`}
+                                                                    title="Sin Stock (Negativo - Deshabilita en la tienda)"
+                                                                >
+                                                                    <X className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div>
-                                                        <p className="font-black text-sm text-slate-800">{item.name}</p>
-                                                        {item.note && (
-                                                            <p className="text-[11px] font-bold text-amber-700 italic">Nota: {item.note}</p>
-                                                        )}
-                                                    </div>
+
+                                                    {/* Comentario / Instrucción del Cliente para este producto */}
+                                                    {(item.notes || item.note || item.comment || item.instructions) && (
+                                                        <div className="mt-2.5 p-2 bg-amber-50 border border-amber-200 rounded-xl text-xs font-bold text-amber-900 flex items-start gap-1.5">
+                                                            <span className="text-amber-700 font-black shrink-0">💬 Nota cliente:</span>
+                                                            <span className="italic leading-snug">{item.notes || item.note || item.comment || item.instructions}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                                <p className="font-black text-sm text-slate-900">
-                                                    ${((item.price || 0) * (item.quantity || 1)).toFixed(2)}
-                                                </p>
-                                            </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 </div>
 
-                                {/* Nota del pedido */}
+                                {/* Nota General de la Orden */}
                                 {(selectedOrderForDetail as any).orderNote && (
-                                    <div className="bg-amber-50 border border-amber-200/80 p-3.5 rounded-2xl text-xs">
-                                        <span className="font-black uppercase tracking-wider text-[10px] text-amber-800 block mb-1">Nota de la orden:</span>
+                                    <div className="bg-amber-50 border border-amber-200/90 p-3.5 rounded-2xl text-xs">
+                                        <span className="font-black uppercase tracking-wider text-[10px] text-amber-800 block mb-1">
+                                            Nota general del pedido:
+                                        </span>
                                         <p className="font-bold text-amber-900">{((selectedOrderForDetail as any).orderNote)}</p>
                                     </div>
                                 )}
 
-                                {/* Resumen Financiero */}
-                                <div className="bg-slate-50 border border-slate-100 rounded-2xl p-4 space-y-2.5">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Resumen Financiero</p>
+                                {/* Módulo de Tasa y Equivalencia en Bolívares */}
+                                {(() => {
+                                    const effectiveRate = orderRateOverride[selectedOrderForDetail.id] 
+                                        ? (orderCustomRates[selectedOrderForDetail.id] || selectedOrderForDetail.exchange_rate || bcvRate || 855.66) 
+                                        : (selectedOrderForDetail.exchange_rate || bcvRate || 855.66);
+                                    const totalUsd = Number(selectedOrderForDetail.total || 0);
+                                    const totalBs = totalUsd * effectiveRate;
+
+                                    return (
+                                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                                            <div className="flex items-center justify-between">
+                                                <label className="flex items-center gap-2 cursor-pointer text-xs font-black text-slate-800">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={orderRateOverride[selectedOrderForDetail.id] || false}
+                                                        onChange={(e) => {
+                                                            const checked = e.target.checked;
+                                                            setOrderRateOverride(prev => ({ ...prev, [selectedOrderForDetail.id]: checked }));
+                                                            if (!orderCustomRates[selectedOrderForDetail.id]) {
+                                                                setOrderCustomRates(prev => ({ ...prev, [selectedOrderForDetail.id]: effectiveRate }));
+                                                            }
+                                                        }}
+                                                        className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                                                    />
+                                                    <span>¿Personalizar tasa de cambio para este pedido?</span>
+                                                </label>
+                                                <span className="text-[10px] font-bold text-slate-400">
+                                                    Tasa: {effectiveRate.toFixed(2)} Bs/$
+                                                </span>
+                                            </div>
+
+                                            {orderRateOverride[selectedOrderForDetail.id] && (
+                                                <div className="flex items-center gap-2 pt-1 animate-in fade-in">
+                                                    <div className="flex-1 flex items-center bg-white border border-slate-200 rounded-xl px-3 py-1.5 focus-within:border-primary">
+                                                        <span className="text-xs font-bold text-slate-400 mr-2">Tasa Bs/$:</span>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={orderCustomRates[selectedOrderForDetail.id] ?? effectiveRate}
+                                                            onChange={(e) => {
+                                                                const val = parseFloat(e.target.value) || 0;
+                                                                setOrderCustomRates(prev => ({ ...prev, [selectedOrderForDetail.id]: val }));
+                                                            }}
+                                                            className="w-full text-xs font-black text-slate-800 outline-none"
+                                                            placeholder="Tasa en Bs"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total del Pedido</p>
+                                                    <p className="text-2xl font-black text-slate-900">${totalUsd.toFixed(2)} USD</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Equivalente en Bolívares</p>
+                                                    <p className="text-xl font-black text-emerald-700">
+                                                        Bs. {totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Resumen Financiero y Comprobante */}
+                                <div className="bg-white border border-slate-100 rounded-2xl p-4 space-y-2">
                                     <div className="flex justify-between text-xs font-bold text-slate-600">
                                         <span>Método de Pago</span>
                                         <span className="font-black text-slate-900">{selectedOrderForDetail.paymentMethod || 'No especificado'}</span>
@@ -4188,13 +4728,8 @@ export default function Orders() {
                                             <span className="font-black font-mono text-slate-900">{selectedOrderForDetail.paymentReference}</span>
                                         </div>
                                     )}
-                                    <div className="pt-2 border-t border-slate-200/60 flex justify-between items-center">
-                                        <span className="font-black text-sm text-slate-900">Total Liquidado</span>
-                                        <span className="text-xl font-black text-slate-900">${(selectedOrderForDetail.total || 0).toFixed(2)}</span>
-                                    </div>
                                 </div>
 
-                                {/* Comprobante de pago si existe */}
                                 {selectedOrderForDetail.paymentProofUrl && (
                                     <div className="p-3 bg-white border border-slate-100 rounded-2xl flex items-center justify-between">
                                         <div className="flex items-center gap-2.5">
@@ -4205,7 +4740,7 @@ export default function Orders() {
                                             />
                                             <div>
                                                 <p className="text-xs font-black text-slate-900">Comprobante de Pago</p>
-                                                <p className="text-[10px] text-slate-400 font-bold">Adjuntado en la orden</p>
+                                                <p className="text-[10px] text-slate-400 font-bold">Adjuntado por el cliente</p>
                                             </div>
                                         </div>
                                         <button 
@@ -4218,42 +4753,70 @@ export default function Orders() {
                                 )}
                             </div>
 
-                            {/* Modal Footer */}
-                            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shrink-0 flex gap-2">
-                                <button
-                                    onClick={() => {
-                                        const ordId = selectedOrderForDetail.id;
-                                        setSelectedOrderForDetail(null);
-                                        setChatOrderId(ordId);
-                                    }}
-                                    className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-800 py-3.5 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2 border border-slate-200"
-                                >
-                                    <MessageCircle className="w-4 h-4 text-slate-700" />
-                                    <span>Chat del Pedido</span>
-                                </button>
-                                <button
-                                    onClick={() => setSelectedOrderForDetail(null)}
-                                    className="px-6 bg-slate-900 text-white py-3.5 rounded-2xl font-black text-sm hover:bg-slate-800 transition-all"
-                                >
-                                    Cerrar
-                                </button>
+                            {/* Modal Footer con Acciones */}
+                            <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shrink-0 flex flex-col gap-2">
+                                <div className="flex gap-2">
+                                    {(!selectedOrderForDetail.stockConfirmed || ['pending', 'pendiente_pago'].includes(selectedOrderForDetail.status)) && (
+                                        <>
+                                            <button
+                                                onClick={() => {
+                                                    const ordId = selectedOrderForDetail.id;
+                                                    handleConfirmStock(ordId);
+                                                    setSelectedOrderForDetail((prev: any) => prev ? { ...prev, stockConfirmed: true, stock_confirmed: true } : null);
+                                                }}
+                                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                                            >
+                                                <CheckCircle className="w-4 h-4" /> Confirmar Stock
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const ord = selectedOrderForDetail;
+                                                    setSelectedOrderForDetail(null);
+                                                    setSelectedOrderForReject(ord);
+                                                    setSmartRejectReason(null);
+                                                    setSmartRejectModalOpen(true);
+                                                }}
+                                                className="px-4 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 py-3.5 rounded-2xl font-black text-xs transition-all active:scale-95"
+                                            >
+                                                Rechazar
+                                            </button>
+                                        </>
+                                    )}
+                                    <button
+                                        onClick={() => {
+                                            const ordId = selectedOrderForDetail.id;
+                                            setSelectedOrderForDetail(null);
+                                            setChatOrderId(ordId);
+                                        }}
+                                        className="flex-1 bg-white hover:bg-slate-100 text-slate-800 py-3.5 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-1.5 border border-slate-200 shadow-2xs"
+                                    >
+                                        <MessageCircle className="w-4 h-4 text-slate-700" />
+                                        <span>Chat del Pedido</span>
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedOrderForDetail(null)}
+                                        className="px-5 bg-slate-900 text-white py-3.5 rounded-2xl font-black text-xs hover:bg-slate-800 transition-all"
+                                    >
+                                        Cerrar
+                                    </button>
+                                </div>
                             </div>
                         </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            {/* Smart Rejection Modal (Fase 2.3) */}
+            {/* Smart Rejection Modal (Fase 2.3 + Notificación con Motivo al Cliente) */}
             {smartRejectModalOpen && selectedOrderForReject && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in">
+                <div className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in">
                     <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                             <div>
                                 <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
-                                    <AlertTriangle className="w-5 h-5 text-amber-500" /> Rechazar Pedido
+                                    <AlertTriangle className="w-5 h-5 text-red-500" /> Rechazar Pedido
                                 </h3>
                                 <p className="text-xs text-slate-500 font-bold">
-                                    Orden #{selectedOrderForReject.id.slice(0, 8)}
+                                    Orden #{selectedOrderForReject.id.slice(0, 8).toUpperCase()} • Cliente: {selectedOrderForReject.userName || 'Usuario'}
                                 </p>
                             </div>
                             <button
@@ -4261,6 +4824,7 @@ export default function Orders() {
                                     setSmartRejectModalOpen(false);
                                     setSelectedOrderForReject(null);
                                     setSmartRejectReason(null);
+                                    setCustomRejectReason('');
                                 }}
                                 className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
                             >
@@ -4268,146 +4832,191 @@ export default function Orders() {
                             </button>
                         </div>
 
-                        {!smartRejectReason ? (
-                            <div className="space-y-3">
-                                <p className="text-xs font-bold text-slate-700">
-                                    ¿Por qué no puedes atender este pedido?
+                        <div className="space-y-3">
+                            <p className="text-xs font-black text-slate-700">
+                                Selecciona o escribe el motivo del rechazo:
+                            </p>
+
+                            {/* Motivos rápidos seleccionables */}
+                            <div className="grid grid-cols-1 gap-2">
+                                {[
+                                    { key: 'no_stock', label: 'Falta de Stock o Productos Agotados', reasonText: 'Falta de stock disponible en los productos solicitados' },
+                                    { key: 'closed', label: 'Negocio Cerrado o Fuera de Horario', reasonText: 'El negocio se encuentra cerrado en este momento' },
+                                    { key: 'coverage', label: 'Fuera de Zona de Cobertura Delivery', reasonText: 'La dirección se encuentra fuera de la zona de cobertura' },
+                                    { key: 'busy', label: 'Cocina Saturada / Alta Demanda', reasonText: 'Cocina saturada por alta demanda' },
+                                    { key: 'other', label: 'Otro Motivo Personalizado', reasonText: '' }
+                                ].map((opt) => (
+                                    <button
+                                        key={opt.key}
+                                        type="button"
+                                        onClick={() => {
+                                            setSmartRejectReason(opt.key as any);
+                                            if (opt.reasonText) setCustomRejectReason(opt.reasonText);
+                                        }}
+                                        className={`p-3 rounded-2xl border text-left flex items-center justify-between transition-all font-bold text-xs ${
+                                            smartRejectReason === opt.key
+                                                ? 'border-red-500 bg-red-50/70 text-red-900 shadow-xs'
+                                                : 'border-slate-200 bg-slate-50/50 text-slate-700 hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <span>{opt.label}</span>
+                                        {smartRejectReason === opt.key && <span className="text-red-600 font-black">✓</span>}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Campo de texto para motivo que se le enviará al cliente */}
+                            <div className="space-y-1.5 pt-1">
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                    Motivo que se notificará al cliente:
+                                </label>
+                                <textarea
+                                    value={customRejectReason}
+                                    onChange={(e) => setCustomRejectReason(e.target.value)}
+                                    placeholder="Ej: Falta de stock en productos seleccionados..."
+                                    rows={2}
+                                    className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-red-500 focus:bg-white resize-none"
+                                />
+                                <p className="text-[11px] text-slate-500 italic">
+                                    Al cliente le aparecerá: "El negocio ha rechazado el pedido por: <strong className="text-red-700 font-semibold">{customRejectReason || 'motivo especificado'}</strong>. Inténtalo de nuevo más tarde."
                                 </p>
-
-                                <button
-                                    onClick={() => setSmartRejectReason('closed')}
-                                    className="w-full p-4 rounded-2xl border-2 border-slate-200 hover:border-red-400 hover:bg-red-50/50 transition-all text-left flex items-start gap-3 group"
-                                >
-                                    <div className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                                        <Store className="w-5 h-5" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-xs font-black text-slate-900 group-hover:text-red-700">1. Negocio no abierto</p>
-                                        <p className="text-[11px] text-slate-500 font-medium">El local se encuentra cerrado o fuera de horario de cocina.</p>
-                                    </div>
-                                </button>
-
-                                <button
-                                    onClick={() => setSmartRejectReason('no_stock')}
-                                    className="w-full p-4 rounded-2xl border-2 border-slate-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all text-left flex items-start gap-3 group"
-                                >
-                                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-                                        <Package className="w-5 h-5" />
-                                    </div>
-                                    <div className="min-w-0">
-                                        <p className="text-xs font-black text-slate-900 group-hover:text-amber-800">2. Falta de Stock</p>
-                                        <p className="text-[11px] text-slate-500 font-medium">No cuentas con los insumos o productos solicitados.</p>
-                                    </div>
-                                </button>
                             </div>
-                        ) : smartRejectReason === 'closed' ? (
-                            <div className="space-y-4">
-                                <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-xs text-red-800 leading-relaxed font-semibold">
-                                    Se cancelará el pedido y se notificará al cliente que el negocio se encuentra cerrado en este momento.
-                                </div>
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setSmartRejectReason(null)}
-                                        className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 font-black text-xs hover:bg-slate-200"
-                                    >
-                                        Volver
-                                    </button>
-                                    <button
-                                        onClick={async () => {
-                                            try {
-                                                await updateStatus(selectedOrderForReject.id, 'rejected');
-                                                await supabase.from('messages').insert({
-                                                    order_id: selectedOrderForReject.id,
-                                                    sender_id: user?.uid,
-                                                    sender_name: 'Restaurante',
-                                                    sender_role: 'restaurant',
-                                                    text: "❌ *Pedido no aceptado:* El establecimiento se encuentra cerrado en este momento. Disculpa los inconvenientes.",
-                                                    created_at: new Date().toISOString()
-                                                });
-                                                toast.success("Pedido cancelado: Negocio no abierto");
-                                                setSmartRejectModalOpen(false);
-                                                setSelectedOrderForReject(null);
-                                                setSmartRejectReason(null);
-                                                fetchOrders();
-                                            } catch (e) {
-                                                console.error(e);
-                                                toast.error("Error al rechazar pedido");
-                                            }
+                        </div>
+
+                        <div className="flex gap-2 pt-2 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSmartRejectModalOpen(false);
+                                    setSelectedOrderForReject(null);
+                                    setSmartRejectReason(null);
+                                    setCustomRejectReason('');
+                                }}
+                                className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-700 font-black text-xs hover:bg-slate-200"
+                            >
+                                Volver
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isRejectingOrder}
+                                onClick={() => handleExecuteReject(customRejectReason || 'Falta de stock o motivos operativos')}
+                                className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+                            >
+                                {isRejectingOrder ? (
+                                    <><Loader2 className="w-4 h-4 animate-spin" /> Procesando...</>
+                                ) : (
+                                    <><XCircle className="w-4 h-4" /> Rechazar y Notificar</>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Quick Product Edit Modal (Triggered by Cart Icon Button) */}
+            {quickEditProductModal && (
+                <div className="fixed inset-0 z-[170] flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-200 animate-in zoom-in-95 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                            <div>
+                                <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                                    <ShoppingCart className="w-5 h-5 text-primary" /> Modificar Producto
+                                </h3>
+                                <p className="text-xs text-slate-500 font-bold truncate max-w-[280px]">
+                                    {quickEditProductModal.item.name}
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => setQuickEditProductModal(null)}
+                                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+                            >
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            {/* Precio del Producto */}
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1">
+                                    Precio en Catálogo ($ USD)
+                                </label>
+                                <div className="flex items-center bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus-within:border-primary">
+                                    <span className="text-slate-400 font-bold text-sm mr-1.5">$</span>
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={quickEditProductModal.price}
+                                        onChange={(e) => {
+                                            const val = parseFloat(e.target.value) || 0;
+                                            setQuickEditProductModal(prev => prev ? { ...prev, price: val } : null);
                                         }}
-                                        className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs shadow-md active:scale-95"
-                                    >
-                                        Confirmar Cancelación
-                                    </button>
+                                        className="w-full text-sm font-black text-slate-900 bg-transparent outline-none"
+                                        placeholder="0.00"
+                                    />
                                 </div>
                             </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <div className="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-1.5">
-                                    <p className="text-xs font-black text-amber-950 flex items-center gap-1.5">
-                                        <Sparkles className="w-4 h-4 text-amber-600" /> Invita a tu cliente a adquirir otro producto
+
+                            {/* Stock / Disponibilidad en Tienda */}
+                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-black text-slate-900">Disponibilidad en Catálogo</p>
+                                    <p className="text-[11px] font-bold text-slate-500">
+                                        {quickEditProductModal.isAvailable 
+                                            ? 'En Stock (Disponible para pedidos)' 
+                                            : 'Sin Stock (Deshabilitado en la app)'}
                                     </p>
-                                    <p className="text-[11px] font-bold text-amber-800 leading-relaxed">
-                                        No cancelaremos la orden inmediatamente. Puedes ofrecerle sustitutos o alternativas directamente por el chat para no perder la venta.
-                                    </p>
                                 </div>
-
-                                <div className="flex flex-col gap-2">
-                                    <button
-                                        onClick={async () => {
-                                            const ordId = selectedOrderForReject.id;
-                                            setSmartRejectModalOpen(false);
-                                            setSelectedOrderForReject(null);
-                                            setSmartRejectReason(null);
-                                            try {
-                                                await supabase.from('messages').insert({
-                                                    order_id: ordId,
-                                                    sender_id: user?.uid,
-                                                    sender_name: 'Restaurante',
-                                                    sender_role: 'restaurant',
-                                                    text: "⚠️ *Aviso de disponibilidad:* Algunos productos de tu orden no cuentan con stock disponible en este momento. ¿Te gustaría cambiarlos por otro producto o alternativa de nuestro menú?",
-                                                    created_at: new Date().toISOString()
-                                                });
-                                            } catch (err) {
-                                                console.warn("Message err:", err);
-                                            }
-                                            setChatOrderId(ordId);
-                                        }}
-                                        className="w-full py-3.5 rounded-2xl bg-primary hover:bg-primary/90 text-slate-900 font-black text-xs shadow-md active:scale-95 flex items-center justify-center gap-2"
-                                    >
-                                        <MessageCircle className="w-4 h-4" /> Abrir Chat para ofrecer alternativas
-                                    </button>
-
-                                    <button
-                                        onClick={async () => {
-                                            if (window.confirm("¿Seguro que deseas cancelar la orden definitivamente por falta de stock?")) {
-                                                try {
-                                                    await updateStatus(selectedOrderForReject.id, 'rejected');
-                                                    await supabase.from('messages').insert({
-                                                        order_id: selectedOrderForReject.id,
-                                                        sender_id: user?.uid,
-                                                        sender_name: 'Restaurante',
-                                                        sender_role: 'restaurant',
-                                                        text: "❌ *Pedido cancelado:* No contamos con disponibilidad de inventario para este pedido.",
-                                                        created_at: new Date().toISOString()
-                                                    });
-                                                    toast.success("Pedido cancelado por falta de stock");
-                                                    setSmartRejectModalOpen(false);
-                                                    setSelectedOrderForReject(null);
-                                                    setSmartRejectReason(null);
-                                                    fetchOrders();
-                                                } catch (e) {
-                                                    console.error(e);
-                                                    toast.error("Error al rechazar pedido");
-                                                }
-                                            }
-                                        }}
-                                        className="w-full py-2.5 rounded-2xl bg-slate-100 hover:bg-red-50 text-slate-600 hover:text-red-600 font-bold text-xs transition-colors"
-                                    >
-                                        Cancelar orden definitivamente
-                                    </button>
-                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setQuickEditProductModal(prev => prev ? { ...prev, isAvailable: !prev.isAvailable } : null)}
+                                    className={`w-14 h-8 rounded-full transition-colors p-1 relative ${
+                                        quickEditProductModal.isAvailable ? 'bg-emerald-500' : 'bg-red-400'
+                                    }`}
+                                >
+                                    <div
+                                        className={`w-6 h-6 rounded-full bg-white shadow-md transform transition-transform ${
+                                            quickEditProductModal.isAvailable ? 'translate-x-6' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </button>
                             </div>
-                        )}
+
+                            {/* Checkbox para actualizar precio de este pedido activo */}
+                            <label className="flex items-center gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={quickEditProductModal.updateOrderPrice}
+                                    onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        setQuickEditProductModal(prev => prev ? { ...prev, updateOrderPrice: checked } : null);
+                                    }}
+                                    className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                                />
+                                <span className="text-xs font-bold text-amber-900 leading-snug">
+                                    Actualizar también precio en este pedido a ${Number(quickEditProductModal.price).toFixed(2)}
+                                </span>
+                            </label>
+                        </div>
+
+                        <div className="flex gap-2 pt-2 border-t border-slate-100">
+                            <button
+                                type="button"
+                                onClick={() => setQuickEditProductModal(null)}
+                                className="flex-1 py-3 rounded-xl bg-slate-100 text-slate-700 font-black text-xs hover:bg-slate-200"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isSavingProductEdit}
+                                onClick={handleSaveProductEdit}
+                                className="flex-1 py-3 rounded-xl bg-primary text-slate-900 font-black text-xs shadow-md active:scale-95 hover:bg-primary/90 flex items-center justify-center gap-1.5"
+                            >
+                                {isSavingProductEdit ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                                Guardar Cambios
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

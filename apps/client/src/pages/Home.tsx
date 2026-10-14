@@ -1057,21 +1057,21 @@ export default function Home() {
       </section> */}
 
       {/* Main Content: Destacados / Recommendations */}
-      <main className="flex-1 px-5 pt-6 pb-24">
+      <main className="flex-1 px-4 pt-3 pb-20">
         {/* Unified UI for both Guests and Logged In Users */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
             <div className="flex items-center justify-between">
-                <h2 className="text-slate-900 text-xl font-bold">Destacados</h2>
-                <Link to="/search" className="text-slate-900 text-sm font-semibold hover:underline">Ver todos</Link>
+                <h2 className="text-slate-900 text-lg font-black tracking-tight">Destacados</h2>
+                <Link to="/search" className="text-slate-600 hover:text-slate-900 text-xs font-bold transition-colors">Ver todos</Link>
             </div>
             
-            <div className="">
+            <div>
                 {recentlyViewed.length > 0 ? (
                     <ProductGrid title="Visto recientemente" products={recentlyViewed} casheaIcon={casheaIcon} />
                 ) : randomProducts.length > 0 ? (
                     <ProductGrid title="Descubre algo nuevo" products={randomProducts} casheaIcon={casheaIcon} />
                 ) : (
-                    <div className="text-center py-12 text-slate-500">
+                    <div className="text-center py-8 text-slate-400 text-xs font-medium">
                         No hay productos disponibles en tu zona.
                     </div>
                 )}
@@ -1420,9 +1420,9 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
   };
 
   return (
-    <div className="overflow-hidden w-full mb-6">
-      {title && <h2 className="text-slate-900 text-lg font-bold mb-3">{title}</h2>}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+    <div className="overflow-hidden w-full mb-3">
+      {title && <h2 className="text-slate-800 text-sm font-black uppercase tracking-wider mb-2.5">{title}</h2>}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2.5">
         {products.map((product) => {
           const finalPrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
           const displayImg = (product.images && product.images.length > 0) ? product.images[0] : product.image;
@@ -1434,17 +1434,19 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
             <div
               key={`${product.restaurantId}-${product.id}`}
               onClick={() => handleProductClick(product)}
-              className="bg-white rounded-xl shadow-[0_2px_10px_-3px_rgba(0,0,0,0.1)] border border-slate-100 overflow-hidden cursor-pointer group hover:shadow-md transition-shadow flex flex-col"
+              className="bg-white rounded-2xl shadow-2xs hover:shadow-md border border-slate-200/80 overflow-hidden cursor-pointer group transition-all duration-200 flex flex-col"
             >
-              <div className="w-full aspect-square bg-slate-50 p-2 overflow-hidden flex items-center justify-center relative">
+              {/* Imagen del Producto: Rellena completamente el recuadro superior cubriendo esquinas */}
+              <div className="w-full aspect-square bg-slate-100 overflow-hidden relative rounded-t-2xl">
                 <img
                   src={displayImg}
                   alt={product.name}
-                  className="w-full h-full object-contain mix-blend-multiply group-hover:scale-105 transition-transform duration-300"
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  loading="lazy"
                 />
                 
                 {/* Visual Indicators */}
-                <div className="absolute top-2 right-2 flex flex-col gap-1 items-end">
+                <div className="absolute top-2 right-2 flex flex-col gap-1 items-end z-10">
                   {/* Restaurant Logo Circle */}
                   {product.restaurantLogo && (
                     <div className="w-6 h-6 rounded-full bg-white shadow-sm border border-slate-100 overflow-hidden flex items-center justify-center" title="Comercio">
@@ -1469,56 +1471,57 @@ function ProductGrid({ title, products, casheaIcon }: { title: string, products:
                 </div>
 
                 {discount > 0 && (
-                  <div className="absolute bottom-2 left-2 bg-blue-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">
+                  <div className="absolute bottom-2 left-2 bg-rose-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg shadow-sm">
                     {discount}% OFF
                   </div>
                 )}
                 {(product.consultPrice || (!product.price && !product.promoPrice)) && (
-                   <div className="absolute bottom-2 left-2 bg-slate-900 text-white text-[8px] font-black px-1.5 py-0.5 rounded shadow-sm">
+                   <div className="absolute bottom-2 left-2 bg-slate-900 text-white text-[9px] font-black px-1.5 py-0.5 rounded-lg shadow-sm">
                      CONSULTAR
                    </div>
                 )}
               </div>
 
-              <div className="p-3 flex-1 flex flex-col">
-                <h3 className="text-xs text-slate-700 font-medium line-clamp-2 leading-tight group-hover:text-slate-900 transition-colors">
-                  {product.name}
-                </h3>
-                
-                <div className="flex items-center gap-1 mt-1.5 mb-1.5 text-[10px] text-slate-500">
-                   <Star className="w-3 h-3 text-blue-600 fill-blue-600" />
-                   <span className="text-blue-600">5.0</span>
+              {/* Contenido compacto sin espacios en blanco excesivos */}
+              <div className="p-2.5 flex-1 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-800 line-clamp-2 leading-snug group-hover:text-primary transition-colors">
+                    {product.name}
+                  </h3>
+                  
+                  <div className="flex items-center gap-1 mt-0.5 mb-1 text-[10px] text-slate-500 font-bold">
+                     <Star className="w-3 h-3 text-blue-600 fill-blue-600" />
+                     <span className="text-blue-600 font-black">5.0</span>
+                  </div>
                 </div>
 
-                <div className="mt-auto pt-1">
+                <div className="mt-auto pt-0.5">
                   {!product.consultPrice && product.price > 0 && (
                     <div className="flex flex-col">
                       {discount > 0 && (
-                        <div className="flex items-center gap-1 opacity-50">
-                          <span className="text-[10px] text-slate-400">US$</span>
-                          <DualPrice 
-                            usdAmount={product.price} 
-                            className="text-[10px] text-slate-400 line-through"
-                            showDivider={false}
-                          />
+                        <div className="flex items-center gap-1 mb-0.5 opacity-60">
+                          <span className="text-[10px] text-slate-400 line-through">
+                            ${Number(product.price).toFixed(2)}
+                          </span>
                         </div>
                       )}
-                      <div className="flex items-center gap-1.5 translate-y-[-2px]">
+                      
+                      {/* Recuadro Pequeño Estético con Precio en Dólares y Bolívares */}
+                      <div className="inline-flex items-center px-2 py-1 bg-slate-50 hover:bg-slate-100/90 border border-slate-200/90 rounded-xl shadow-2xs group-hover:border-primary/50 group-hover:bg-primary/5 transition-all w-fit">
                         <DualPrice 
                           usdAmount={finalPrice} 
-                          className="font-black text-slate-900 text-sm" 
-                          usdClassName="text-sm font-black"
+                          className="flex items-center gap-1.5" 
+                          usdClassName="text-xs sm:text-sm font-black text-slate-900 leading-none" 
+                          bsClassName="text-[10px] sm:text-[11px] font-bold text-slate-600 leading-none"
                           showDivider={true}
                         />
-                        {discount > 0 && (
-                           <span className="text-[10px] text-emerald-500 font-bold whitespace-nowrap">{discount}% OFF</span>
-                        )}
                       </div>
                     </div>
                   )}
+
                   {/* Free Shipping Highlight */}
                   <div className="mt-1">
-                    <span className="text-[11px] font-medium text-emerald-500 tracking-tight flex items-center gap-1">
+                    <span className="text-[10px] font-extrabold text-emerald-600 tracking-tight flex items-center gap-1">
                       Envío gratis
                     </span>
                   </div>

@@ -1115,10 +1115,12 @@ export default function OrderChatWindow({
 
   const isPaidOrConditionallyPaid = isPaymentVerifiedByStore || isPaymentReportedWaitingStore || Boolean(liveOrder?.conditionally_paid);
 
+  const isOrderRejected = liveOrder?.status === 'rejected';
+
   const isStockConfirmed = Boolean(
-    liveOrder?.stock_confirmed ||
-    liveOrder?.stockConfirmed ||
-    (liveOrder?.status && !['pending', 'pending_store_review', 'action_required'].includes(liveOrder.status))
+    !isOrderRejected &&
+    ((liveOrder?.stock_confirmed === true || liveOrder?.stockConfirmed === true) ||
+    (liveOrder?.status && ['awaiting_payment', 'awaiting_delivery_driver', 'preparing', 'ready', 'buscando_piloto', 'delivering', 'delivered', 'completed', 'paid', 'payment_confirmed'].includes(liveOrder.status) && !['pending', 'pendiente_pago', 'pending_store_review', 'action_required'].includes(liveOrder.status)))
   );
 
   const renderMessageContent = (msg: Message) => {

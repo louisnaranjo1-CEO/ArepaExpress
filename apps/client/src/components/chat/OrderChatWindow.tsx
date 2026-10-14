@@ -5,7 +5,7 @@ import {
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
   Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet, Lock,
-  Scale, Trash2
+  Scale, Trash2, XCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -1115,10 +1115,12 @@ export default function OrderChatWindow({
 
   const isPaidOrConditionallyPaid = isPaymentVerifiedByStore || isPaymentReportedWaitingStore || Boolean(liveOrder?.conditionally_paid);
 
+  const isOrderRejected = liveOrder?.status === 'rejected';
+
   const isStockConfirmed = Boolean(
-    liveOrder?.stock_confirmed ||
-    liveOrder?.stockConfirmed ||
-    (liveOrder?.status && !['pending', 'pending_store_review', 'action_required'].includes(liveOrder.status))
+    !isOrderRejected &&
+    ((liveOrder?.stock_confirmed === true || liveOrder?.stockConfirmed === true) ||
+    (liveOrder?.status && ['awaiting_payment', 'awaiting_delivery_driver', 'preparing', 'ready', 'buscando_piloto', 'delivering', 'delivered', 'completed', 'paid', 'payment_confirmed'].includes(liveOrder.status) && !['pending', 'pendiente_pago', 'pending_store_review', 'action_required'].includes(liveOrder.status)))
   );
 
   const renderMessageContent = (msg: Message) => {
@@ -1372,6 +1374,31 @@ export default function OrderChatWindow({
               className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all"
             >
               Cerrar
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* BANNER DE RECHAZO POR EL NEGOCIO */}
+      {liveOrder?.status === 'rejected' && (
+        <div className="bg-rose-50 border-b-2 border-rose-300 p-4 flex flex-col gap-2.5 text-xs text-rose-950 shrink-0 animate-in fade-in">
+          <div className="flex items-start gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+              <XCircle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="font-black text-sm text-rose-900">El comercio ha rechazado el pedido</p>
+              <p className="text-xs font-bold text-rose-800 mt-1 leading-relaxed">
+                El negocio ha rechazado el pedido por: <span className="font-black underline bg-rose-100 px-1.5 py-0.5 rounded text-rose-950">{liveOrder?.rejection_reason || liveOrder?.cancellation_reason || 'motivos operativos'}</span>. Inténtalo de nuevo más tarde.
+              </p>
+            </div>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="w-full mt-1 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-sm"
+            >
+              Entendido • Cerrar y Volver
             </button>
           )}
         </div>
@@ -1799,7 +1826,22 @@ export default function OrderChatWindow({
 
       {/* Input area */}
       <div className="p-3 bg-white border-t border-slate-200 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {isChatLocked ? (
+        {isOrderRejected ? (
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-center space-y-2">
+            <p className="text-xs font-black text-rose-800">
+              El negocio ha rechazado el pedido por: <span className="underline">{liveOrder?.rejection_reason || liveOrder?.cancellation_reason || 'motivos operativos'}</span>. Inténtalo de nuevo más tarde.
+            </p>
+            {onClose && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-sm transition-all"
+              >
+                Cerrar Chat y Volver
+              </button>
+            )}
+          </div>
+        ) : isChatLocked ? (
           <div className="p-3.5 bg-slate-100 border border-slate-200 rounded-2xl text-center space-y-2">
             <div className="flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
               <Lock className="w-3.5 h-3.5 text-slate-500" />

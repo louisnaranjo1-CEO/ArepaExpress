@@ -70,9 +70,8 @@ function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
 
     // Paso 2: Pago al negocio (stock verificado o comprobante reportado)
     if (
-        ['awaiting_payment', 'ready_for_payment', 'pending_verification', 'pendiente_pago'].includes(order?.status) ||
-        order?.stock_confirmed ||
-        order?.stockConfirmed
+        ['awaiting_payment', 'ready_for_payment', 'pending_verification'].includes(order?.status) ||
+        Boolean(order?.stock_confirmed || order?.stockConfirmed)
     ) {
         return 2;
     }
@@ -1341,6 +1340,62 @@ export default function TrackOrder() {
                 <Motorbike className="w-16 h-16 text-slate-300 mb-4" />
                 <h2 className="text-xl font-black text-slate-900 mb-2">Pedido no encontrado</h2>
                 <button onClick={() => navigate('/')} className="text-slate-900 font-bold hover:underline">Volver al inicio</button>
+            </div>
+        );
+    }
+
+    if (order.status === 'rejected') {
+        const rejectionReason = order.rejection_reason || order.cancellation_reason || 'motivos operativos';
+        return (
+            <div className="w-full min-h-screen bg-slate-50 flex flex-col pb-20">
+                {/* Header */}
+                <div className="bg-white px-4 py-4 flex items-center justify-between sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                    <button
+                        onClick={() => {
+                            localStorage.removeItem('active_order_id');
+                            navigate('/');
+                        }}
+                        className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                    >
+                        <ArrowLeft className="w-5 h-5 text-slate-700" />
+                    </button>
+                    <div className="text-center">
+                        <h1 className="text-sm font-black text-slate-900 leading-tight">Pedido Rechazado</h1>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">#{orderId?.slice(-6).toUpperCase()}</p>
+                    </div>
+                    <div className="w-10" />
+                </div>
+
+                <div className="p-4 space-y-4 max-w-lg mx-auto w-full animate-in fade-in">
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-rose-200 text-center space-y-3 relative overflow-hidden">
+                        <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+                            <X className="w-8 h-8" />
+                        </div>
+                        <div>
+                            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200 inline-block mb-1.5">
+                                ❌ Pedido Rechazado por el Negocio
+                            </span>
+                            <h2 className="text-xl font-black text-slate-900">
+                                El negocio ha rechazado el pedido
+                            </h2>
+                            <p className="text-xs font-medium text-slate-600 mt-2 leading-relaxed">
+                                El negocio ha rechazado el pedido por: <span className="font-bold text-rose-700 underline">{rejectionReason}</span>. Inténtalo de nuevo más tarde.
+                            </p>
+                        </div>
+
+                        <div className="pt-3">
+                            <button
+                                onClick={() => {
+                                    localStorage.removeItem('active_order_id');
+                                    navigate('/');
+                                }}
+                                className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm active:scale-95 transition-all shadow-md"
+                            >
+                                Entendido • Volver al Inicio
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </div>
         );
     }

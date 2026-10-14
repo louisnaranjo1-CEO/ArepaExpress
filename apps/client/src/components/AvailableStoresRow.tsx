@@ -25,29 +25,29 @@ export default function AvailableStoresRow({ restaurants, cityName }: AvailableS
   }
 
   return (
-    <section className="px-5 mt-4 mb-2">
-      <div className="bg-white rounded-3xl p-4 shadow-[0_2px_15px_-4px_rgba(0,0,0,0.06)] border border-slate-100">
+    <section className="px-4 mt-2 mb-1">
+      <div className="bg-white rounded-3xl p-3.5 shadow-xs border border-slate-100">
         {/* Header link */}
         <button
           onClick={() => {
             vibrate(15);
             navigate('/search');
           }}
-          className="w-full flex items-center justify-between group text-left mb-3.5"
+          className="w-full flex items-center justify-between group text-left mb-2.5"
         >
           <div className="flex items-center gap-2">
-            <h3 className="text-sm md:text-base font-extrabold text-slate-900 tracking-tight group-hover:text-amber-600 transition-colors">
+            <h3 className="text-sm md:text-base font-extrabold text-slate-900 tracking-tight group-hover:text-primary transition-colors">
               Tiendas en tu zona
             </h3>
           </div>
-          <div className="flex items-center gap-1 text-slate-400 group-hover:text-amber-600 text-xs font-bold transition-all">
+          <div className="flex items-center gap-1 text-slate-400 group-hover:text-primary text-xs font-bold transition-all">
             <span>Ver todas</span>
             <ChevronRight className="w-4 h-4" />
           </div>
         </button>
 
         {/* Horizontal scroll of store logos */}
-        <div className="flex items-center gap-3 overflow-x-auto hide-scrollbar pb-1 pt-0.5 -mx-1 px-1">
+        <div className="flex items-center gap-2.5 overflow-x-auto hide-scrollbar pb-0.5 pt-0.5 -mx-0.5 px-0.5">
           {restaurants.map((restaurant) => {
             const logo = restaurant.logoUrl || restaurant.image;
             return (
@@ -60,21 +60,21 @@ export default function AvailableStoresRow({ restaurants, cityName }: AvailableS
                 className="flex flex-col items-center gap-1 shrink-0 group focus:outline-none"
                 title={restaurant.name}
               >
-                <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white border border-slate-100 shadow-sm group-hover:shadow-md group-hover:border-amber-400/50 group-active:scale-95 transition-all duration-200 p-2 flex items-center justify-center overflow-hidden relative">
+                <div className="w-16 h-16 sm:w-18 sm:h-18 rounded-2xl bg-slate-100 border border-slate-200/90 shadow-2xs group-hover:shadow-md group-hover:border-primary group-active:scale-95 transition-all duration-200 overflow-hidden relative flex items-center justify-center p-0">
                   {logo ? (
                     <img
                       src={logo}
                       alt={restaurant.name}
-                      className="w-full h-full object-contain filter group-hover:contrast-105"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                       loading="lazy"
                     />
                   ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center text-white font-black text-xs shadow-inner">
-                      {restaurant.name?.slice(0, 2).toUpperCase() || <Store className="w-5 h-5 text-white" />}
+                    <div className="w-full h-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-slate-950 font-black text-xs shadow-inner">
+                      {restaurant.name?.slice(0, 2).toUpperCase() || <Store className="w-6 h-6 text-slate-900" />}
                     </div>
                   )}
                 </div>
-                <span className="text-[10px] font-bold text-slate-600 group-hover:text-slate-900 max-w-[64px] truncate text-center leading-tight">
+                <span className="text-[10px] font-bold text-slate-700 group-hover:text-slate-900 max-w-[68px] truncate text-center leading-tight">
                   {restaurant.name}
                 </span>
               </button>

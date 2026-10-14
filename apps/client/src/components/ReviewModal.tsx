@@ -73,6 +73,15 @@ export default function ReviewModal({
 
     const driverName = liveOrder?.driver_name || liveOrder?.driverName || 'Repartidor';
 
+    const isMobilityService = Boolean(
+        liveOrder?.isMobility ||
+        !restaurantId ||
+        liveOrder?.order_type === 'transport' ||
+        liveOrder?.type === 'transport' ||
+        liveOrder?.service_category ||
+        !liveOrder?.restaurant_id
+    );
+
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = Array.from(e.target.files || []) as File[];
 
@@ -117,16 +126,7 @@ export default function ReviewModal({
             return;
         }
 
-            const isMobilityService = Boolean(
-                isMobility ||
-                !restaurantId ||
-                liveOrder?.order_type === 'transport' ||
-                liveOrder?.type === 'transport' ||
-                liveOrder?.service_category ||
-                !liveOrder?.restaurant_id
-            );
-
-            if (isMobilityService) {
+        if (isMobilityService) {
                 if (driverRating === 0) {
                     setError(`Por favor, califica el servicio del conductor (${driverName}) con al menos 1 estrella.`);
                     return;
