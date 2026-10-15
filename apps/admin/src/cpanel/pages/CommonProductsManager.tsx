@@ -58,8 +58,15 @@ const COMMON_CATEGORIES = [
     'Otros'
 ];
 
+interface GlobalCategoryItem {
+    id: string;
+    name: string;
+    parent_id: string | null;
+}
+
 export default function CommonProductsManager() {
     const [products, setProducts] = useState<CommonProduct[]>([]);
+    const [globalCategories, setGlobalCategories] = useState<GlobalCategoryItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('Todos');
@@ -76,6 +83,9 @@ export default function CommonProductsManager() {
     const [formData, setFormData] = useState<{
         name: string;
         category: string;
+        subcategory: string;
+        category_id: string;
+        sub_category_id: string;
         description: string;
         image_url: string;
         barcode: string;
@@ -83,7 +93,10 @@ export default function CommonProductsManager() {
         is_active: boolean;
     }>({
         name: '',
-        category: 'Víveres',
+        category: '',
+        subcategory: '',
+        category_id: '',
+        sub_category_id: '',
         description: '',
         image_url: '',
         barcode: '',
@@ -124,6 +137,19 @@ export default function CommonProductsManager() {
         }
     };
 
+    const fetchCategories = async () => {
+        try {
+            const { data } = await supabase
+                .from('global_categories')
+                .select('id, name, parent_id')
+                .eq('is_active', true)
+                .order('name', { ascending: true });
+            if (data) setGlobalCategories(data);
+        } catch (err) {
+            console.error('Error fetching global categories:', err);
+        }
+    };
+
     const fetchProducts = async () => {
         setLoading(true);
         try {
@@ -144,6 +170,7 @@ export default function CommonProductsManager() {
 
     useEffect(() => {
         fetchProducts();
+        fetchCategories();
 
         const channel = supabase
             .channel('cpanel_common_products')
@@ -160,9 +187,19 @@ export default function CommonProductsManager() {
     const openCreateModal = () => {
         setEditingProduct(null);
         setImageSize(null);
+        const mainCats = globalCategories.filter(c => !c.parent_id);
+        const defaultMain = mainCats[0]?.name || 'Supermercados';
+        const defaultMainId = mainCats[0]?.id || '';
+        const defaultSubs = globalCategories.filter(c => c.parent_id === defaultMainId);
+        const defaultSub = defaultSubs[0]?.name || '';
+        const defaultSubId = defaultSubs[0]?.id || '';
+
         setFormData({
             name: '',
-            category: 'Víveres',
+            category: defaultMain,
+            subcategory: defaultSub,
+            category_id: defaultMainId,
+            sub_category_id: defaultSubId,
             description: '',
             image_url: '',
             barcode: '',
@@ -176,9 +213,13 @@ export default function CommonProductsManager() {
 
     const openEditModal = (product: CommonProduct) => {
         setEditingProduct(product);
+        const matchedMain = globalCategories.find(c => (!c.parent_id) && (c.name === product.category || c.id === (product as any).category_id));
         setFormData({
             name: product.name,
-            category: product.category || 'Víveres',
+            category: product.category || matchedMain?.name || '',
+            subcategory: product.subcategory || (product as any).sub_category || '',
+            category_id: (product as any).category_id || matchedMain?.id || '',
+            sub_category_id: (product as any).sub_category_id || '',
             description: product.description || '',
             image_url: product.image_url || '',
             barcode: product.barcode || '',
@@ -258,6 +299,9 @@ export default function CommonProductsManager() {
             const payload = {
                 name: formData.name.trim(),
                 category: formData.category,
+                subcategory: formData.subcategory || null,
+                category_id: formData.category_id || null,
+                sub_category_id: formData.sub_category_id || null,
                 description: formData.description.trim(),
                 image_url: formData.image_url.trim(),
                 barcode: formData.barcode.trim(),
@@ -361,7 +405,7 @@ export default function CommonProductsManager() {
                 </div>
 
                 <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
-                    {COMMON_CATEGORIES.map(cat => (
+                    {(['Todos', ...globalCategories.filter(c => !c.parent_id).map(c => c.name)]).map(cat => (
                         <button
                             key={cat}
                             onClick={() => setSelectedCategory(cat)}
@@ -532,20 +576,63 @@ export default function CommonProductsManager() {
                                 />
                             </div>
 
-                            {/* Categoría */}
-                            <div>
-                                <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
-                                    Categoría
-                                </label>
-                                <select
-                                    value={formData.category}
-                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                    className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary"
-                                >
-                                    {COMMON_CATEGORIES.filter(c => c !== 'Todos').map(c => (
-                                        <option key={c} value={c}>{c}</option>
-                                    ))}
-                                </select>
+                            {/* Categoría Principal (Sector) y Subcategoría (Dinámicos de public.global_categories) */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                                        Categoría Principal (Sector) *
+                                    </label>
+                                    <select
+                                        required
+                                        value={formData.category}
+                                        onChange={(e) => {
+                                            const selName = e.target.value;
+                                            const parentCat = globalCategories.find(c => !c.parent_id && c.name === selName);
+                                            const subCats = globalCategories.filter(c => c.parent_id && c.parent_id === parentCat?.id);
+                                            setFormData({
+                                                ...formData,
+                                                category: selName,
+                                                category_id: parentCat?.id || '',
+                                                subcategory: subCats[0]?.name || '',
+                                                sub_category_id: subCats[0]?.id || ''
+                                            });
+                                        }}
+                                        className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                                    >
+                                        <option value="" disabled>Seleccionar Sector...</option>
+                                        {globalCategories.filter(c => !c.parent_id).map(c => (
+                                            <option key={c.id} value={c.name}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1">
+                                        Subcategoría
+                                    </label>
+                                    <select
+                                        value={formData.subcategory}
+                                        onChange={(e) => {
+                                            const subName = e.target.value;
+                                            const subObj = globalCategories.find(c => c.name === subName);
+                                            setFormData({
+                                                ...formData,
+                                                subcategory: subName,
+                                                sub_category_id: subObj?.id || ''
+                                            });
+                                        }}
+                                        className="w-full bg-slate-50 border border-slate-200 px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-primary cursor-pointer"
+                                    >
+                                        <option value="">(Sin subcategoría)</option>
+                                        {(() => {
+                                            const parentCat = globalCategories.find(c => !c.parent_id && (c.name === formData.category || c.id === formData.category_id));
+                                            const availableSubs = globalCategories.filter(c => c.parent_id && c.parent_id === parentCat?.id);
+                                            return availableSubs.map(s => (
+                                                <option key={s.id} value={s.name}>{s.name}</option>
+                                            ));
+                                        })()}
+                                    </select>
+                                </div>
                             </div>
 
                             {/* Descripción */}

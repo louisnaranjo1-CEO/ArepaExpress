@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users, Lock, Key, Shield, Copy, Check } from 'lucide-react';
+import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users, Lock, Key, Shield, Copy, Check, Store, Utensils, Receipt } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DualPrice from '../../components/DualPrice';
 import toast from 'react-hot-toast';
+
+export type UserRoleCategory = 'all' | 'client' | 'driver' | 'business' | 'waiter' | 'cashier';
 
 interface UserProfile {
     id: string;
@@ -14,11 +16,15 @@ interface UserProfile {
     phone?: string;
     createdAt?: any;
     role?: string;
+    roleCategory: 'client' | 'driver' | 'business' | 'waiter' | 'cashier';
+    businessName?: string;
     photoURL?: string;
     walletBalance?: number;
     favorites?: any[];
     address?: string;
     lastSeen?: any;
+    lastActiveAt?: any;
+    activeMinutes: number;
     totalUsageMinutes?: number;
     lastLogin?: any;
     totalReferrals?: number;
@@ -26,6 +32,8 @@ interface UserProfile {
     restaurantPoints?: Record<string, number>;
     lastCity?: string;
     lastState?: string;
+    vehiclePlate?: string;
+    vehicleType?: string;
 }
 
 const parseDate = (d: any): Date | null => {
@@ -45,8 +53,8 @@ export default function UsersManager() {
     const [userOrders, setUserOrders] = useState<any[]>([]);
     const [loadingOrders, setLoadingOrders] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterRole, setFilterRole] = useState('all');
-    const [sortBy, setSortBy] = useState<'recent' | 'referrals'>('recent');
+    const [filterRole, setFilterRole] = useState<UserRoleCategory>('all');
+    const [sortBy, setSortBy] = useState<'recent' | 'referrals' | 'activity'>('recent');
     const [showShareLinkModal, setShowShareLinkModal] = useState(false);
     const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con Deliexpress y obtén premios increíbles.');
     const [shareUrl, setShareUrl] = useState('https://deliexpress.app');
@@ -97,33 +105,161 @@ export default function UsersManager() {
 
     const fetchUsers = async () => {
         try {
-            const { data, error } = await supabase
-                .from('profiles')
-                .select('*')
-                .order('created_at', { ascending: false });
+            // Fetch profiles, drivers, comercios, waiters, and cashiers simultaneously
+            const [
+                { data: profilesData, error: profilesErr },
+                { data: driversData },
+                { data: comerciosData },
+                { data: waitersData },
+                { data: cashiersData }
+            ] = await Promise.all([
+                supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+                supabase.from('drivers').select('id, vehicle_type, vehicle_plate, is_online, full_name, phone'),
+                supabase.from('comercios').select('id, name, owner_uid, email, phone'),
+                supabase.from('waiters').select('id, restaurant_id, name, email, phone, role, is_active, created_at, updated_at'),
+                supabase.from('cashiers').select('id, restaurant_id, name, username, email, phone, is_active, created_at, updated_at, last_active_at')
+            ]);
 
-            if (error) throw error;
+            if (profilesErr) throw profilesErr;
 
-            const mapped: UserProfile[] = (data || []).map((p: any) => ({
-                id: p.id,
-                displayName: p.full_name || p.name || p.displayName,
-                name: p.full_name || p.name,
-                email: p.email,
-                phone: p.phone,
-                role: p.role || 'client',
-                photoURL: p.avatar_url || p.photo_url || p.photoURL,
-                walletBalance: p.wallet_balance ?? p.walletBalance ?? 0,
-                createdAt: p.created_at || p.createdAt,
-                lastSeen: p.last_seen || p.lastSeen,
-                totalUsageMinutes: p.total_usage_minutes ?? p.totalUsageMinutes ?? 0,
-                lastLogin: p.last_login || p.lastLogin || p.updated_at,
-                totalReferrals: p.total_referrals ?? p.totalReferrals ?? 0,
-                points: p.points ?? 0,
-                restaurantPoints: p.restaurant_points || p.restaurantPoints || {},
-                lastCity: p.last_city || p.lastCity,
-                lastState: p.last_state || p.lastState,
-                address: p.address
-            }));
+            const restMap: Record<string, string> = {};
+            (comerciosData || []).forEach((c: any) => {
+                restMap[c.id] = c.name;
+            });
+            setRestaurantNames(restMap);
+
+            const driversList = driversData || [];
+            const comerciosList = comerciosData || [];
+            const waitersList = waitersData || [];
+            const cashiersList = cashiersData || [];
+
+            const mapped: UserProfile[] = (profilesData || []).map((p: any) => {
+                const emailLower = (p.email || '').toLowerCase().trim();
+                const phoneTrim = (p.phone || '').trim();
+
+                const matchedDriver = driversList.find((d: any) => d.id === p.id);
+                const isDriver = Boolean(matchedDriver) || ['driver', 'delivery', 'conductor'].includes(p.role);
+
+                const matchedComercio = comerciosList.find((c: any) => 
+                    c.owner_uid === p.id || 
+                    (c.email && c.email.toLowerCase().trim() === emailLower)
+                );
+                const isComercio = Boolean(matchedComercio) || ['aliado', 'restaurante', 'negocio'].includes(p.role);
+
+                const matchedWaiter = waitersList.find((w: any) => 
+                    w.id === p.id || 
+                    (w.email && w.email.toLowerCase().trim() === emailLower) ||
+                    (phoneTrim && w.phone && w.phone.trim() === phoneTrim)
+                );
+
+                const matchedCashier = cashiersList.find((c: any) => 
+                    c.id === p.id || 
+                    (c.email && c.email.toLowerCase().trim() === emailLower) ||
+                    (c.username && c.username.toLowerCase().trim() === emailLower) ||
+                    (phoneTrim && c.phone && c.phone.trim() === phoneTrim)
+                );
+
+                let roleCategory: 'client' | 'driver' | 'business' | 'waiter' | 'cashier' = 'client';
+                let businessName: string | undefined = undefined;
+
+                if (matchedWaiter) {
+                    roleCategory = 'waiter';
+                    businessName = restMap[matchedWaiter.restaurant_id] || 'Negocio Aliado';
+                } else if (matchedCashier) {
+                    roleCategory = 'cashier';
+                    businessName = restMap[matchedCashier.restaurant_id] || 'Negocio Aliado';
+                } else if (isComercio) {
+                    roleCategory = 'business';
+                    businessName = matchedComercio?.name;
+                } else if (isDriver) {
+                    roleCategory = 'driver';
+                } else {
+                    roleCategory = 'client';
+                }
+
+                const actMinutes = Number(p.active_minutes ?? p.total_usage_minutes ?? 0);
+                const lastAct = p.last_active_at || p.last_seen || p.last_login || p.updated_at;
+
+                return {
+                    id: p.id,
+                    displayName: p.full_name || p.name || p.displayName,
+                    name: p.full_name || p.name,
+                    email: p.email,
+                    phone: p.phone,
+                    role: p.role || 'client',
+                    roleCategory,
+                    businessName,
+                    photoURL: p.avatar_url || p.photo_url || p.photoURL,
+                    walletBalance: p.wallet_balance ?? p.walletBalance ?? 0,
+                    createdAt: p.created_at || p.createdAt,
+                    lastSeen: lastAct,
+                    lastActiveAt: lastAct,
+                    activeMinutes: actMinutes,
+                    totalUsageMinutes: actMinutes,
+                    lastLogin: p.last_login || p.lastLogin || p.updated_at,
+                    totalReferrals: p.total_referrals ?? p.totalReferrals ?? 0,
+                    points: p.points ?? 0,
+                    restaurantPoints: p.restaurant_points || p.restaurantPoints || {},
+                    lastCity: p.last_city || p.lastCity,
+                    lastState: p.last_state || p.lastState,
+                    address: p.address,
+                    vehiclePlate: matchedDriver?.vehicle_plate,
+                    vehicleType: matchedDriver?.vehicle_type
+                };
+            });
+
+            // Include waiters who might not have a profile row
+            waitersList.forEach((w: any) => {
+                const wEmail = (w.email || '').toLowerCase().trim();
+                const alreadyIncluded = mapped.some(m => m.id === w.id || (wEmail && m.email?.toLowerCase().trim() === wEmail));
+                if (!alreadyIncluded) {
+                    mapped.push({
+                        id: w.id,
+                        displayName: w.name || 'Mesero',
+                        name: w.name,
+                        email: w.email,
+                        phone: w.phone,
+                        role: 'waiter',
+                        roleCategory: 'waiter',
+                        businessName: restMap[w.restaurant_id] || 'Negocio Aliado',
+                        createdAt: w.created_at,
+                        lastSeen: w.updated_at || w.created_at,
+                        lastActiveAt: w.updated_at || w.created_at,
+                        activeMinutes: 0,
+                        totalUsageMinutes: 0,
+                        walletBalance: 0,
+                        totalReferrals: 0,
+                        points: 0
+                    });
+                }
+            });
+
+            // Include cashiers who might not have a profile row
+            cashiersList.forEach((c: any) => {
+                const cEmail = (c.email || c.username || '').toLowerCase().trim();
+                const alreadyIncluded = mapped.some(m => m.id === c.id || (cEmail && m.email?.toLowerCase().trim() === cEmail));
+                if (!alreadyIncluded) {
+                    mapped.push({
+                        id: c.id,
+                        displayName: c.name || 'Cajero/a',
+                        name: c.name,
+                        email: c.email || c.username,
+                        phone: c.phone,
+                        role: 'cashier',
+                        roleCategory: 'cashier',
+                        businessName: restMap[c.restaurant_id] || 'Negocio Aliado',
+                        createdAt: c.created_at,
+                        lastSeen: c.last_active_at || c.updated_at || c.created_at,
+                        lastActiveAt: c.last_active_at || c.updated_at || c.created_at,
+                        activeMinutes: 0,
+                        totalUsageMinutes: 0,
+                        walletBalance: 0,
+                        totalReferrals: 0,
+                        points: 0
+                    });
+                }
+            });
+
             setUsers(mapped);
         } catch (error) {
             console.error("Error fetching users: ", error);
@@ -170,9 +306,10 @@ export default function UsersManager() {
         const matchesSearch =
             userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.phone?.includes(searchTerm);
+            user.phone?.includes(searchTerm) ||
+            (user.businessName && user.businessName.toLowerCase().includes(searchTerm.toLowerCase()));
 
-        const matchesRole = filterRole === 'all' || user.role === filterRole;
+        const matchesRole = filterRole === 'all' || user.roleCategory === filterRole;
 
         return matchesSearch && matchesRole;
     }).sort((a, b) => {
@@ -181,26 +318,101 @@ export default function UsersManager() {
             const bRefs = (b as any).totalReferrals || 0;
             return bRefs - aRefs;
         }
+        if (sortBy === 'activity') {
+            return (b.activeMinutes || 0) - (a.activeMinutes || 0);
+        }
         return 0;
     });
 
-    const isOnline = (lastSeen: any) => {
-        if (!lastSeen) return false;
+    const isOnline = (lastActive: any) => {
+        if (!lastActive) return false;
         try {
             const now = new Date().getTime();
-            const seen = parseDate(lastSeen)?.getTime();
+            const seen = parseDate(lastActive)?.getTime();
             if (!seen) return false;
-            return (now - seen) < 120000; // 2 minutes threshold
+            return (now - seen) < 180000; // 3 minutes threshold
         } catch (e) {
             return false;
         }
     };
 
     const formatUsage = (minutes: number = 0) => {
+        if (!minutes || minutes <= 0) return '0 min';
         if (minutes < 60) return `${minutes} min`;
         const hours = Math.floor(minutes / 60);
         const mins = minutes % 60;
-        return `${hours}h ${mins}m`;
+        return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    };
+
+    const renderRoleBadge = (u: UserProfile) => {
+        if (u.roleCategory === 'driver') {
+            return (
+                <div className="flex flex-col gap-0.5">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-orange-100 text-orange-700 border border-orange-200 w-fit">
+                        🛵 Conductor / Piloto
+                    </span>
+                    {u.vehiclePlate && (
+                        <span className="text-[10px] font-semibold text-slate-500">
+                            Placa: {u.vehiclePlate} {u.vehicleType ? `(${u.vehicleType})` : ''}
+                        </span>
+                    )}
+                </div>
+            );
+        }
+        if (u.roleCategory === 'business') {
+            return (
+                <div className="flex flex-col gap-0.5">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 w-fit">
+                        🏪 Negocio Aliado
+                    </span>
+                    {u.businessName && (
+                        <span className="text-[10px] font-bold text-slate-600 truncate max-w-[170px]" title={u.businessName}>
+                            {u.businessName}
+                        </span>
+                    )}
+                </div>
+            );
+        }
+        if (u.roleCategory === 'waiter') {
+            return (
+                <div className="flex flex-col gap-0.5">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-sky-100 text-sky-800 border border-sky-200 w-fit">
+                        🍽️ Mesero
+                    </span>
+                    {u.businessName && (
+                        <span className="text-[10px] font-bold text-slate-600 truncate max-w-[170px]" title={u.businessName}>
+                            Local: {u.businessName}
+                        </span>
+                    )}
+                </div>
+            );
+        }
+        if (u.roleCategory === 'cashier') {
+            return (
+                <div className="flex flex-col gap-0.5">
+                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-200 w-fit">
+                        🧾 Cajero / Caja
+                    </span>
+                    {u.businessName && (
+                        <span className="text-[10px] font-bold text-slate-600 truncate max-w-[170px]" title={u.businessName}>
+                            Local: {u.businessName}
+                        </span>
+                    )}
+                </div>
+            );
+        }
+        if (u.role === 'admin' || u.role === 'superadmin') {
+            return (
+                <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 border border-purple-200 w-fit">
+                    🛡️ SuperAdmin
+                </span>
+            );
+        }
+        return (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200 w-fit">
+                👤 Cliente (App Un 2x3)
+            </span>
+        );
     };
 
     const [selectedDriverData, setSelectedDriverData] = useState<any | null>(null);
@@ -342,33 +554,65 @@ export default function UsersManager() {
 
             {activeTab === 'users' ? (
                 <>
-                    {/* Search and Filters */}
+                    {/* Role Filter Tabs (5 Roles + Todos) */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                        <button
+                            type="button"
+                            onClick={() => setFilterRole('all')}
+                            className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all whitespace-nowrap shadow-sm ${filterRole === 'all' ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                        >
+                            Todos ({users.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilterRole('client')}
+                            className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all whitespace-nowrap shadow-sm ${filterRole === 'client' ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                        >
+                            👤 Clientes ({users.filter(u => u.roleCategory === 'client').length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilterRole('driver')}
+                            className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all whitespace-nowrap shadow-sm ${filterRole === 'driver' ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                        >
+                            🛵 Conductores / Pilotos ({users.filter(u => u.roleCategory === 'driver').length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilterRole('business')}
+                            className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all whitespace-nowrap shadow-sm ${filterRole === 'business' ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                        >
+                            🏪 Negocios Aliados ({users.filter(u => u.roleCategory === 'business').length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilterRole('waiter')}
+                            className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all whitespace-nowrap shadow-sm ${filterRole === 'waiter' ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                        >
+                            🍽️ Meseros ({users.filter(u => u.roleCategory === 'waiter').length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setFilterRole('cashier')}
+                            className={`px-4 py-2.5 rounded-2xl font-black text-xs transition-all whitespace-nowrap shadow-sm ${filterRole === 'cashier' ? 'bg-slate-900 text-white shadow-slate-900/20' : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'}`}
+                        >
+                            🧾 Cajeros ({users.filter(u => u.roleCategory === 'cashier').length})
+                        </button>
+                    </div>
+
+                    {/* Search and Sort */}
                     <div className="flex flex-col md:flex-row gap-4">
                         <div className="flex-1 relative">
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                             <input
                                 type="text"
-                                placeholder="Buscar por nombre, correo o teléfono..."
+                                placeholder="Buscar por nombre, correo, teléfono o negocio..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                                className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
                             />
                         </div>
-                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-4 py-2">
-                            <Filter className="w-4 h-4 text-slate-400" />
-                            <select
-                                value={filterRole}
-                                onChange={(e) => setFilterRole(e.target.value)}
-                                className="bg-transparent text-sm font-bold text-slate-600 focus:outline-none cursor-pointer pr-4"
-                            >
-                                <option value="all">Todos los Roles</option>
-                                <option value="client">Clientes</option>
-                                <option value="delivery">Delivery</option>
-                                <option value="driver">Taxi</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                        </div>
-                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-4 py-2">
+                        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-4 py-2 shadow-sm">
                             <Users className="w-4 h-4 text-slate-400" />
                             <select
                                 value={sortBy}
@@ -376,6 +620,7 @@ export default function UsersManager() {
                                 className="bg-transparent text-sm font-bold text-slate-600 focus:outline-none cursor-pointer pr-4"
                             >
                                 <option value="recent">Más Recientes</option>
+                                <option value="activity">Mayor Actividad</option>
                                 <option value="referrals">Top Referidores</option>
                             </select>
                         </div>
@@ -387,7 +632,7 @@ export default function UsersManager() {
                                 <thead className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] border-b border-slate-100">
                                     <tr>
                                         <th className="px-6 py-5">Usuario</th>
-                                        <th className="px-6 py-5">Estado / Rol</th>
+                                        <th className="px-6 py-5">Rol / Negocio</th>
                                         <th className="px-6 py-5">Contacto</th>
                                         <th className="px-6 py-5">Actividad</th>
                                         <th className="px-6 py-5">Referidos / Pts</th>
@@ -409,7 +654,7 @@ export default function UsersManager() {
                                                         ) : (
                                                             <User className="w-6 h-6 text-slate-400" />
                                                         )}
-                                                        {isOnline(user.lastSeen) && (
+                                                        {isOnline(user.lastActiveAt) && (
                                                             <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full shadow-sm shadow-green-500/50"></div>
                                                         )}
                                                     </div>
@@ -421,17 +666,10 @@ export default function UsersManager() {
                                             </td>
                                             <td className="px-6 py-5">
                                                 <div className="flex flex-col gap-1.5">
-                                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${user.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                                        user.role === 'driver' ? 'bg-orange-100 text-orange-700' :
-                                                            user.role === 'delivery' ? 'bg-blue-100 text-blue-700' :
-                                                                'bg-slate-100 text-slate-600'
-                                                        }`}>
-                                                        {user.role === 'admin' ? 'Admin' :
-                                                            user.role === 'driver' ? 'Taxi' :
-                                                                user.role === 'delivery' ? 'Delivery' : 'Cliente'}
-                                                    </span>
-                                                    <span className={`text-[10px] font-bold ${isOnline(user.lastSeen) ? 'text-green-600' : 'text-slate-400'}`}>
-                                                        {isOnline(user.lastSeen) ? 'En Línea' : 'Desconectado'}
+                                                    {renderRoleBadge(user)}
+                                                    <span className={`text-[10px] font-bold ${isOnline(user.lastActiveAt) ? 'text-green-600 flex items-center gap-1' : 'text-slate-400'}`}>
+                                                        {isOnline(user.lastActiveAt) && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>}
+                                                        {isOnline(user.lastActiveAt) ? 'En Línea' : 'Desconectado'}
                                                     </span>
                                                 </div>
                                             </td>
@@ -447,11 +685,13 @@ export default function UsersManager() {
                                             </td>
                                             <td className="px-8 py-5">
                                                 <div className="flex flex-col gap-1">
-                                                    <div className="text-sm font-medium text-slate-600 flex items-center gap-2">
-                                                        <Clock className="w-3 h-3 text-slate-300" /> {formatUsage(user.totalUsageMinutes)}
+                                                    <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                                        <Clock className="w-3.5 h-3.5 text-primary" /> {formatUsage(user.activeMinutes)}
                                                     </div>
-                                                    <div className="text-[10px] font-bold text-slate-400">
-                                                        {user.lastLogin && parseDate(user.lastLogin) ? `Ult. vez: ${format(parseDate(user.lastLogin)!, 'dd/MM HH:mm')}` : 'Sin ingresos'}
+                                                    <div className="text-[10px] font-semibold text-slate-400">
+                                                        {user.lastActiveAt && parseDate(user.lastActiveAt)
+                                                            ? `Última: ${format(parseDate(user.lastActiveAt)!, 'dd/MM HH:mm')}`
+                                                            : 'Sin actividad'}
                                                     </div>
                                                 </div>
                                             </td>
@@ -648,19 +888,11 @@ export default function UsersManager() {
                                     <div>
                                         <h2 className="text-2xl font-black text-slate-900">{selectedUser.displayName || selectedUser.name || 'Sin Nombre'}</h2>
                                         <p className="text-slate-400 font-bold uppercase tracking-widest text-[9px] mt-1">ID: {selectedUser.id}</p>
-                                        <div className="flex items-center gap-2 mt-3">
-                                            <span className={`px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest ${selectedUser.role === 'admin' ? 'bg-purple-100 text-purple-700' :
-                                                selectedUser.role === 'driver' ? 'bg-orange-100 text-orange-700' :
-                                                    selectedUser.role === 'delivery' ? 'bg-blue-100 text-blue-700' :
-                                                        'bg-emerald-100 text-emerald-700'
-                                                }`}>
-                                                {selectedUser.role === 'admin' ? 'Administrador' :
-                                                    selectedUser.role === 'driver' ? 'Conductor Taxi' :
-                                                        selectedUser.role === 'delivery' ? 'Repartidor Delivery' : 'Cliente'}
-                                            </span>
-                                            {isOnline(selectedUser.lastSeen) && (
-                                                <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1">
-                                                    <Activity className="w-3 h-3" /> ACTIVO
+                                        <div className="flex flex-wrap items-center gap-2 mt-3">
+                                            {renderRoleBadge(selectedUser)}
+                                            {isOnline(selectedUser.lastActiveAt) && (
+                                                <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest flex items-center gap-1 border border-green-200">
+                                                    <Activity className="w-3 h-3" /> EN LÍNEA
                                                 </span>
                                             )}
                                         </div>
@@ -697,13 +929,17 @@ export default function UsersManager() {
                                             <Clock className="w-5 h-5 text-slate-900" />
                                         </div>
                                         <div>
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Uso de la App</p>
-                                            <p className="text-2xl font-black text-slate-900">{formatUsage(selectedUser.totalUsageMinutes)}</p>
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Tiempo Activo Acumulado</p>
+                                            <p className="text-2xl font-black text-slate-900">{formatUsage(selectedUser.activeMinutes)}</p>
                                         </div>
                                     </div>
                                     <div className="pt-4 border-t border-slate-200 flex justify-between items-center text-[10px] font-bold text-slate-500">
-                                        <span>Promedio histórico</span>
-                                        <span className="text-slate-900">Total</span>
+                                        <span>Última conexión</span>
+                                        <span className="text-slate-900 font-bold">
+                                            {selectedUser.lastActiveAt && parseDate(selectedUser.lastActiveAt)
+                                                ? format(parseDate(selectedUser.lastActiveAt)!, 'dd/MM/yyyy HH:mm')
+                                                : 'Sin registro'}
+                                        </span>
                                     </div>
                                 </div>
                             </div>

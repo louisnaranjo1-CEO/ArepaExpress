@@ -186,16 +186,52 @@ export default function PrintersManager() {
             {/* Header Area */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Estaciones de Impresión</h1>
-                    <p className="text-slate-500 font-medium">Gestiona los puntos de preparación (Cocina, Barra, etc.)</p>
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                        <Printer className="w-8 h-8 text-primary" />
+                        Estaciones de Impresión Térmica POS
+                    </h1>
+                    <p className="text-slate-500 font-medium mt-1">
+                        Diseñado para <strong>Impresoras Térmicas POS de Tickets, Facturas Rápidas y Comandas</strong> (papel de 58mm y 80mm con protocolo ESC/POS por Bluetooth, USB o Red Wi-Fi/IP).
+                    </p>
                 </div>
                 <button
                     onClick={() => handleOpenModal()}
-                    className="flex items-center justify-center gap-2 bg-primary text-slate-900 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-105 transition-transform active:scale-95"
+                    className="flex items-center justify-center gap-2 bg-primary text-slate-900 px-6 py-3 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-105 transition-transform active:scale-95 shrink-0"
                 >
                     <Plus className="w-5 h-5" />
                     Nueva Estación
                 </button>
+            </div>
+
+            {/* Banner Informativo de Compatibilidad de Hardware POS */}
+            <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 text-white rounded-3xl p-6 md:p-7 shadow-xl border border-slate-800 relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-80 h-80 bg-primary/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
+                <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                    <div className="space-y-2 max-w-2xl">
+                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-primary/20 text-primary border border-primary/30 rounded-full text-xs font-black uppercase tracking-wider">
+                            ⚡ Protocolo ESC/POS Estándar Industrial
+                        </div>
+                        <h2 className="text-xl md:text-2xl font-black tracking-tight text-white">
+                            Automatización de Tickets de Cocina y Barra
+                        </h2>
+                        <p className="text-slate-300 text-sm leading-relaxed">
+                            Conecta tus impresoras de rollo continuo térmico para imprimir comandas al instante al recibir pedidos de la App, dividir platos por áreas de preparación y despachar facturas de caja sin demoras.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 w-full md:w-auto shrink-0">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 flex flex-col">
+                            <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider">Papel Rollo</span>
+                            <span className="text-base font-black text-white mt-0.5">58mm & 80mm</span>
+                            <span className="text-[10px] text-slate-400">Tickets y comandas</span>
+                        </div>
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-3.5 flex flex-col">
+                            <span className="text-[10px] font-black uppercase text-emerald-400 tracking-wider">Conectividad</span>
+                            <span className="text-base font-black text-white mt-0.5">USB / BT / Wi-Fi</span>
+                            <span className="text-[10px] text-slate-400">ESC/POS & Red IP</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Search and Filters */}
@@ -204,7 +240,7 @@ export default function PrintersManager() {
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                     <input
                         type="text"
-                        placeholder="Buscar estación..."
+                        placeholder="Buscar estación por nombre (Cocina, Barra, Parrilla)..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-12 pr-4 py-3 bg-slate-50 border-none rounded-2xl focus:ring-2 focus:ring-primary/20 font-medium"
@@ -217,44 +253,73 @@ export default function PrintersManager() {
                 {filteredStations.map((station) => (
                     <div
                         key={station.id}
-                        className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 group hover:border-primary/20 transition-all"
+                        className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/40 border border-slate-100 group hover:border-primary/20 transition-all flex flex-col justify-between"
                     >
-                        <div className="flex items-start justify-between mb-4">
-                            <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-primary/10 transition-colors">
-                                <Printer className="w-6 h-6 text-slate-400 group-hover:text-slate-900 transition-colors" />
+                        <div>
+                            <div className="flex items-start justify-between mb-4">
+                                <div className="p-3 bg-slate-50 rounded-2xl group-hover:bg-primary/10 transition-colors">
+                                    <Printer className="w-6 h-6 text-slate-400 group-hover:text-slate-900 transition-colors" />
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => handleOpenModal(station)}
+                                        className="p-2 text-slate-400 hover:text-slate-900 hover:bg-primary/5 rounded-xl transition-all"
+                                        title="Editar Estación"
+                                    >
+                                        <Edit2 className="w-5 h-5" />
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(station.id)}
+                                        className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                                        title="Eliminar Estación"
+                                    >
+                                        <Trash2 className="w-5 h-5" />
+                                    </button>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                                <button
-                                    onClick={() => handleOpenModal(station)}
-                                    className="p-2 text-slate-400 hover:text-slate-900 hover:bg-primary/5 rounded-xl transition-all"
-                                >
-                                    <Edit2 className="w-5 h-5" />
-                                </button>
-                                <button
-                                    onClick={() => handleDelete(station.id)}
-                                    className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                                >
-                                    <Trash2 className="w-5 h-5" />
-                                </button>
+
+                            <h3 className="text-xl font-black text-slate-800 mb-2">{station.name}</h3>
+
+                            <div className="flex flex-wrap gap-1.5 mb-4">
+                                <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                                    Rollo Térmico 80/58mm
+                                </span>
+                                <span className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider">
+                                    ESC/POS
+                                </span>
                             </div>
+
+                            {/* Categorías asignadas */}
+                            {station.categories && station.categories.length > 0 && (
+                                <div className="mb-4">
+                                    <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-1.5">Categorías Asignadas:</p>
+                                    <div className="flex flex-wrap gap-1">
+                                        {station.categories.map((c: string) => (
+                                            <span key={c} className="px-2 py-0.5 bg-primary/10 text-slate-800 rounded-md text-[11px] font-bold">
+                                                {c}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
 
-                        <h3 className="text-xl font-black text-slate-800 mb-2">{station.name}</h3>
-
-                        <div className="flex items-center justify-between">
+                        <div>
+                            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
                                 <span className={`px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest ${station.isActive ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                                    {station.isActive ? 'Activa' : 'Inactiva'}
-                                </span>
-                        </div>
-
-                        {station.printerName && (
-                            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-2">
-                                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                                <span className="text-xs font-bold text-slate-500 truncate" title={station.printerName}>
-                                    USB: {station.printerName}
+                                    {station.isActive ? 'Estación Activa' : 'Inactiva'}
                                 </span>
                             </div>
-                        )}
+
+                            {station.printerName && (
+                                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center gap-2">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                                    <span className="text-xs font-bold text-slate-500 truncate" title={station.printerName}>
+                                        Hardware: {station.printerName}
+                                    </span>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 ))}
 
@@ -330,12 +395,29 @@ export default function PrintersManager() {
                                 </div>
 
                                 <div className="space-y-3">
-                                    <label className="text-sm font-black text-slate-500 uppercase tracking-widest ml-1">Conexión Física (Opcional)</label>
+                                    <label className="text-sm font-black text-slate-500 uppercase tracking-widest ml-1">Formato de Papel Térmico</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="p-3 bg-slate-50 border-2 border-primary/40 rounded-2xl flex flex-col">
+                                            <span className="text-xs font-black text-slate-800">Rollo 80mm</span>
+                                            <span className="text-[10px] text-slate-500">Recomendado para comandas completas de cocina y barra</span>
+                                        </div>
+                                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col">
+                                            <span className="text-xs font-black text-slate-800">Rollo 58mm</span>
+                                            <span className="text-[10px] text-slate-500">Tickets compactos y facturación rápida de mostrador</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 font-medium px-1 italic">
+                                        * Compatible con comandos ESC/POS universales (Epson, Xprinter, Star Micronics, POS-58, POS-80, Bixolon, etc.).
+                                    </p>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-sm font-black text-slate-500 uppercase tracking-widest ml-1">Conexión de Hardware POS (Opcional)</label>
                                     <div className="bg-slate-50 p-4 rounded-[1.5rem] border-2 border-slate-100 flex flex-col gap-3">
                                         <div className="flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                                 <Printer className="w-5 h-5 text-slate-400" />
-                                                <span className="font-bold text-slate-700">Impresora USB</span>
+                                                <span className="font-bold text-slate-700">Impresora USB Directa</span>
                                             </div>
                                             {formData.vendorId ? (
                                                 <span className="px-3 py-1 bg-emerald-100 text-emerald-700 text-xs font-black rounded-xl flex items-center gap-1">
@@ -367,14 +449,14 @@ export default function PrintersManager() {
                                                     });
                                                 }
                                             }}
-                                            className="w-full mt-2 bg-white border-2 border-primary/20 text-slate-900 hover:bg-primary hover:text-slate-900 transition-colors py-3 rounded-xl font-bold flex items-center justify-center gap-2"
+                                            className="w-full mt-2 bg-white border-2 border-primary/20 text-slate-900 hover:bg-primary hover:text-slate-900 transition-colors py-3 rounded-xl font-bold flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                                         >
                                             <AlertCircle className="w-4 h-4" />
                                             {formData.vendorId ? 'Cambiar Impresora USB' : 'Vincular Impresora USB'}
                                         </button>
-                                        <p className="text-[10px] text-slate-400 text-center uppercase tracking-wider font-bold">
-                                            Requiere navegador compatible (Chrome/Edge)
-                                        </p>
+                                        <div className="p-2.5 bg-blue-50/60 rounded-xl border border-blue-100 text-[11px] text-slate-600 leading-snug">
+                                            <strong>Nota para Bluetooth o Red Wi-Fi/IP:</strong> Si tu impresora está conectada por Bluetooth o red local en el equipo POS, la app imprimirá automáticamente mediante el diálogo ESC/POS del sistema operativo.
+                                        </div>
                                     </div>
                                 </div>
 

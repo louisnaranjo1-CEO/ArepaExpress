@@ -1,115 +1,116 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity, Image as ImageIcon, UploadCloud, Trash2, Globe, Layout, CheckCircle, XCircle, Store, Bike } from 'lucide-react';
+import {
+    Save, Layout, CheckCircle, XCircle, Store, Sparkles, Calendar,
+    DollarSign, Percent, Gift, ShoppingBag, Box, Bell, Users, Megaphone,
+    Star, UserCheck, ShieldCheck, Grid, Printer, Check, Lock, Unlock, Clock, AlertCircle
+} from 'lucide-react';
 import toast from 'react-hot-toast';
+
+interface PlanConfig {
+    id: 'emprendedor' | 'corporativo';
+    name: string;
+    price: number;
+    description: string;
+    features: Record<string, boolean>;
+}
+
+interface SubscriptionPlansConfig {
+    freeTrialEnabled: boolean;
+    freeTrialLabel: string;
+    transitionDate: string;
+    defaultTransitionPlanId: 'emprendedor' | 'corporativo';
+    plans: PlanConfig[];
+}
+
+const DEFAULT_CONFIG: SubscriptionPlansConfig = {
+    freeTrialEnabled: true,
+    freeTrialLabel: "Gratis por tiempo limitado (Lanzamiento)",
+    transitionDate: "2026-12-31",
+    defaultTransitionPlanId: "emprendedor",
+    plans: [
+        {
+            id: "emprendedor",
+            name: "Plan Aliado Emprendedor",
+            price: 15,
+            description: "Ideal para negocios en crecimiento con recepción de pedidos, catálogo, fidelización y caja integrada.",
+            features: {
+                orders: true,
+                cash_internal: true,
+                products: true,
+                notifications: true,
+                clients: true,
+                loyalty: true,
+                ads_and_push: true,
+                reviews: true,
+                waiters: false,
+                cashiers: false,
+                tables: false,
+                printer_stations: false
+            }
+        },
+        {
+            id: "corporativo",
+            name: "Plan Aliado Corporativo",
+            price: 30,
+            description: "Ecosistema completo con apps adicionales de Meseros, Cajeras, Gestión de Mesas QR y Estaciones de Impresión Térmica POS.",
+            features: {
+                orders: true,
+                cash_internal: true,
+                products: true,
+                notifications: true,
+                clients: true,
+                loyalty: true,
+                ads_and_push: true,
+                reviews: true,
+                waiters: true,
+                cashiers: true,
+                tables: true,
+                printer_stations: true
+            }
+        }
+    ]
+};
+
+const MODULE_OPTIONS = [
+    { key: 'orders', label: 'Recibir Pedidos', icon: ShoppingBag, defaultEmprendedor: true },
+    { key: 'cash_internal', label: 'Caja Interna', icon: DollarSign, defaultEmprendedor: true },
+    { key: 'products', label: 'Productos', icon: Box, defaultEmprendedor: true },
+    { key: 'notifications', label: 'Notificaciones', icon: Bell, defaultEmprendedor: true },
+    { key: 'clients', label: 'Clientes', icon: Users, defaultEmprendedor: true },
+    { key: 'loyalty', label: 'Fidelización', icon: Gift, defaultEmprendedor: true },
+    { key: 'ads_and_push', label: 'Publicidad y Campañas Push', icon: Megaphone, defaultEmprendedor: true },
+    { key: 'reviews', label: 'Reseñas', icon: Star, defaultEmprendedor: true },
+    { key: 'waiters', label: 'Meseros (App)', icon: UserCheck, defaultEmprendedor: false },
+    { key: 'cashiers', label: 'Cajeras (App)', icon: ShieldCheck, defaultEmprendedor: false },
+    { key: 'tables', label: 'Mesas QR', icon: Grid, defaultEmprendedor: false },
+    { key: 'printer_stations', label: 'Estaciones de Impresión Térmica', icon: Printer, defaultEmprendedor: false },
+];
 
 export default function FinancesManager() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
-    const [uploadingLogo, setUploadingLogo] = useState<string | null>(null);
-    const [activeTab, setActiveTab] = useState<'payments' | 'subscriptions' | 'banners' | 'delivery'>('payments');
-    const [bannerRequests, setBannerRequests] = useState<any[]>([]);
+    const [plansConfig, setPlansConfig] = useState<SubscriptionPlansConfig>(DEFAULT_CONFIG);
     const [restaurants, setRestaurants] = useState<any[]>([]);
 
-    // Default configuration structure
-    const [config, setConfig] = useState<any>({
-        paymentMethods: {
-            pagoMovil: {
-                active: true,
-                bank: '',
-                phone: '',
-                idf: '',
-                logoUrl: ''
-            },
-            zelle: {
-                active: false,
-                email: '',
-                name: '',
-                logoUrl: ''
-            },
-            transfer: {
-                active: false,
-                bank: '',
-                accountNumber: '',
-                name: '',
-                idf: '',
-                logoUrl: ''
-            },
-            cash: {
-                active: true,
-                logoUrl: ''
-            }
-        }
-    });
-
-    const [subscriptionConfig, setSubscriptionConfig] = useState<any>({
-        plans: {
-            national: {
-                id: 'national',
-                name: 'Plan Nacional',
-                price: 0,
-                updateLimit: 3,
-                scope: 'national',
-                availability: 'available'
-            },
-            state: {
-                id: 'state',
-                name: 'Plan Estadal',
-                price: 0,
-                updateLimit: 3,
-                scope: 'state',
-                availability: 'available'
-            },
-            city: {
-                id: 'city',
-                name: 'Plan Municipal',
-                price: 0,
-                updateLimit: 3,
-                scope: 'city',
-                availability: 'available'
-            }
-        },
-        bannerUpdateLimit: 3,
-        allyPrice: 4.99
-    });
-
     useEffect(() => {
-        const fetchConfig = async () => {
+        const fetchPlansConfig = async () => {
             try {
-                // Fetch Finance Config
-                const { data: finData } = await supabase
-                    .from('app_settings')
+                const { data, error } = await supabase
+                    .from('system_settings')
                     .select('*')
-                    .eq('id', 'finances')
+                    .eq('key', 'subscription_plans_config')
                     .maybeSingle();
 
-                if (finData?.data) {
-                    const data = finData.data;
-                    const mergedPaymentMethods = { ...config.paymentMethods };
-                    if (data.paymentMethods) {
-                        Object.keys(data.paymentMethods).forEach(key => {
-                            mergedPaymentMethods[key] = {
-                                ...mergedPaymentMethods[key],
-                                ...data.paymentMethods[key]
-                            };
-                        });
-                    }
-                    setConfig({ paymentMethods: mergedPaymentMethods });
-                }
-
-                // Fetch Subscription Config
-                const { data: subData } = await supabase
-                    .from('app_settings')
-                    .select('*')
-                    .eq('id', 'subscriptions')
-                    .maybeSingle();
-
-                if (subData?.data) {
-                    setSubscriptionConfig(subData.data);
+                if (data?.value) {
+                    setPlansConfig({
+                        ...DEFAULT_CONFIG,
+                        ...data.value,
+                        plans: data.value.plans || DEFAULT_CONFIG.plans
+                    });
                 }
             } catch (error) {
-                console.error("Error fetching configs:", error);
-                toast.error("Error al cargar la configuración.");
+                console.error("Error fetching subscription_plans_config:", error);
             } finally {
                 setIsLoading(false);
             }
@@ -128,31 +129,15 @@ export default function FinancesManager() {
                     })));
                 }
             } catch (error) {
-                console.error("Error fetching restaurants for subscriptions:", error);
+                console.error("Error fetching restaurants:", error);
             }
         };
 
-        const fetchBanners = async () => {
-            try {
-                const { data } = await supabase
-                    .from('banners')
-                    .select('*')
-                    .order('created_at', { ascending: false });
-                if (data) {
-                    setBannerRequests(data);
-                }
-            } catch (error) {
-                console.error("Error fetching banner requests:", error);
-            }
-        };
-
-        fetchConfig();
+        fetchPlansConfig();
         fetchRestaurants();
-        fetchBanners();
 
-        const channel = supabase.channel('admin_finances_realtime')
+        const channel = supabase.channel('admin_finances_plans_realtime')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'comercios' }, () => fetchRestaurants())
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'banners' }, () => fetchBanners())
             .subscribe();
 
         return () => {
@@ -163,34 +148,62 @@ export default function FinancesManager() {
     const handleSave = async () => {
         setIsSaving(true);
         try {
-            await Promise.all([
-                supabase.from('app_settings').upsert({
-                    id: 'finances',
-                    data: config,
+            const { error } = await supabase
+                .from('system_settings')
+                .upsert({
+                    key: 'subscription_plans_config',
+                    value: plansConfig,
                     updated_at: new Date().toISOString()
-                }),
-                supabase.from('app_settings').upsert({
-                    id: 'subscriptions',
-                    data: subscriptionConfig,
-                    updated_at: new Date().toISOString()
-                })
-            ]);
-            toast.success("Configuración guardada correctamente");
-        } catch (error) {
-            console.error("Error saving configs:", error);
-            toast.error("Error al guardar la configuración");
+                });
+
+            if (error) throw error;
+            toast.success("Configuración global de planes guardada correctamente");
+        } catch (error: any) {
+            console.error("Error saving plans config:", error);
+            toast.error("Error al guardar configuración: " + (error.message || 'Error de red'));
         } finally {
             setIsSaving(false);
         }
     };
 
+    const handleUpdatePlan = (planId: 'emprendedor' | 'corporativo', field: string, val: any) => {
+        setPlansConfig(prev => {
+            const updatedPlans = prev.plans.map(p => {
+                if (p.id === planId) {
+                    return { ...p, [field]: val };
+                }
+                return p;
+            });
+            return { ...prev, plans: updatedPlans };
+        });
+    };
+
+    const handleTogglePlanFeature = (planId: 'emprendedor' | 'corporativo', featureKey: string) => {
+        setPlansConfig(prev => {
+            const updatedPlans = prev.plans.map(p => {
+                if (p.id === planId) {
+                    const currentFeatures = p.features || {};
+                    return {
+                        ...p,
+                        features: {
+                            ...currentFeatures,
+                            [featureKey]: !currentFeatures[featureKey]
+                        }
+                    };
+                }
+                return p;
+            });
+            return { ...prev, plans: updatedPlans };
+        });
+    };
+
     const handleRenewSubscription = async (restaurantId: string) => {
         if (!window.confirm("¿Confirmas que este local ha pagado su suscripción? Se habilitarán 30 días adicionales de servicio.")) return;
-        
+
         try {
             const nextMonth = new Date();
             nextMonth.setDate(nextMonth.getDate() + 30);
-            
+
             const { error } = await supabase
                 .from('comercios')
                 .update({
@@ -208,640 +221,453 @@ export default function FinancesManager() {
         }
     };
 
-    const handleUpdateBannerStatus = async (id: string, newStatus: 'approved' | 'rejected') => {
-        try {
-            const { error } = await supabase
-                .from('banners')
-                .update({ 
-                    status: newStatus,
-                    is_active: newStatus === 'approved' 
-                })
-                .eq('id', id);
-
-            if (error) throw error;
-            setBannerRequests(prev => prev.map(b => b.id === id ? { ...b, status: newStatus, isActive: newStatus === 'approved' } : b));
-            toast.success(`Solicitud ${newStatus === 'approved' ? 'aprobada' : 'rechazada'}`);
-        } catch (error) {
-            console.error(error);
-            toast.error("Error al actualizar el estado");
-        }
-    };
-
-    const handleLogoUpload = async (methodId: string, file: File) => {
-        setUploadingLogo(methodId);
-        try {
-            const filePath = `payment_logos/${methodId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
-            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
-            if (upErr) throw upErr;
-            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
-            const downloadURL = pubData.publicUrl;
-
-            // 1. Update local state
-            const updatedConfig = {
-                ...config,
-                paymentMethods: {
-                    ...config.paymentMethods,
-                    [methodId]: {
-                        ...config.paymentMethods[methodId],
-                        logoUrl: downloadURL
-                    }
-                }
-            };
-            setConfig(updatedConfig);
-
-            // 2. Perform update in Supabase
-            await supabase.from('app_settings').upsert({
-                id: 'finances',
-                data: updatedConfig,
-                updated_at: new Date().toISOString()
-            });
-
-            toast.success("Logo guardado correctamente");
-        } catch (error: any) {
-            console.error("Error uploading logo:", error);
-            toast.error("Error al procesar el logo.");
-        } finally {
-            setUploadingLogo(null);
-        }
-    };
-
     if (isLoading) {
         return (
-            <div className="flex-1 flex items-center justify-center min-h-[400px]">
+            <div className="flex justify-center items-center h-64">
                 <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
             </div>
         );
     }
 
-    const LogoSection = ({ methodId }: { methodId: string }) => (
-        <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-4">
-            <div className="relative group">
-                <div className="w-16 h-16 rounded-2xl border-2 border-dashed border-slate-200 flex items-center justify-center bg-slate-50 overflow-hidden relative">
-                    {config.paymentMethods[methodId]?.logoUrl ? (
-                        <img 
-                            src={config.paymentMethods[methodId]?.logoUrl} 
-                            alt="Logo" 
-                            className="w-full h-full object-contain p-2" 
-                        />
-                    ) : (
-                        <ImageIcon className="w-6 h-6 text-slate-300" />
-                    )}
-
-                    {uploadingLogo === methodId && (
-                        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm flex items-center justify-center">
-                            <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            <div className="flex-1">
-                <p className="text-xs font-bold text-slate-700">Logo del Método</p>
-                <p className="text-[10px] text-slate-400">Recomendado PNG transparente 200x200</p>
-                
-                <div className="mt-2 flex items-center gap-2">
-                    <label className="cursor-pointer bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-xl transition-all flex items-center gap-1.5">
-                        <UploadCloud className="w-3.5 h-3.5" />
-                        <span>Subir</span>
-                        <input 
-                            type="file" 
-                            accept="image/*" 
-                            className="hidden" 
-                            onChange={(e) => {
-                                const file = e.target.files?.[0];
-                                if (file) handleLogoUpload(methodId, file);
-                            }}
-                        />
-                    </label>
-
-                    {config.paymentMethods[methodId]?.logoUrl && (
-                        <button
-                            type="button"
-                            onClick={async () => {
-                                const updatedConfig = {
-                                    ...config,
-                                    paymentMethods: {
-                                        ...config.paymentMethods,
-                                        [methodId]: { ...config.paymentMethods[methodId], logoUrl: '' }
-                                    }
-                                };
-                                setConfig(updatedConfig);
-                                try {
-                                    await supabase.from('app_settings').upsert({
-                                        id: 'finances',
-                                        data: updatedConfig,
-                                        updated_at: new Date().toISOString()
-                                    });
-                                    toast.success("Logo eliminado");
-                                } catch (err) {
-                                    console.error(err);
-                                    toast.error("Error al actualizar la base de datos");
-                                }
-                            }}
-                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-                        >
-                            <Trash2 className="w-4 h-4" />
-                        </button>
-                    )}
-                </div>
-            </div>
-        </div>
-    );
+    const emprendedorPlan = plansConfig.plans.find(p => p.id === 'emprendedor') || DEFAULT_CONFIG.plans[0];
+    const corporativoPlan = plansConfig.plans.find(p => p.id === 'corporativo') || DEFAULT_CONFIG.plans[1];
 
     return (
-        <div className="max-w-4xl mx-auto space-y-6">
-            <header className="flex items-center justify-between mb-8 pb-6 border-b border-slate-100">
+        <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20">
+            {/* Header */}
+            <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
                 <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
-                        {activeTab === 'payments' ? <Wallet className="w-6 h-6 text-white" /> : <Layout className="w-6 h-6 text-white" />}
+                    <div className="w-14 h-14 bg-primary/10 border border-primary/20 rounded-2xl flex items-center justify-center text-slate-900 shadow-sm">
+                        <Layout className="w-7 h-7 text-primary" />
                     </div>
                     <div>
-                        <h1 className="text-2xl font-black text-slate-900">
-                            {activeTab === 'payments' ? 'Finanzas y Pagos' : activeTab === 'subscriptions' ? 'Planes de Suscripción' : 'Solicitudes de Banners'}
-                        </h1>
-                        <p className="text-sm font-medium text-slate-500 mt-0.5">
-                            {activeTab === 'payments'
-                                ? 'Configura cómo tus clientes te pagan'
-                                : activeTab === 'subscriptions'
-                                    ? 'Gestiona los planes de suscripción para restaurantes'
-                                    : activeTab === 'banners'
-                                        ? 'Aprueba o rechaza banners pagados por restaurantes'
-                                        : 'Gestiona las deudas de delivery express de los restaurantes'
-                            }
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-3xl font-black text-slate-900 tracking-tight">Finanzas y Planes de Suscripción</h1>
+                            <span className="px-2.5 py-1 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase">
+                                Global SaaS
+                            </span>
+                        </div>
+                        <p className="text-sm font-medium text-slate-500 mt-1">
+                            Configura los planes Emprendedor y Corporativo, el período gratuito global y las suscripciones de los locales.
                         </p>
                     </div>
                 </div>
+
                 <button
                     onClick={handleSave}
                     disabled={isSaving}
-                    className="flex items-center gap-2 bg-primary text-slate-900 px-6 py-3.5 rounded-2xl font-black hover:bg-primary active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50"
+                    className="flex items-center justify-center gap-2.5 bg-primary text-slate-900 px-8 py-4 rounded-2xl font-black hover:bg-primary active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 cursor-pointer text-sm uppercase tracking-wider shrink-0"
                 >
                     <Save className="w-5 h-5" />
                     {isSaving ? 'Guardando...' : 'Guardar Cambios'}
                 </button>
             </header>
 
-            {/* Tabs */}
-            <div className="flex bg-slate-100 p-1.5 rounded-2xl w-fit mb-8">
-                <button
-                    onClick={() => setActiveTab('payments')}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'payments'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <Wallet className="w-4 h-4" />
-                    Métodos de Pago
-                </button>
-                <button
-                    onClick={() => setActiveTab('subscriptions')}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'subscriptions'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <Layout className="w-4 h-4" />
-                    Suscripciones
-                </button>
-                <button
-                    onClick={() => setActiveTab('banners')}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-black transition-all ${activeTab === 'banners'
-                        ? 'bg-white text-slate-900 shadow-sm'
-                        : 'text-slate-500 hover:text-slate-700'
-                        }`}
-                >
-                    <ImageIcon className="w-4 h-4" />
-                    Banners
-                </button>
+            {/* SECCIÓN A: CONFIGURACIÓN GLOBAL "GRATIS POR TIEMPO LIMITADO (LANZAMIENTO)" */}
+            <div className={`p-8 rounded-[36px] border-2 transition-all shadow-sm ${
+                plansConfig.freeTrialEnabled
+                    ? 'bg-gradient-to-br from-emerald-50/70 to-emerald-100/40 border-emerald-300'
+                    : 'bg-white border-slate-200'
+            }`}>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex items-start gap-4">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+                            plansConfig.freeTrialEnabled ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20' : 'bg-slate-100 text-slate-400'
+                        }`}>
+                            <Sparkles className="w-6 h-6" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                                    🎉 Gratis por tiempo limitado (Lanzamiento)
+                                </h2>
+                                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                    plansConfig.freeTrialEnabled ? 'bg-emerald-200 text-emerald-900' : 'bg-slate-200 text-slate-600'
+                                }`}>
+                                    {plansConfig.freeTrialEnabled ? 'Activo en toda la App' : 'Desactivado'}
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-600 font-medium mt-1 leading-relaxed max-w-2xl">
+                                Al activar este botón global, todos los negocios en modalidad de suscripción disfrutarán de acceso sin cobro mensual obligatorio hasta la fecha indicada. Al culminar, la plataforma comenzará el cobro del plan predeterminado.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* Switch Toggle */}
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                        <input
+                            type="checkbox"
+                            className="sr-only peer"
+                            checked={plansConfig.freeTrialEnabled}
+                            onChange={(e) => setPlansConfig({ ...plansConfig, freeTrialEnabled: e.target.checked })}
+                        />
+                        <div className="w-14 h-8 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-emerald-500 shadow-inner"></div>
+                    </label>
+                </div>
+
+                {/* Parámetros del Período Gratuito */}
+                <div className="mt-6 pt-6 border-t border-slate-200/60 grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                            <Calendar className="w-4 h-4 text-emerald-600" />
+                            Fecha en que finalizará el período gratis (transitionDate)
+                        </label>
+                        <input
+                            type="date"
+                            value={plansConfig.transitionDate}
+                            onChange={(e) => setPlansConfig({ ...plansConfig, transitionDate: e.target.value })}
+                            className="w-full bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-2xl p-3.5 text-sm font-bold text-slate-800 outline-none transition-all shadow-xs"
+                        />
+                        <p className="text-[11px] text-slate-500 font-medium">
+                            Hasta las 23:59 de este día los comercios no pagarán mensualidad.
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                            Plan por defecto al finalizar el período gratuito
+                        </label>
+                        <select
+                            value={plansConfig.defaultTransitionPlanId || 'emprendedor'}
+                            onChange={(e) => setPlansConfig({ ...plansConfig, defaultTransitionPlanId: e.target.value as any })}
+                            className="w-full bg-white border-2 border-slate-200 focus:border-emerald-500 rounded-2xl p-3.5 text-sm font-bold text-slate-800 outline-none transition-all shadow-xs cursor-pointer"
+                        >
+                            <option value="emprendedor">Plan Aliado Emprendedor ($15/mes)</option>
+                            <option value="corporativo">Plan Aliado Corporativo ($30/mes)</option>
+                        </select>
+                        <p className="text-[11px] text-slate-500 font-medium">
+                            Plan que se les asignará por defecto tras la culminación del lanzamiento.
+                        </p>
+                    </div>
+                </div>
             </div>
 
-            {activeTab === 'payments' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
-                    {/* Pago Móvil */}
-                    <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.pagoMovil.active ? 'border-primary shadow-lg shadow-primary/5' : 'border-slate-100'}`}>
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-slate-900">
-                                    <CreditCard className="w-5 h-5" />
-                                </div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Pago Móvil</h3>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={config.paymentMethods.pagoMovil.active}
-                                    onChange={e => setConfig((prev: any) => ({
-                                        ...prev,
-                                        paymentMethods: { ...prev.paymentMethods, pagoMovil: { ...prev.paymentMethods.pagoMovil, active: e.target.checked } }
-                                    }))}
-                                />
-                                <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                            </label>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Banco</label>
-                                <input type="text" placeholder="Ej: Banesco"
-                                    value={config.paymentMethods.pagoMovil.bank}
-                                    onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, pagoMovil: { ...prev.paymentMethods.pagoMovil, bank: e.target.value } } }))}
-                                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold focus:ring-2 focus:ring-primary/20 transition-all outline-none" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase px-1">Teléfono</label>
-                                    <input type="text" placeholder="0412..."
-                                        value={config.paymentMethods.pagoMovil.phone}
-                                        onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, pagoMovil: { ...prev.paymentMethods.pagoMovil, phone: e.target.value } } }))}
-                                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none" />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase px-1">Cédula</label>
-                                    <input type="text" placeholder="V-123..."
-                                        value={config.paymentMethods.pagoMovil.idf}
-                                        onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, pagoMovil: { ...prev.paymentMethods.pagoMovil, idf: e.target.value } } }))}
-                                        className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none" />
-                                </div>
-                            </div>
-                        </div>
-                        <LogoSection methodId="pagoMovil" />
-                    </div>
-
-                    {/* Zelle */}
-                    <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.zelle.active ? 'border-primary shadow-lg shadow-primary/5' : 'border-slate-100'}`}>
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-primary">
-                                    <Globe className="w-5 h-5" />
-                                </div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Zelle</h3>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={config.paymentMethods.zelle.active}
-                                    onChange={e => setConfig((prev: any) => ({
-                                        ...prev,
-                                        paymentMethods: { ...prev.paymentMethods, zelle: { ...prev.paymentMethods.zelle, active: e.target.checked } }
-                                    }))}
-                                />
-                                <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
-                            </label>
-                        </div>
-
-                        <div className="space-y-4">
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Correo Electrónico</label>
-                                <input type="email" placeholder="email@zelle.com"
-                                    value={config.paymentMethods.zelle.email}
-                                    onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, zelle: { ...prev.paymentMethods.zelle, email: e.target.value } } }))}
-                                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none" />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase px-1">Nombre Completo</label>
-                                <input type="text" placeholder="Titular de cuenta"
-                                    value={config.paymentMethods.zelle.name}
-                                    onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, zelle: { ...prev.paymentMethods.zelle, name: e.target.value } } }))}
-                                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none" />
-                            </div>
-                        </div>
-                        <LogoSection methodId="zelle" />
-                    </div>
-
-                    {/* Transferencia */}
-                    <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.transfer.active ? 'border-orange-500 shadow-lg shadow-orange-500/5' : 'border-slate-100'}`}>
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-orange-50 rounded-xl flex items-center justify-center text-orange-600">
-                                    <Activity className="w-5 h-5" />
-                                </div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Transferencia</h3>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={config.paymentMethods.transfer.active}
-                                    onChange={e => setConfig((prev: any) => ({
-                                        ...prev,
-                                        paymentMethods: { ...prev.paymentMethods, transfer: { ...prev.paymentMethods.transfer, active: e.target.checked } }
-                                    }))}
-                                />
-                                <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                            </label>
-                        </div>
-
-                        <div className="space-y-4">
-                            <input type="text" placeholder="Banco"
-                                value={config.paymentMethods.transfer.bank}
-                                onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, transfer: { ...prev.paymentMethods.transfer, bank: e.target.value } } }))}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none" />
-                            <input type="text" placeholder="Número de Cuenta"
-                                value={config.paymentMethods.transfer.accountNumber}
-                                onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, transfer: { ...prev.paymentMethods.transfer, accountNumber: e.target.value } } }))}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none" />
-                            <input type="text" placeholder="Nombre"
-                                value={config.paymentMethods.transfer.name}
-                                onChange={e => setConfig((prev: any) => ({ ...prev, paymentMethods: { ...prev.paymentMethods, transfer: { ...prev.paymentMethods.transfer, name: e.target.value } } }))}
-                                className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm font-bold outline-none" />
-                        </div>
-                        <LogoSection methodId="transfer" />
-                    </div>
-
-
-                    {/* Efectivo */}
-                    <div className={`p-6 bg-white rounded-[32px] border-2 transition-all flex flex-col ${config.paymentMethods.cash.active ? 'border-emerald-500 shadow-lg shadow-emerald-500/5' : 'border-slate-100'}`}>
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                                    <DollarSign className="w-5 h-5" />
-                                </div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Efectivo</h3>
-                            </div>
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={config.paymentMethods.cash.active}
-                                    onChange={e => setConfig((prev: any) => ({
-                                        ...prev,
-                                        paymentMethods: { ...prev.paymentMethods, cash: { ...prev.paymentMethods.cash, active: e.target.checked } }
-                                    }))}
-                                />
-                                <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                            </label>
-                        </div>
-
-                        <div className="flex-1 flex items-center justify-center p-4 bg-emerald-50/50 rounded-2xl border border-emerald-100 line-dashed">
-                            <p className="text-xs font-bold text-emerald-700 text-center">Sin campos adicionales requeridos para pago en efectivo.</p>
-                        </div>
-                        <LogoSection methodId="cash" />
-                    </div>
+            {/* SECCIÓN B: CONFIGURACIÓN DE LOS 2 PLANES SAAS */}
+            <div className="space-y-6">
+                <div>
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                        <Store className="w-6 h-6 text-slate-800" />
+                        Configuración de Planes para Negocios Aliados
+                    </h2>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                        Edita los precios, nombres, descripciones y los módulos que cada plan desbloquea en la App de Negocios.
+                    </p>
                 </div>
-            ) : activeTab === 'subscriptions' ? (
-                <div className="space-y-6 pb-20">
-                    <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-primary">
-                                <Activity className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Configuración de Planes (Banners)</h3>
-                                <p className="text-sm text-slate-500">Define los costos y límites para cada nivel de publicidad con banners</p>
-                            </div>
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            {Object.values(subscriptionConfig.plans).map((plan: any) => (
-                                <div key={plan.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 space-y-6">
-                                    <div className="flex items-center justify-between">
-                                        <h4 className="font-black text-slate-900 capitalize">{plan.name}</h4>
-                                        <div className="px-3 py-1 bg-indigo-100 text-primary rounded-full text-[10px] font-black uppercase">
-                                            {plan.scope === 'national' ? 'Todo el País' : plan.scope === 'state' ? 'Por Estado' : 'Por Ciudad'}
-                                        </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* 1. PLAN ALIADO EMPRENDEDOR */}
+                    <div className="bg-white rounded-[36px] border-2 border-slate-200 p-8 shadow-sm space-y-6 flex flex-col justify-between">
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-black">
+                                        🚀
                                     </div>
-
-                                    <div className="space-y-4">
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase px-1">Precio Mensual ($)</label>
-                                            <input
-                                                type="number"
-                                                value={plan.price}
-                                                onChange={e => {
-                                                    const newPlans = { ...subscriptionConfig.plans };
-                                                    newPlans[plan.id] = { ...plan, price: Number(e.target.value) };
-                                                    setSubscriptionConfig({ ...subscriptionConfig, plans: newPlans });
-                                                }}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase px-1">Límite de Banners</label>
-                                            <input
-                                                type="number"
-                                                value={plan.updateLimit}
-                                                onChange={e => {
-                                                    const newPlans = { ...subscriptionConfig.plans };
-                                                    newPlans[plan.id] = { ...plan, updateLimit: Number(e.target.value) };
-                                                    setSubscriptionConfig({ ...subscriptionConfig, plans: newPlans });
-                                                }}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
-                                            />
-                                            <p className="text-[10px] text-slate-500 mt-1 px-1">Cambios de banners permitidos al mes</p>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase px-1">Disponibilidad</label>
-                                            <select
-                                                value={plan.availability || 'available'}
-                                                onChange={e => {
-                                                    const newPlans = { ...subscriptionConfig.plans };
-                                                    newPlans[plan.id] = { ...plan, availability: e.target.value };
-                                                    setSubscriptionConfig({ ...subscriptionConfig, plans: newPlans });
-                                                }}
-                                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-primary/20"
-                                            >
-                                                <option value="available">Disponible</option>
-                                                <option value="not_available">No disponible</option>
-                                                <option value="full">Cupos llenos</option>
-                                                <option value="soon">Muy pronto</option>
-                                            </select>
-                                        </div>
+                                    <div>
+                                        <h3 className="font-black text-slate-900 text-lg">Plan Aliado Emprendedor</h3>
+                                        <span className="text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                            Plan Esencial
+                                        </span>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-
-                        <div className="mt-8 pt-8 border-t border-slate-100">
-                            <div className="flex items-center gap-3 mb-6">
-                                <div className="w-10 h-10 bg-green-50 rounded-xl flex items-center justify-center text-green-600">
-                                    <Store className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <h3 className="font-black text-slate-800 tracking-tight text-lg">Suscripción para ser Aliado</h3>
-                                    <p className="text-sm text-slate-500">Monto mensual que deben pagar los locales para mantener su sitio activo</p>
-                                </div>
                             </div>
 
-                            <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100 max-w-sm">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase px-1">Costo Mensual de Aliado ($)</label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Nombre del Plan</label>
                                     <input
-                                        type="number"
-                                        value={subscriptionConfig.allyPrice !== undefined ? subscriptionConfig.allyPrice : 4.99}
-                                        onChange={e => {
-                                            setSubscriptionConfig({ ...subscriptionConfig, allyPrice: Number(e.target.value) });
-                                        }}
-                                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-green-600/20"
+                                        type="text"
+                                        value={emprendedorPlan.name}
+                                        onChange={(e) => handleUpdatePlan('emprendedor', 'name', e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-primary transition-all"
                                     />
-                                    <p className="text-[10px] text-slate-500 mt-2 px-1">Pago recurrente necesario para renovaciones (+30 días).</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Precio Mensual ($ USD)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            value={emprendedorPlan.price}
+                                            onChange={(e) => handleUpdatePlan('emprendedor', 'price', parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pl-8 text-sm font-black text-slate-900 outline-none focus:bg-white focus:border-primary transition-all"
+                                        />
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="mt-8 pt-8 border-t border-slate-100">
-                            <div className="flex items-start gap-4 p-6 bg-amber-50 rounded-3xl border border-amber-100">
-                                <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 flex-shrink-0">
-                                    <Receipt className="w-5 h-5" />
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Descripción de Bondades</label>
+                                <textarea
+                                    rows={2}
+                                    value={emprendedorPlan.description}
+                                    onChange={(e) => handleUpdatePlan('emprendedor', 'description', e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-700 outline-none focus:bg-white focus:border-primary transition-all resize-none"
+                                />
+                            </div>
+
+                            {/* Checkboxes de módulos */}
+                            <div className="space-y-2 pt-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                                        Módulos Incluidos en Plan Emprendedor
+                                    </label>
+                                    <span className="text-[10px] font-bold text-slate-400">
+                                        (Por defecto bloquea Meseros, Cajeras, Mesas, Estaciones)
+                                    </span>
                                 </div>
-                                <div>
-                                    <h4 className="font-black text-amber-900">Nota sobre el Límite Global</h4>
-                                    <p className="text-sm text-amber-800/70 mt-1">
-                                        El límite de actualizaciones de banners se aplica mensualmente. Por defecto, hemos establecido un límite de 3 cambios para todos los planes, pero puedes ajustarlo individualmente arriba.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
 
-                    <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8 mt-8">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                                <Wallet className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Estado de Suscripciones (Locales)</h3>
-                                <p className="text-sm text-slate-500">Gestiona los pagos recibidos y visualiza las fechas de vencimiento.</p>
-                            </div>
-                        </div>
-
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-left whitespace-nowrap">
-                                <thead className="bg-slate-50 border-b border-slate-100">
-                                    <tr>
-                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Restaurante</th>
-                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Estado de Suscripción</th>
-                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Próximo Pago</th>
-                                        <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acción</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-50">
-                                    {restaurants.map((restaurant) => {
-                                        const now = new Date();
-                                        const end = restaurant.subscriptionEnd ? new Date(restaurant.subscriptionEnd) : null;
-                                        const hasActiveSub = end && end > now;
-                                        const daysRemaining = hasActiveSub ? Math.ceil((end.getTime() - now.getTime()) / (1000 * 3600 * 24)) : 0;
-                                        
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-slate-50/70 p-4 rounded-2xl border border-slate-100 max-h-72 overflow-y-auto">
+                                    {MODULE_OPTIONS.map((mod) => {
+                                        const isChecked = Boolean(emprendedorPlan.features?.[mod.key]);
+                                        const Icon = mod.icon;
                                         return (
-                                            <tr key={restaurant.id} className="hover:bg-slate-50/50 transition-colors">
-                                                <td className="px-6 py-4">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200">
-                                                            {restaurant.logoUrl || restaurant.image ? (
-                                                                <img src={restaurant.logoUrl || restaurant.image} alt={restaurant.name} className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                <div className="w-full h-full flex items-center justify-center bg-slate-100">
-                                                                    <Store className="w-5 h-5 text-slate-300" />
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <span className="font-bold text-slate-800">{restaurant.name}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-6 py-4 text-center">
-                                                    {hasActiveSub ? (
-                                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">
-                                                            <CheckCircle className="w-3.5 h-3.5" /> Activo ({daysRemaining} días)
-                                                        </span>
-                                                    ) : (
-                                                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-100 text-red-700">
-                                                            <XCircle className="w-3.5 h-3.5" /> Inactivo / Vencido
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                <td className="px-6 py-4 text-center text-sm font-bold text-slate-600">
-                                                    {end ? end.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }) : 'Sin registro'}
-                                                </td>
-                                                <td className="px-6 py-4 text-right">
-                                                    <button
-                                                        onClick={() => handleRenewSubscription(restaurant.id)}
-                                                        className="px-4 py-2 bg-primary hover:bg-primary text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-lg shadow-primary/20 active:scale-95"
-                                                    >
-                                                        Aprobar Pago (+30 días)
-                                                    </button>
-                                                </td>
-                                            </tr>
+                                            <div
+                                                key={mod.key}
+                                                onClick={() => handleTogglePlanFeature('emprendedor', mod.key)}
+                                                className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                                                    isChecked
+                                                        ? 'bg-white border-amber-300 shadow-2xs'
+                                                        : 'bg-transparent border-slate-200/60 opacity-60'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <Icon className={`w-4 h-4 shrink-0 ${isChecked ? 'text-amber-600' : 'text-slate-400'}`} />
+                                                    <span className={`text-xs font-bold truncate ${isChecked ? 'text-slate-900' : 'text-slate-500'}`}>
+                                                        {mod.label}
+                                                    </span>
+                                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={() => handleTogglePlanFeature('emprendedor', mod.key)}
+                                                    className="w-4 h-4 rounded text-primary focus:ring-primary/20 accent-primary cursor-pointer shrink-0"
+                                                />
+                                            </div>
                                         );
                                     })}
-                                </tbody>
-                            </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200/60 flex items-center gap-2 text-xs font-bold text-amber-800">
+                            <Lock className="w-4 h-4 shrink-0" />
+                            <span>Muestra candados en el menú lateral para los módulos desmarcados.</span>
                         </div>
                     </div>
-                </div>
-            ) : (
-                <div className="space-y-6 pb-20">
-                    <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8">
-                        <div className="flex items-center gap-3 mb-8">
-                            <div className="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center text-primary">
-                                <ImageIcon className="w-5 h-5" />
-                            </div>
-                            <div>
-                                <h3 className="font-black text-slate-800 tracking-tight text-lg">Solicitudes de Banners</h3>
-                                <p className="text-sm text-slate-500">Revisa las solicitudes de publicidad de los restaurantes.</p>
-                            </div>
-                        </div>
 
-                        {bannerRequests.length === 0 ? (
-                            <div className="text-center py-10 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                                <ImageIcon className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                                <p className="text-slate-500 font-bold">No hay solicitudes de banners.</p>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {bannerRequests.map(req => (
-                                    <div key={req.id} className="bg-white border rounded-2xl overflow-hidden shadow-sm flex flex-col group transition-all hover:shadow-md">
-                                        <div className="h-32 bg-slate-100 relative group cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary" tabIndex={0} onClick={() => window.open(req.imageUrl, '_blank')}>
-                                            <img src={req.imageUrl} alt="Banner request" className="w-full h-full object-cover" />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                                <span className="text-white text-xs font-bold uppercase tracking-widest bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-sm">Ampliar Imagen</span>
-                                            </div>
-                                        </div>
-                                        <div className="p-5 flex-1 flex flex-col">
-                                            <div className="flex justify-between items-start mb-2">
-                                                <h4 className="font-black text-slate-800 text-lg leading-tight">{req.restaurantName}</h4>
-                                                <span className={`px-2 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-                                                    req.status === 'rejected' ? 'bg-red-100 text-red-700' :
-                                                        'bg-amber-100 text-amber-700'
-                                                    }`}>
-                                                    {req.status === 'approved' ? 'Aprobado' : req.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
-                                                </span>
-                                            </div>
-                                            <h5 className="font-bold text-slate-700 mb-1">{req.title || 'Sin Título'}</h5>
-                                            <p className="text-sm text-slate-500 font-medium mb-1 line-clamp-1">{req.linkUrl}</p>
-                                            <p className="text-sm text-slate-500 font-medium mb-4">Duración: <span className="font-bold">{req.duration}s</span></p>
-
-                                            <div className="mt-auto space-y-2">
-                                                <span className="text-xs text-slate-400 font-medium opacity-80 mb-3 block text-center">
-                                                    {req.createdAt?.toDate().toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' })}
-                                                {req.createdAt?.toDate?.()?.toLocaleDateString('es-ES', { day: '2-digit', month: 'long', year: 'numeric' }) || 'Fecha desconocida'}
-                                                </span>
-                                                {req.status === 'pending_approval' && (
-                                                    <div className="grid grid-cols-2 gap-2 mt-2 pt-4 border-t border-slate-100">
-                                                        <button
-                                                            onClick={() => handleUpdateBannerStatus(req.id, 'rejected')}
-                                                            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
-                                                        >
-                                                            <XCircle className="w-4 h-4" /> Rechazar
-                                                        </button>
-                                                        <button
-                                                            onClick={() => handleUpdateBannerStatus(req.id, 'approved')}
-                                                            className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black text-emerald-600 bg-emerald-50 hover:bg-emerald-100 transition-colors"
-                                                        >
-                                                            <CheckCircle className="w-4 h-4" /> Aprobar
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
+                    {/* 2. PLAN ALIADO CORPORATIVO */}
+                    <div className="bg-white rounded-[36px] border-2 border-indigo-200 p-8 shadow-sm space-y-6 flex flex-col justify-between">
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between pb-4 border-b border-indigo-50">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-800 flex items-center justify-center font-black">
+                                        👑
                                     </div>
-                                ))}
+                                    <div>
+                                        <h3 className="font-black text-slate-900 text-lg">Plan Aliado Corporativo</h3>
+                                        <span className="text-[10px] font-black uppercase text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+                                            Plan Full Suite
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
-                        )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Nombre del Plan</label>
+                                    <input
+                                        type="text"
+                                        value={corporativoPlan.name}
+                                        onChange={(e) => handleUpdatePlan('corporativo', 'name', e.target.value)}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-800 outline-none focus:bg-white focus:border-indigo-600 transition-all"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Precio Mensual ($ USD)</label>
+                                    <div className="relative">
+                                        <input
+                                            type="number"
+                                            value={corporativoPlan.price}
+                                            onChange={(e) => handleUpdatePlan('corporativo', 'price', parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pl-8 text-sm font-black text-indigo-700 outline-none focus:bg-white focus:border-indigo-600 transition-all"
+                                        />
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-1.5">
+                                <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">Descripción de Bondades</label>
+                                <textarea
+                                    rows={2}
+                                    value={corporativoPlan.description}
+                                    onChange={(e) => handleUpdatePlan('corporativo', 'description', e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs font-medium text-slate-700 outline-none focus:bg-white focus:border-indigo-600 transition-all resize-none"
+                                />
+                            </div>
+
+                            {/* Checkboxes de módulos */}
+                            <div className="space-y-2 pt-2">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-black uppercase tracking-wider text-slate-700">
+                                        Módulos Incluidos en Plan Corporativo
+                                    </label>
+                                    <span className="text-[10px] font-bold text-indigo-600">
+                                        (Desbloquea los 12 módulos)
+                                    </span>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-indigo-50/40 p-4 rounded-2xl border border-indigo-100 max-h-72 overflow-y-auto">
+                                    {MODULE_OPTIONS.map((mod) => {
+                                        const isChecked = Boolean(corporativoPlan.features?.[mod.key]);
+                                        const Icon = mod.icon;
+                                        return (
+                                            <div
+                                                key={mod.key}
+                                                onClick={() => handleTogglePlanFeature('corporativo', mod.key)}
+                                                className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+                                                    isChecked
+                                                        ? 'bg-white border-indigo-300 shadow-2xs'
+                                                        : 'bg-transparent border-slate-200/60 opacity-60'
+                                                }`}
+                                            >
+                                                <div className="flex items-center gap-2 min-w-0">
+                                                    <Icon className={`w-4 h-4 shrink-0 ${isChecked ? 'text-indigo-600' : 'text-slate-400'}`} />
+                                                    <span className={`text-xs font-bold truncate ${isChecked ? 'text-slate-900' : 'text-slate-500'}`}>
+                                                        {mod.label}
+                                                    </span>
+                                                </div>
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isChecked}
+                                                    onChange={() => handleTogglePlanFeature('corporativo', mod.key)}
+                                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-600/20 accent-indigo-600 cursor-pointer shrink-0"
+                                                />
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-3 bg-indigo-50 rounded-2xl border border-indigo-200/60 flex items-center gap-2 text-xs font-bold text-indigo-800">
+                            <Unlock className="w-4 h-4 shrink-0" />
+                            <span>Desbloquea el ecosistema integral de hardware POS y apps operativas.</span>
+                        </div>
                     </div>
                 </div>
-            )
-            }
-        </div >
+            </div>
+
+            {/* SECCIÓN C: ESTADO DE SUSCRIPCIONES Y NEGOCIOS REGISTRADOS */}
+            <div className="bg-white rounded-[36px] border-2 border-slate-100 p-8 shadow-sm space-y-6">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
+                        <Store className="w-5 h-5" />
+                    </div>
+                    <div>
+                        <h3 className="font-black text-slate-800 tracking-tight text-lg">Estado de Suscripciones (Locales)</h3>
+                        <p className="text-sm text-slate-500">Visualiza la modalidad comercial de cada negocio y renueva o ajusta sus fechas de vencimiento.</p>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left whitespace-nowrap">
+                        <thead className="bg-slate-50 border-b border-slate-100">
+                            <tr>
+                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Restaurante / Comercio</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Modalidad Comercial</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Estatus Suscripción</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Próximo Pago / Límite</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                            {restaurants.map((restaurant) => {
+                                const now = new Date();
+                                const end = restaurant.subscriptionEnd ? new Date(restaurant.subscriptionEnd) : null;
+                                const hasActiveSub = end && end > now;
+                                const daysRemaining = hasActiveSub ? Math.ceil((end.getTime() - now.getTime()) / (1000 * 3600 * 24)) : 0;
+                                const bMode = restaurant.billing_mode || 'subscription';
+                                const planId = restaurant.plan_id || 'emprendedor';
+
+                                return (
+                                    <tr key={restaurant.id} className="hover:bg-slate-50/50 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
+                                                    {restaurant.logo_url || restaurant.logoUrl || restaurant.image ? (
+                                                        <img src={restaurant.logo_url || restaurant.logoUrl || restaurant.image} alt={restaurant.name} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <div className="w-full h-full flex items-center justify-center bg-slate-100">
+                                                            <Store className="w-5 h-5 text-slate-300" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <span className="font-bold text-slate-800 text-sm block">{restaurant.name}</span>
+                                                    <span className="text-xs text-slate-400 font-medium">{restaurant.category || 'Varios'}</span>
+                                                </div>
+                                            </div>
+                                        </td>
+
+                                        <td className="px-6 py-4 text-center">
+                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                                                bMode === 'commission'
+                                                    ? 'bg-emerald-100 text-emerald-800'
+                                                    : bMode === 'free_custom'
+                                                    ? 'bg-indigo-100 text-indigo-800'
+                                                    : 'bg-amber-100 text-amber-800'
+                                            }`}>
+                                                {bMode === 'commission' ? 'Comisión por Venta' : bMode === 'free_custom' ? 'Gratis / Cortesía' : `Suscripción (${planId})`}
+                                            </span>
+                                        </td>
+
+                                        <td className="px-6 py-4 text-center">
+                                            {plansConfig.freeTrialEnabled ? (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">
+                                                    <Sparkles className="w-3.5 h-3.5" /> Gratis (Lanzamiento)
+                                                </span>
+                                            ) : bMode === 'commission' ? (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-blue-100 text-blue-800">
+                                                    <CheckCircle className="w-3.5 h-3.5" /> Al Día
+                                                </span>
+                                            ) : hasActiveSub ? (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-700">
+                                                    <CheckCircle className="w-3.5 h-3.5" /> Activo ({daysRemaining} días)
+                                                </span>
+                                            ) : (
+                                                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-red-100 text-red-700">
+                                                    <XCircle className="w-3.5 h-3.5" /> Inactivo / Vencido
+                                                </span>
+                                            )}
+                                        </td>
+
+                                        <td className="px-6 py-4 text-center text-xs font-bold text-slate-600">
+                                            {bMode === 'commission'
+                                                ? 'Por cada pedido'
+                                                : bMode === 'free_custom' && restaurant.free_until
+                                                ? new Date(restaurant.free_until).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                : end
+                                                ? end.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })
+                                                : 'Sin registro'}
+                                        </td>
+
+                                        <td className="px-6 py-4 text-right">
+                                            <button
+                                                onClick={() => handleRenewSubscription(restaurant.id)}
+                                                className="px-4 py-2 bg-primary hover:bg-primary text-slate-900 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all shadow-md shadow-primary/20 active:scale-95 cursor-pointer"
+                                            >
+                                                Renovar (+30 días)
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     );
 }

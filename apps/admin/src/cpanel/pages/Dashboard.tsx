@@ -141,7 +141,7 @@ export default function Dashboard() {
                     color="bg-primary text-slate-900"
                 />
                 <StatCard
-                    title="Restaurantes"
+                    title="Negocios"
                     value={stats.restaurants.toString()}
                     trend="Activos"
                     icon={Store}
@@ -172,7 +172,7 @@ export default function Dashboard() {
                                 <Award className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="text-xl font-black text-slate-900 uppercase">Top 5 Restaurants</h3>
+                                <h3 className="text-xl font-black text-slate-900 uppercase">Top 5 Negocios</h3>
                                 <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">Por nivel de facturación</p>
                             </div>
                         </div>
@@ -183,7 +183,7 @@ export default function Dashboard() {
                             <thead className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em]">
                                 <tr>
                                     <th className="px-8 py-4">Ranking</th>
-                                    <th className="px-8 py-4">Restaurante</th>
+                                    <th className="px-8 py-4">Negocio</th>
                                     <th className="px-8 py-4 text-center">Pedidos</th>
                                     <th className="px-8 py-4 text-right">Ingresos</th>
                                 </tr>

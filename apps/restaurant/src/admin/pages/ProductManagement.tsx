@@ -7,6 +7,12 @@ import { ProductModifier, ModifierType } from '../../lib/seed';
 import CommonProductsPickerModal, { SelectedCommonProductPayload } from '../components/CommonProductsPickerModal';
 import { compressImage } from '../../utils/mediaCompressor';
 
+export interface GlobalCategory {
+    id: string;
+    name: string;
+    parent_id: string | null;
+}
+
 export interface ProductVariant {
     name: string;
     price: number;
@@ -41,6 +47,7 @@ export default function ProductManagement() {
     const { user, userData } = useAuth();
     const rid = userData?.managedRestaurantId || user?.uid;
     const [products, setProducts] = useState<Product[]>([]);
+    const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [activeCategory, setActiveCategory] = useState('Todos');
@@ -59,7 +66,7 @@ export default function ProductManagement() {
         name: '',
         description: '',
         price: '',
-        category: GLOBAL_CATEGORIES[0],
+        category: '',
         subcategory: '',
         isActive: true,
         isAvailable: true,
@@ -82,7 +89,23 @@ export default function ProductManagement() {
         fetchProducts();
         fetchStations();
         fetchRestaurantLogo();
-    }, [user]);
+        fetchGlobalCategories();
+    }, [user, rid]);
+
+    const fetchGlobalCategories = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('global_categories')
+                .select('id, name, parent_id')
+                .eq('is_active', true)
+                .order('name');
+            if (data && !error) {
+                setGlobalCategories(data);
+            }
+        } catch (error) {
+            console.error("Error fetching global categories:", error);
+        }
+    };
 
     const fetchRestaurantLogo = async () => {
         if (!rid) return;
@@ -188,7 +211,7 @@ export default function ProductManagement() {
                 name: '',
                 description: '',
                 price: '',
-                category: GLOBAL_CATEGORIES[0],
+                category: globalCategories.find(c => !c.parent_id)?.name || '',
                 subcategory: '',
                 isActive: true,
                 isAvailable: true,
@@ -266,6 +289,9 @@ export default function ProductManagement() {
 
             const pointsPriceValue = formData.pointsPrice ? parseFloat(formData.pointsPrice) : 0;
 
+            const selectedCatObj = globalCategories.find(c => c.name.toLowerCase() === (formData.category || '').toLowerCase() && !c.parent_id)
+                || globalCategories.find(c => c.name.toLowerCase() === (formData.category || '').toLowerCase());
+
             const productData: any = {
                 restaurant_id: rid,
                 name: formData.name,
@@ -273,6 +299,7 @@ export default function ProductManagement() {
                 price: formData.consultPrice ? 0 : finalPrice,
                 promo_price: formData.consultPrice ? 0 : finalPromoPrice,
                 category_name: formData.category,
+                category_id: selectedCatObj ? selectedCatObj.id : null,
                 subcategory: formData.subcategory || '',
                 investment,
                 is_active: formData.isActive,
@@ -302,21 +329,25 @@ export default function ProductManagement() {
                 // Notification for price drop
                 if (finalPromoPrice > 0 && (!editingProduct.promoPrice || finalPromoPrice < editingProduct.promoPrice)) {
                     notifyFollowers(
-                        "¡Bajó de precio!",
-                        `El producto "${productData.name}" ahora está en oferta por solo $${finalPromoPrice.toFixed(2)}.`
+                        "¡Bajó de precio! 🔥",
+                        `El producto "${productData.name}" ahora está en oferta por solo $${finalPromoPrice.toFixed(2)}.`,
+                        editingProduct.id
                     );
                 }
             } else {
                 productData.created_at = new Date().toISOString();
-                const { error: insErr } = await supabase
+                const { data: insData, error: insErr } = await supabase
                     .from('products')
-                    .insert(productData);
+                    .insert(productData)
+                    .select('id')
+                    .single();
                 if (insErr) throw insErr;
 
                 // Notification for new product
                 notifyFollowers(
-                    "¡Nuevo en el menú!",
-                    `Hemos añadido "${productData.name}" a nuestra lista de productos. ¡Ven a probarlo!`
+                    "¡Nuevo en el menú! 🌟",
+                    `Hemos añadido "${productData.name}" a nuestra lista de productos. ¡Ven a probarlo!`,
+                    insData?.id
                 );
             }
 
@@ -327,7 +358,7 @@ export default function ProductManagement() {
                 name: '',
                 description: '',
                 price: '',
-                category: GLOBAL_CATEGORIES[0],
+                category: globalCategories.find(c => !c.parent_id)?.name || '',
                 subcategory: '',
                 investment: '',
                 isActive: true,
@@ -336,6 +367,7 @@ export default function ProductManagement() {
                 tiktokLink: '',
                 youtubeLink: '',
                 variants: [],
+                modifiers: [],
                 printerId: '',
                 consultPrice: false,
                 pointsPrice: ''
@@ -498,7 +530,7 @@ export default function ProductManagement() {
         setNewImageFiles(prev => prev.filter((_, i) => i !== index));
     };
 
-    const notifyFollowers = async (title: string, body: string) => {
+    const notifyFollowers = async (title: string, body: string, productId?: string) => {
         if (!user || !rid) return;
         try {
             // Fetch restaurant name
@@ -522,6 +554,8 @@ export default function ProductManagement() {
                 restaurant_name: restaurantName,
                 title,
                 body,
+                type: 'promo_product',
+                product_id: productId || null,
                 read: false,
                 created_at: new Date().toISOString()
             }));
@@ -532,7 +566,14 @@ export default function ProductManagement() {
         }
     };
 
-    const activeCategories = ['Todos', ...GLOBAL_CATEGORIES.filter(cat => products.some(p => p.category === cat))];
+    const mainCategories = globalCategories.filter(c => !c.parent_id);
+    const selectedCategoryObj = globalCategories.find(c => c.name.toLowerCase() === (formData.category || '').toLowerCase() && !c.parent_id)
+        || globalCategories.find(c => c.name.toLowerCase() === (formData.category || '').toLowerCase());
+    const availableSubcategories = selectedCategoryObj
+        ? globalCategories.filter(c => c.parent_id === selectedCategoryObj.id)
+        : [];
+
+    const activeCategories = ['Todos', ...Array.from(new Set(products.map(p => p.category).filter(Boolean)))];
 
     const filteredProducts = products.filter(p => {
         const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1239,31 +1280,26 @@ export default function ProductManagement() {
 
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-xs font-black text-slate-400 uppercase ml-2 flex justify-between items-center">
-                                        <span>Categoría</span>
-                                        <a
-                                            href={`https://wa.me/${DEVELOPER_WHATSAPP}?text=Hola, me gustaría solicitar una nueva categoría para mi menú: `}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-[9px] text-slate-900 hover:underline lowercase"
-                                        >
-                                            ¿Falta una?
-                                        </a>
+                                    <label className="text-xs font-black text-slate-400 uppercase ml-2">
+                                        Categoría Principal (Sector)
                                     </label>
                                     <select
                                         value={formData.category}
                                         onChange={(e) => {
-                                            const newCat = e.target.value;
+                                            const newCatName = e.target.value;
+                                            const catObj = globalCategories.find(c => c.name.toLowerCase() === newCatName.toLowerCase() && !c.parent_id);
+                                            const firstSub = catObj ? globalCategories.find(c => c.parent_id === catObj.id)?.name || '' : '';
                                             setFormData({
                                                 ...formData,
-                                                category: newCat,
-                                                subcategory: CATEGORY_SECTORS[newCat]?.[0] || ''
+                                                category: newCatName,
+                                                subcategory: firstSub
                                             });
                                         }}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700 text-xs sm:text-sm"
                                     >
-                                        {GLOBAL_CATEGORIES.map(cat => (
-                                            <option key={cat} value={cat}>{cat}</option>
+                                        <option value="">Selecciona sector...</option>
+                                        {mainCategories.map(cat => (
+                                            <option key={cat.id} value={cat.name}>{cat.name}</option>
                                         ))}
                                     </select>
                                 </div>
@@ -1272,11 +1308,11 @@ export default function ProductManagement() {
                                     <select
                                         value={formData.subcategory}
                                         onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700"
+                                        className="w-full bg-slate-50 border-2 border-transparent focus:border-primary p-3 rounded-2xl outline-none font-bold text-slate-700 text-xs sm:text-sm"
                                     >
-                                        <option value="">Seleccionar...</option>
-                                        {formData.category && CATEGORY_SECTORS[formData.category]?.map(sec => (
-                                            <option key={sec} value={sec}>{sec}</option>
+                                        <option value="">{availableSubcategories.length > 0 ? 'Seleccionar subcategoría...' : 'Sin subcategorías'}</option>
+                                        {availableSubcategories.map(sub => (
+                                            <option key={sub.id} value={sub.name}>{sub.name}</option>
                                         ))}
                                     </select>
                                 </div>

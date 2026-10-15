@@ -23,6 +23,9 @@ export interface UserData {
     total_referrals?: number;
     locationPermissionsAllowed?: boolean;
     biometricLockEnabled?: boolean;
+    managedRestaurantId?: string;
+    isImpersonating?: boolean;
+    impersonatedRestaurantName?: string;
 }
 
 export type EnhancedUser = User & { uid: string };
@@ -103,6 +106,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     console.error("Error registering merchant device session:", err);
                 }
 
+                // Check for Superadmin impersonation parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                let impRestaurantId = urlParams.get('impersonate_restaurant_id');
+                if (impRestaurantId) {
+                    try {
+                        sessionStorage.setItem('impersonate_restaurant_id', impRestaurantId);
+                    } catch {}
+                } else {
+                    try {
+                        impRestaurantId = sessionStorage.getItem('impersonate_restaurant_id');
+                    } catch {}
+                }
+
                 // Fetch profile
                 const { data, error } = await supabase
                     .from('profiles')
@@ -111,11 +127,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     .maybeSingle();
 
                 if (!error && data) {
+                    const roleStr = (data.role || '').toLowerCase();
+                    const isSuperAdmin = roleStr === 'admin' || roleStr === 'superadmin';
+                    let managedRestaurantId: string | undefined = undefined;
+                    let isImpersonating = false;
+                    let impersonatedRestaurantName = '';
+
+                    if (isSuperAdmin && impRestaurantId) {
+                        managedRestaurantId = impRestaurantId;
+                        isImpersonating = true;
+                        try {
+                            const { data: impRest } = await supabase
+                                .from('comercios')
+                                .select('id, name')
+                                .eq('id', impRestaurantId)
+                                .maybeSingle();
+                            if (impRest?.name) {
+                                impersonatedRestaurantName = impRest.name;
+                            }
+                        } catch (e) {
+                            console.warn("Could not fetch impersonated store name:", e);
+                        }
+                    }
+
                     setUserData({
                         ...data,
                         displayName: data.full_name,
                         email: data.email,
                         points: data.points,
+                        managedRestaurantId,
+                        isImpersonating,
+                        impersonatedRestaurantName
                     } as UserData);
                 } else if (!data) {
                     // Auto-crear profile si no existe para usuario Google nuevo
@@ -193,6 +235,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (channel) supabase.removeChannel(channel);
         };
     }, []);
+
+    // Periodic heartbeat to track real user active minutes
+    useEffect(() => {
+        if (!user?.id) return;
+        supabase.rpc('ping_user_activity', { p_user_id: user.id, p_app_type: 'restaurant' }).catch(() => {});
+        const interval = setInterval(() => {
+            supabase.rpc('ping_user_activity', { p_user_id: user.id, p_app_type: 'restaurant' }).catch(() => {});
+        }, 60000);
+        return () => clearInterval(interval);
+    }, [user?.id]);
 
     const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
 

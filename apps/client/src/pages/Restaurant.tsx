@@ -19,6 +19,7 @@ export default function RestaurantPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const promoProductId = searchParams.get('promoProductId') || searchParams.get('promo') || searchParams.get('productId');
   const [restaurant, setRestaurant] = useState<any | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,6 +268,16 @@ export default function RestaurantPage() {
             isActive: p.is_active ?? p.isActive ?? true,
             ...p
           })) as Product[];
+
+          // Si hay producto en promoción, colocarlo de primero (#1 arriba del todo)
+          if (promoProductId) {
+            const pIdx = fetchedProducts.findIndex(p => p.id === promoProductId);
+            if (pIdx > 0) {
+              const [promoItem] = fetchedProducts.splice(pIdx, 1);
+              fetchedProducts.unshift(promoItem);
+            }
+          }
+
           setProducts(fetchedProducts);
 
           // Check if it's in user favorites and sync favorite products
@@ -510,11 +521,25 @@ export default function RestaurantPage() {
   const categories = ['Todos', ...Array.from(new Set(products.map(p => p.category)))];
 
   // Filter products by active category and active status
-  const filteredProducts = products.filter(p => {
+  let filteredProducts = products.filter(p => {
     const matchesCategory = activeCategory === 'Todos' || p.category === activeCategory;
     const isActive = p.isActive !== false; // Hide only if explicitly inactive/archived
     return matchesCategory && isActive;
   });
+
+  // Si hay un promoProductId, garantizar que aparezca de PRIMERO (#1 arriba del todo)
+  if (promoProductId) {
+    const pIdx = filteredProducts.findIndex(p => p.id === promoProductId);
+    if (pIdx > 0) {
+      const [promoItem] = filteredProducts.splice(pIdx, 1);
+      filteredProducts.unshift(promoItem);
+    } else if (pIdx === -1 && activeCategory !== 'Todos') {
+      const specialPromo = products.find(p => p.id === promoProductId && p.isActive !== false);
+      if (specialPromo) {
+        filteredProducts = [specialPromo, ...filteredProducts];
+      }
+    }
+  }
 
   const handleAddToCart = (product: Product, variant?: any, modifiers?: any) => {
     // Restricción: solo se puede tener en el carrito productos de 1 negocio a la vez
@@ -1427,6 +1452,8 @@ export default function RestaurantPage() {
                     ? Math.round(((product.price - product.promoPrice) / product.price) * 100) 
                     : 0;
 
+                  const isSpecialPromo = product.id === promoProductId;
+
                   return (
                     <div
                       key={product.id}
@@ -1436,7 +1463,11 @@ export default function RestaurantPage() {
                         setSelectedModifiers({});
                         recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
                       }}
-                      className="bg-white rounded-2xl shadow-2xs hover:shadow-md border border-slate-200/80 overflow-hidden cursor-pointer group transition-all duration-200 flex flex-col relative"
+                      className={`bg-white rounded-2xl shadow-2xs hover:shadow-md overflow-hidden cursor-pointer group transition-all duration-200 flex flex-col relative ${
+                        isSpecialPromo
+                          ? 'border-2 border-amber-400 ring-2 ring-amber-400/30 shadow-lg shadow-amber-500/10'
+                          : 'border border-slate-200/80'
+                      }`}
                     >
                       {/* Imagen del Producto: Rellena completamente el recuadro superior cubriendo esquinas */}
                       <div className="w-full aspect-square bg-slate-100 overflow-hidden relative rounded-t-2xl">
@@ -1448,6 +1479,13 @@ export default function RestaurantPage() {
                           decoding="async"
                         />
                         
+                        {/* Insignia Oferta Especial si viene de campaña o notificación */}
+                        {isSpecialPromo && (
+                          <div className="absolute top-2 left-10 z-20 bg-gradient-to-r from-amber-500 to-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 animate-pulse">
+                            🔥 OFERTA ESPECIAL
+                          </div>
+                        )}
+
                         {/* Botón de Favoritos */}
                         <button
                           type="button"
@@ -1588,6 +1626,8 @@ export default function RestaurantPage() {
                     ? Math.min(...product.variants.map(v => v.price))
                     : product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
 
+                  const isSpecialPromo = product.id === promoProductId;
+
                   return (
                     <div
                       key={product.id}
@@ -1597,7 +1637,11 @@ export default function RestaurantPage() {
                         setSelectedModifiers({});
                         recommendationsService.recordProductView(product.id!, product.category, restaurant.id!);
                       }}
-                      className="py-3 flex items-center gap-3 group cursor-pointer hover:bg-slate-50/60 rounded-xl px-1 transition-colors"
+                      className={`py-3 flex items-center gap-3 group cursor-pointer rounded-xl px-2 transition-colors ${
+                        isSpecialPromo
+                          ? 'bg-amber-50/50 border-2 border-amber-400 ring-2 ring-amber-400/20 shadow-sm'
+                          : 'hover:bg-slate-50/60'
+                      }`}
                     >
                       {/* Foto pequeña */}
                       <div className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-xl bg-slate-100 overflow-hidden shrink-0">
@@ -1608,6 +1652,11 @@ export default function RestaurantPage() {
                           loading="lazy"
                           decoding="async"
                         />
+                        {isSpecialPromo && (
+                          <div className="absolute top-1 left-1 z-10 bg-amber-500 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full shadow-xs">
+                            🔥 OFERTA
+                          </div>
+                        )}
                         {product.isAvailable === false && (
                           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-[1px] flex items-center justify-center">
                             <span className="text-[7px] font-black text-white uppercase">Agotado</span>
@@ -1686,11 +1735,16 @@ export default function RestaurantPage() {
                 const productImages = product.images && product.images.length > 0 
                   ? product.images 
                   : [product.image && !product.image.includes('unsplash.com') ? product.image : (restaurant?.logoUrl || restaurant?.image || '')];
+                const isSpecialPromo = product.id === promoProductId;
 
                 return (
                   <div
                     key={product.id}
-                    className="flex gap-4 py-5 border-b border-slate-100 group cursor-pointer"
+                    className={`flex gap-4 py-5 border-b group cursor-pointer rounded-2xl p-3 transition-all ${
+                      isSpecialPromo
+                        ? 'border-2 border-amber-400 ring-2 ring-amber-400/20 bg-amber-50/20 shadow-md my-2'
+                        : 'border-slate-100'
+                    }`}
                     onClick={() => {
                       setSelectedProduct(product);
                       setSelectedVariant(null);
@@ -1702,6 +1756,11 @@ export default function RestaurantPage() {
                       className="flex-1 flex flex-col justify-between"
                     >
                       <div>
+                        {isSpecialPromo && (
+                          <span className="inline-flex items-center gap-1 mb-1.5 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-red-500 text-white text-[9px] font-black rounded-full uppercase tracking-wider animate-pulse shadow-xs">
+                            🔥 OFERTA ESPECIAL
+                          </span>
+                        )}
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className="font-bold text-slate-900 text-base">{product.name}</h3>
                           {(product.socialMediaLink || product.tiktokLink || product.youtubeLink) && (

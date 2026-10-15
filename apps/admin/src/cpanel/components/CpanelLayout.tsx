@@ -89,7 +89,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
     const navItems = [
         { path: '/', icon: LayoutDashboard, label: 'Resumen' },
         { path: '/app-orders', icon: ShoppingBag, label: 'Pedidos App en Vivo' },
-        { path: '/restaurants', icon: Store, label: 'Restaurantes' },
+        { path: '/restaurants', icon: Store, label: 'Negocios' },
         { path: '/common-products', icon: Package, label: 'Productos Comunes' },
         { path: '/verifications', icon: ShieldCheck, label: 'Verificación de Negocios', badge: pendingVerifications },
         { path: '/users', icon: Users, label: 'Usuarios' },
@@ -111,16 +111,16 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
 
     return (
         <div className="h-[100dvh] bg-slate-50 flex overflow-hidden">
-            {/* Mobile Sidebar Backdrop */}
+            {/* Mobile/Tablet Sidebar Backdrop */}
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+                    className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
             {/* Sidebar */}
-            <aside className={`fixed inset-y-0 left-0 w-[85vw] max-w-sm bg-slate-900 border-r border-slate-800 z-50 transform transition-transform duration-300 ease-in-out md:relative md:w-72 md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside className={`fixed inset-y-0 left-0 w-[85vw] max-w-sm bg-slate-900 border-r border-slate-800 z-50 transform transition-transform duration-300 ease-in-out lg:relative lg:w-72 lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="flex flex-col h-full pt-safe">
                     {/* Sidebar Header */}
                     <div className="p-4 border-b border-slate-800 flex items-center justify-between">
@@ -137,8 +137,8 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
                                 <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Cpanel Administrativo</p>
                             </div>
                         </div>
-                        <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
-                            <X className="w-6 h-6 text-slate-400" />
+                        <button className="lg:hidden p-2 text-slate-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}>
+                            <X className="w-6 h-6" />
                         </button>
                     </div>
 
@@ -188,18 +188,19 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
             {/* Main Content */}
             <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-[65px] md:pb-0">
                 {/* Top Header */}
-                <header className="h-14 md:h-20 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
+                <header className="h-14 lg:h-20 bg-white border-b border-slate-200 px-4 lg:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
                     <div className="flex items-center gap-3">
                         <button
-                            className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
+                            className="lg:hidden p-2 -ml-2 text-slate-500 hover:text-slate-900 active:scale-95 transition-transform"
                             onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
+                            aria-label="Abrir menú"
                         >
                             <Menu className="w-6 h-6" />
                         </button>
-                        <h2 className="text-lg md:text-xl font-black text-slate-900">Control Principal</h2>
+                        <h2 className="text-lg lg:text-xl font-black text-slate-900">Control Principal</h2>
                     </div>
 
-                    <div className="flex items-center gap-2 md:gap-3">
+                    <div className="flex items-center gap-2 lg:gap-3">
                         <button
                             onClick={() => setShowDevicesModal(true)}
                             className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-black transition-all shadow-sm border border-slate-200/60 active:scale-95"
@@ -215,7 +216,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
                             title="Cerrar Sesión"
                         >
                             <LogOut className="w-4 h-4" />
-                            <span className="hidden md:inline">Salir</span>
+                            <span className="hidden lg:inline">Salir</span>
                         </button>
                     </div>
                 </header>

@@ -5,6 +5,12 @@ import DualPrice from '../../components/DualPrice';
 import { GLOBAL_CATEGORIES } from '../../lib/constants';
 import toast from 'react-hot-toast';
 
+interface GlobalCategory {
+    id: string;
+    name: string;
+    parent_id: string | null;
+}
+
 interface Product {
     id: string;
     restaurant_id: string;
@@ -13,6 +19,7 @@ interface Product {
     price: number;
     category_id?: string;
     category_name?: string;
+    subcategory?: string;
     image_url?: string;
     is_available?: boolean;
     is_active?: boolean;
@@ -26,6 +33,7 @@ interface Props {
 
 export default function RestaurantProductsManager({ restaurantId, restaurantName }: Props) {
     const [products, setProducts] = useState<Product[]>([]);
+    const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -38,13 +46,29 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
         name: '',
         description: '',
         price: '',
-        category: GLOBAL_CATEGORIES[0] || 'Varios',
+        category: '',
+        subcategory: '',
         imageUrl: '',
         isActive: true,
         isAvailable: true
     });
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+    const fetchGlobalCategories = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('global_categories')
+                .select('id, name, parent_id')
+                .eq('is_active', true)
+                .order('name');
+            if (data && !error) {
+                setGlobalCategories(data);
+            }
+        } catch (err) {
+            console.error("Error fetching global categories:", err);
+        }
+    };
 
     const fetchProducts = async () => {
         try {
@@ -68,6 +92,7 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
     useEffect(() => {
         if (restaurantId) {
             fetchProducts();
+            fetchGlobalCategories();
         }
     }, [restaurantId]);
 
@@ -77,7 +102,8 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
             name: '',
             description: '',
             price: '',
-            category: GLOBAL_CATEGORIES[0] || 'Varios',
+            category: globalCategories.find(c => !c.parent_id)?.name || '',
+            subcategory: '',
             imageUrl: '',
             isActive: true,
             isAvailable: true
@@ -93,7 +119,8 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
             name: p.name || '',
             description: p.description || '',
             price: p.price ? p.price.toString() : '',
-            category: p.category_name || GLOBAL_CATEGORIES[0] || 'Varios',
+            category: p.category_name || '',
+            subcategory: p.subcategory || '',
             imageUrl: p.image_url || '',
             isActive: p.is_active !== false,
             isAvailable: p.is_available !== false
@@ -141,6 +168,12 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
                 finalImageUrl = pubData.publicUrl;
             }
 
+            const selectedCatObj = globalCategories.find(c => c.name.toLowerCase() === (formData.category || '').toLowerCase() && !c.parent_id)
+                || globalCategories.find(c => c.name.toLowerCase() === (formData.category || '').toLowerCase());
+            const selectedSubObj = selectedCatObj
+                ? globalCategories.find(c => c.parent_id === selectedCatObj.id && c.name.toLowerCase() === (formData.subcategory || '').toLowerCase())
+                : null;
+
             if (editingProduct) {
                 // Update
                 const { error } = await supabase
@@ -150,6 +183,8 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
                         description: formData.description.trim(),
                         price: numPrice,
                         category_name: formData.category,
+                        category_id: selectedCatObj ? selectedCatObj.id : null,
+                        subcategory: formData.subcategory || '',
                         image_url: finalImageUrl,
                         is_active: formData.isActive,
                         is_available: formData.isAvailable,
@@ -170,6 +205,8 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
                         description: formData.description.trim(),
                         price: numPrice,
                         category_name: formData.category,
+                        category_id: selectedCatObj ? selectedCatObj.id : null,
+                        subcategory: formData.subcategory || '',
                         image_url: finalImageUrl,
                         is_active: formData.isActive,
                         is_available: formData.isAvailable,
@@ -214,6 +251,13 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
         p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.category_name && p.category_name.toLowerCase().includes(searchTerm.toLowerCase()))
     );
+
+    const mainCategories = globalCategories.filter(c => !c.parent_id);
+    const selectedCategoryObj = globalCategories.find(c => c.name.toLowerCase() === (formData.category || '').toLowerCase() && !c.parent_id)
+        || globalCategories.find(c => c.name.toLowerCase() === (formData.category || '').toLowerCase());
+    const availableSubcategories = selectedCategoryObj
+        ? globalCategories.filter(c => c.parent_id === selectedCategoryObj.id)
+        : [];
 
     return (
         <div className="space-y-6">
@@ -393,37 +437,60 @@ export default function RestaurantProductsManager({ restaurantId, restaurantName
                                 />
                             </div>
 
-                            {/* Price and Category */}
+                            {/* Price */}
+                            <div>
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                                    Precio ($ USD) *
+                                </label>
+                                <div className="relative">
+                                    <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        required
+                                        placeholder="0.00"
+                                        value={formData.price}
+                                        onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                                        className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:border-primary"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Categoría Principal y Subcategoría */}
                             <div className="grid grid-cols-2 gap-3">
                                 <div>
                                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">
-                                        Precio ($ USD) *
-                                    </label>
-                                    <div className="relative">
-                                        <DollarSign className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            required
-                                            placeholder="0.00"
-                                            value={formData.price}
-                                            onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                                            className="w-full pl-9 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-bold text-slate-800 outline-none focus:border-primary"
-                                        />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">
-                                        Categoría
+                                        Categoría Principal (Sector)
                                     </label>
                                     <select
                                         value={formData.category}
-                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                        onChange={(e) => {
+                                            const newCatName = e.target.value;
+                                            const catObj = globalCategories.find(c => c.name.toLowerCase() === newCatName.toLowerCase() && !c.parent_id);
+                                            const firstSub = catObj ? globalCategories.find(c => c.parent_id === catObj.id)?.name || '' : '';
+                                            setFormData({ ...formData, category: newCatName, subcategory: firstSub });
+                                        }}
                                         className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 outline-none focus:border-primary"
                                     >
-                                        {GLOBAL_CATEGORIES.map(cat => (
-                                            <option key={cat} value={cat}>{cat}</option>
+                                        <option value="">Seleccionar sector...</option>
+                                        {mainCategories.map(cat => (
+                                            <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1">
+                                        Subcategoría
+                                    </label>
+                                    <select
+                                        value={formData.subcategory}
+                                        onChange={(e) => setFormData({ ...formData, subcategory: e.target.value })}
+                                        className="w-full px-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 outline-none focus:border-primary"
+                                    >
+                                        <option value="">{availableSubcategories.length > 0 ? 'Seleccionar subcategoría...' : 'Sin subcategorías'}</option>
+                                        {availableSubcategories.map(sub => (
+                                            <option key={sub.id} value={sub.name}>{sub.name}</option>
                                         ))}
                                     </select>
                                 </div>

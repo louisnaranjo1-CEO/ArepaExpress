@@ -6,7 +6,7 @@ import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink,
 import { motion, AnimatePresence } from 'motion/react';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
-import { useJsApiLoader, GoogleMap, Marker, InfoWindow } from '@react-google-maps/api';
+import FleetLeafletMap from '../components/FleetLeafletMap';
 import { GOOGLE_MAPS_API_KEY } from '../../lib/mapsConfig';
 import { DEFAULT_PRICING_SETTINGS, calculateDynamicFare, SmartPricingSettings } from '../../lib/pricing';
 import { getWeatherByCoordinates, WeatherInfo } from '../../lib/weather';
@@ -191,12 +191,6 @@ _Enviado desde Deliexpress App_`,
             .then(w => setCityWeather(w))
             .catch(err => console.error("Error fetching city weather in admin:", err));
     }, [mapCenter]);
-
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-        libraries: ['places', 'geometry'] as any
-    });
 
     useEffect(() => {
         const fetchDrivers = async () => {
@@ -2381,76 +2375,7 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             <div className="flex-1 relative bg-slate-100">
-                                {isLoaded ? (
-                                    <GoogleMap
-                                        mapContainerStyle={{ width: '100%', height: '100%' }}
-                                        center={mapCenter}
-                                        zoom={12}
-                                        options={{
-                                            styles: [
-                                                {
-                                                    "featureType": "poi",
-                                                    "stylers": [{ "visibility": "off" }]
-                                                }
-                                            ],
-                                            disableDefaultUI: false,
-                                            zoomControl: true,
-                                            streetViewControl: false,
-                                        }}
-                                    >
-                                        {activeDrivers.filter(d => d.homeLocation?.coords).map(driver => (
-                                            <Marker
-                                                key={driver.id}
-                                                position={driver.homeLocation!.coords!}
-                                                onClick={() => setActiveMarker(driver.id)}
-                                                icon={{
-                                                    url: driver.vehicleType === 'moto' 
-                                                        ? 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-                                                        : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
-                                                }}
-                                            >
-                                                {activeMarker === driver.id ? (
-                                                    <InfoWindow onCloseClick={() => setActiveMarker(null)}>
-                                                        <div className="p-3 min-w-[200px]">
-                                                            <div className="flex items-center gap-3 mb-3">
-                                                                <img src={driver.documents.selfieUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
-                                                                <div>
-                                                                    <p className="font-black text-slate-900 leading-none">{driver.fullName}</p>
-                                                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">{driver.vehicleType} • {driver.vehiclePlate}</p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="space-y-1.5 border-t border-slate-100 pt-3">
-                                                                <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                                                                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                                                                    {driver.homeLocation?.city}, {driver.homeLocation?.state}
-                                                                </p>
-                                                                <p className="text-xs font-bold text-slate-600 flex items-center gap-2">
-                                                                    <Activity className="w-3.5 h-3.5 text-slate-400" />
-                                                                    Estado: <span className={driver.isOnline ? 'text-emerald-600' : 'text-slate-400'}>{driver.isOnline ? 'Online' : 'Offline'}</span>
-                                                                </p>
-                                                            </div>
-                                                            <div className="mt-4 flex gap-2">
-                                                                <a 
-                                                                    href={`https://www.google.com/maps/dir/?api=1&destination=${driver.homeLocation?.coords?.lat},${driver.homeLocation?.coords?.lng}`}
-                                                                    target="_blank"
-                                                                    rel="noreferrer"
-                                                                    className="flex-1 bg-primary text-slate-900 text-[10px] font-black uppercase py-2 px-3 rounded-lg text-center shadow-lg shadow-primary/20"
-                                                                >
-                                                                    Cómo llegar
-                                                                </a>
-                                                            </div>
-                                                        </div>
-                                                    </InfoWindow>
-                                                ) : null}
-                                            </Marker>
-                                        ))}
-                                    </GoogleMap>
-                                ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                                        <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cargando Mapa...</p>
-                                    </div>
-                                )}
+                                <FleetLeafletMap drivers={activeDrivers} center={mapCenter} />
                             </div>
                         </motion.div>
                     </motion.div>

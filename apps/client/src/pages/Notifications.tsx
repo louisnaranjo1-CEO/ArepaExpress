@@ -29,6 +29,8 @@ export default function Notifications() {
                 id: d.id,
                 title: d.title,
                 body: d.body,
+                type: d.type,
+                productId: d.product_id || d.productId || d.data?.productId || d.data?.product_id,
                 read: d.read ?? false,
                 restaurantId: d.restaurant_id || d.restaurantId,
                 restaurantName: d.restaurant_name || d.restaurantName || (branding.app_client_name || 'Un 2x3'),
@@ -63,13 +65,17 @@ export default function Notifications() {
         };
     }, [user]);
 
-    const markAsRead = async (id: string, restaurantId?: string) => {
+    const markAsRead = async (id: string, restaurantId?: string, productId?: string) => {
         try {
             await supabase.from('notifications').update({ read: true }).eq('id', id);
             setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
 
             if (restaurantId) {
-                navigate(`/restaurant/${restaurantId}`);
+                if (productId) {
+                    navigate(`/restaurant/${restaurantId}?promoProductId=${productId}`);
+                } else {
+                    navigate(`/restaurant/${restaurantId}`);
+                }
             }
         } catch (error) {
             console.error("Error marking notification as read:", error);
@@ -131,24 +137,34 @@ export default function Notifications() {
                     <div className="space-y-3">
                         {notifications.map((notif) => {
                             const dateStr = notif.createdAt ? new Date(notif.createdAt).toLocaleDateString() : 'Hoy';
+                            const isPromo = notif.type === 'promo_product' || Boolean(notif.productId);
                             return (
                                 <button
                                     key={notif.id}
-                                    onClick={() => markAsRead(notif.id, notif.restaurantId)}
-                                    className={`w-full flex items-start gap-4 p-4 rounded-3xl transition-all border ${notif.read
+                                    onClick={() => markAsRead(notif.id, notif.restaurantId, notif.productId)}
+                                    className={`w-full flex items-start gap-4 p-4 rounded-3xl transition-all border text-left cursor-pointer ${notif.read
                                             ? 'bg-white border-slate-100 opacity-70'
-                                            : 'bg-white border-primary/20 shadow-md shadow-primary/5 ring-1 ring-primary/5'
+                                            : isPromo
+                                                ? 'bg-amber-50/40 border-amber-300/80 shadow-md shadow-amber-500/5 ring-1 ring-amber-400/20'
+                                                : 'bg-white border-primary/20 shadow-md shadow-primary/5 ring-1 ring-primary/5'
                                         }`}
                                 >
-                                    <div className={`p-3 rounded-2xl flex-shrink-0 ${notif.read ? 'bg-slate-100 text-slate-400' : 'bg-primary/10 text-slate-900'
+                                    <div className={`p-3 rounded-2xl flex-shrink-0 ${notif.read ? 'bg-slate-100 text-slate-400' : isPromo ? 'bg-amber-500 text-white shadow-sm' : 'bg-primary/10 text-slate-900'
                                         }`}>
                                         <Utensils className="w-5 h-5" />
                                     </div>
                                     <div className="flex-1 text-left min-w-0">
                                         <div className="flex items-center justify-between gap-2 mb-1">
-                                            <p className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${notif.read ? 'text-slate-400' : 'text-slate-900'}`}>
-                                                {notif.restaurantName}
-                                            </p>
+                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                <p className={`text-xs font-black uppercase tracking-wider truncate transition-colors ${notif.read ? 'text-slate-400' : 'text-slate-900'}`}>
+                                                    {notif.restaurantName}
+                                                </p>
+                                                {isPromo && (
+                                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 shrink-0">
+                                                        🔥 Oferta
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium flex-shrink-0">
                                                 <Clock className="w-3 h-3" />
                                                 {dateStr}
@@ -160,9 +176,14 @@ export default function Notifications() {
                                         <p className="text-[12px] text-slate-500 line-clamp-2 leading-relaxed">
                                             {notif.body}
                                         </p>
+                                        {isPromo && (
+                                            <span className="inline-block mt-2 text-[10px] font-extrabold text-amber-700 bg-amber-100/70 px-2 py-0.5 rounded-lg">
+                                                Toca para ver el producto en oferta #1 →
+                                            </span>
+                                        )}
                                     </div>
                                     {!notif.read && (
-                                        <div className="w-2.5 h-2.5 rounded-full bg-primary mt-1 shadow-sm"></div>
+                                        <div className="w-2.5 h-2.5 rounded-full bg-primary mt-1 shadow-sm shrink-0"></div>
                                     )}
                                 </button>
                             );

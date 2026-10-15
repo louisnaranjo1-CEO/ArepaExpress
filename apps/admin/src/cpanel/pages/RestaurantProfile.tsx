@@ -6,11 +6,14 @@ import {
     ShoppingBag, Box, Users, TrendingUp, Calendar,
     ChevronRight, ExternalLink, Instagram, MessageSquare,
     DollarSign, Clock, CheckCircle, Truck, X, Save, Upload,
-    Image as ImageIcon, Camera, Share2, Zap, Gift, ShieldCheck, FileText
+    Image as ImageIcon, Camera, Share2, Zap, Gift, ShieldCheck, FileText,
+    Check, AlertCircle, Sparkles, Percent, CalendarDays, Grid, Printer, Bell, Megaphone, UserCheck, Lock, Unlock, HelpCircle
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
 import RestaurantRewardsManager from '../components/RestaurantRewardsManager';
 import RestaurantProductsManager from '../components/RestaurantProductsManager';
+import DirectBusinessManagerModal from '../components/DirectBusinessManagerModal';
 import DualPrice from '../../components/DualPrice';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -49,6 +52,13 @@ interface RestaurantData {
     rif?: string;
     isVerified?: boolean;
     verificationStatus?: string;
+    billingMode?: 'subscription' | 'commission' | 'free_custom';
+    planId?: 'emprendedor' | 'corporativo';
+    commissionType?: 'percentage' | 'fixed';
+    commissionRate?: number;
+    freeUntil?: string | null;
+    customFeatures?: Record<string, boolean>;
+    deudaComisionesAcumulada?: number;
 }
 
 interface StatCardProps {
@@ -108,6 +118,46 @@ export default function RestaurantProfile() {
     const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
     const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
     const [editData, setEditData] = useState<any>({});
+    const [isDirectManagerOpen, setIsDirectManagerOpen] = useState(false);
+    const [isLoginChooserOpen, setIsLoginChooserOpen] = useState(false);
+
+    // Commercial Modality & Modules State
+    const [globalPlansConfig, setGlobalPlansConfig] = useState<any>(null);
+    const [modalityMode, setModalityMode] = useState<'subscription' | 'commission' | 'free_custom'>('subscription');
+    const [modalityPlanId, setModalityPlanId] = useState<'emprendedor' | 'corporativo'>('emprendedor');
+    const [modalityCommissionType, setModalityCommissionType] = useState<'percentage' | 'fixed'>('percentage');
+    const [modalityCommissionRate, setModalityCommissionRate] = useState<number>(10);
+    const [modalityFreeUntil, setModalityFreeUntil] = useState<string>('');
+    const [modalityCustomFeatures, setModalityCustomFeatures] = useState<Record<string, boolean>>({
+        orders: true,
+        cash_internal: true,
+        products: true,
+        notifications: true,
+        clients: true,
+        loyalty: true,
+        ads_and_push: true,
+        reviews: true,
+        waiters: false,
+        cashiers: false,
+        tables: false,
+        printer_stations: false
+    });
+    const [isSavingModality, setIsSavingModality] = useState(false);
+
+    const AVAILABLE_MODULES = [
+        { key: 'orders', label: 'Recibir Pedidos', description: 'Recepción y gestión de pedidos delivery y pickup', icon: ShoppingBag },
+        { key: 'cash_internal', label: 'Caja Interna', description: 'Control de caja, turnos y arqueos', icon: DollarSign },
+        { key: 'products', label: 'Productos', description: 'Catálogo de productos, modificadores y precios', icon: Box },
+        { key: 'notifications', label: 'Notificaciones', description: 'Alertas sonoras y avisos en tiempo real', icon: Bell },
+        { key: 'clients', label: 'Clientes', description: 'Directorio y analíticas de compradores', icon: Users },
+        { key: 'loyalty', label: 'Fidelización', description: 'Puntos por compra y recompensas canjeables', icon: Gift },
+        { key: 'ads_and_push', label: 'Publicidad y Campañas Push', description: 'Banners destacados y notificaciones masivas', icon: Megaphone },
+        { key: 'reviews', label: 'Reseñas', description: 'Calificaciones y opiniones de clientes', icon: Star },
+        { key: 'waiters', label: 'Meseros (App)', description: 'Acceso a App móvil para Meseros y comandas', icon: UserCheck },
+        { key: 'cashiers', label: 'Cajeras (App)', description: 'Acceso a App móvil para Cajeras POS', icon: ShieldCheck },
+        { key: 'tables', label: 'Mesas QR', description: 'Gestión de mesas del salón y QR para clientes', icon: Grid },
+        { key: 'printer_stations', label: 'Estaciones de Impresión Térmica', description: 'Comandas térmicas en cocina y barra', icon: Printer },
+    ];
 
     const sectors = allCategories.filter(c => !c.parentId).length > 0
         ? allCategories.filter(c => !c.parentId)
@@ -122,6 +172,21 @@ export default function RestaurantProfile() {
         const fetchData = async () => {
             setLoading(true);
             try {
+                // Fetch Global Subscription Plans Config
+                try {
+                    const { data: plansSetting } = await supabase
+                        .from('system_settings')
+                        .select('*')
+                        .eq('key', 'subscription_plans_config')
+                        .maybeSingle();
+
+                    if (plansSetting?.value) {
+                        setGlobalPlansConfig(plansSetting.value);
+                    }
+                } catch (e) {
+                    console.warn("Could not fetch global plans config:", e);
+                }
+
                 // Restaurant info
                 const { data: restData } = await supabase
                     .from('comercios')
@@ -130,6 +195,21 @@ export default function RestaurantProfile() {
                     .maybeSingle();
 
                 if (restData) {
+                    const initialFeatures = restData.custom_features || {
+                        orders: true,
+                        cash_internal: true,
+                        products: true,
+                        notifications: true,
+                        clients: true,
+                        loyalty: true,
+                        ads_and_push: true,
+                        reviews: true,
+                        waiters: false,
+                        cashiers: false,
+                        tables: false,
+                        printer_stations: false
+                    };
+
                     const rData: RestaurantData = {
                         id: restData.id,
                         name: restData.name,
@@ -158,10 +238,25 @@ export default function RestaurantProfile() {
                         paymentMethods: restData.payment_methods || restData.paymentMethods || [],
                         rif: restData.rif || '',
                         isVerified: restData.is_verified ?? restData.isVerified ?? false,
-                        verificationStatus: restData.verification_status || 'unverified'
+                        verificationStatus: restData.verification_status || 'unverified',
+                        billingMode: restData.billing_mode || 'subscription',
+                        planId: restData.plan_id || 'emprendedor',
+                        commissionType: restData.commission_type || 'percentage',
+                        commissionRate: restData.commission_rate !== undefined && restData.commission_rate !== null ? Number(restData.commission_rate) : 10,
+                        freeUntil: restData.free_until || null,
+                        customFeatures: initialFeatures,
+                        deudaComisionesAcumulada: Number(restData.deuda_comisiones_acumulada || 0)
                     };
                     setRestaurant(rData);
                     setPaymentMethods(rData.paymentMethods || []);
+
+                    // Populate form states
+                    setModalityMode(rData.billingMode || 'subscription');
+                    setModalityPlanId(rData.planId || 'emprendedor');
+                    setModalityCommissionType(rData.commissionType || 'percentage');
+                    setModalityCommissionRate(rData.commissionRate !== undefined ? rData.commissionRate : 10);
+                    setModalityFreeUntil(rData.freeUntil ? rData.freeUntil.split('T')[0] : '');
+                    setModalityCustomFeatures(initialFeatures);
                 }
 
                 // Stats: Products
@@ -351,6 +446,116 @@ export default function RestaurantProfile() {
         setIsEditModalOpen(true);
     };
 
+    const handleSaveModality = async () => {
+        if (!id) return;
+        setIsSavingModality(true);
+        try {
+            let effectiveFeatures = { ...modalityCustomFeatures };
+            if (modalityMode === 'subscription') {
+                const plan = globalPlansConfig?.plans?.find((p: any) => p.id === modalityPlanId);
+                if (plan?.features) {
+                    effectiveFeatures = { ...plan.features };
+                } else if (modalityPlanId === 'corporativo') {
+                    effectiveFeatures = {
+                        orders: true, cash_internal: true, products: true, notifications: true,
+                        clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                        waiters: true, cashiers: true, tables: true, printer_stations: true
+                    };
+                } else {
+                    effectiveFeatures = {
+                        orders: true, cash_internal: true, products: true, notifications: true,
+                        clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                        waiters: false, cashiers: false, tables: false, printer_stations: false
+                    };
+                }
+            }
+
+            const updatePayload = {
+                billing_mode: modalityMode,
+                plan_id: modalityPlanId,
+                commission_type: modalityCommissionType,
+                commission_rate: Number(modalityCommissionRate),
+                free_until: modalityFreeUntil ? new Date(modalityFreeUntil).toISOString() : null,
+                custom_features: effectiveFeatures,
+                updated_at: new Date().toISOString()
+            };
+
+            const { error } = await supabase
+                .from('comercios')
+                .update(updatePayload)
+                .eq('id', id);
+
+            if (error) throw error;
+
+            setRestaurant(prev => prev ? {
+                ...prev,
+                billingMode: modalityMode,
+                planId: modalityPlanId,
+                commissionType: modalityCommissionType,
+                commissionRate: Number(modalityCommissionRate),
+                freeUntil: modalityFreeUntil || null,
+                customFeatures: effectiveFeatures
+            } : null);
+
+            toast.success("Modalidad comercial y módulos actualizados correctamente");
+        } catch (err: any) {
+            console.error("Error saving modality:", err);
+            toast.error("Error al guardar modalidad: " + (err.message || 'Error de red'));
+        } finally {
+            setIsSavingModality(false);
+        }
+    };
+
+    const getSubscriptionStatusInfo = () => {
+        if (!restaurant) return { text: 'Cargando...', color: 'text-slate-400', active: false };
+        const bMode = restaurant.billingMode || 'subscription';
+
+        if (bMode === 'commission') {
+            const rateStr = restaurant.commissionType === 'fixed'
+                ? `$${Number(restaurant.commissionRate || 0).toFixed(2)}/ped`
+                : `${Number(restaurant.commissionRate || 10)}%`;
+            return {
+                text: `Activa - Comisión por Venta (${rateStr})`,
+                color: 'text-emerald-600',
+                active: true
+            };
+        }
+
+        if (bMode === 'free_custom') {
+            if (restaurant.freeUntil) {
+                const d = new Date(restaurant.freeUntil);
+                return {
+                    text: `Activa - Gratis / Cortesía (hasta ${d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })})`,
+                    color: 'text-emerald-600',
+                    active: true
+                };
+            }
+            return {
+                text: 'Activa - Gratis / Cortesía',
+                color: 'text-emerald-600',
+                active: true
+            };
+        }
+
+        // Subscription mode
+        const planName = restaurant.planId === 'corporativo' ? 'Plan Corporativo' : 'Plan Emprendedor';
+        if (globalPlansConfig?.freeTrialEnabled) {
+            return {
+                text: `Activa - Gratis Lanzamiento (${planName})`,
+                color: 'text-emerald-600',
+                active: true
+            };
+        }
+
+        const end = restaurant.subscriptionEnd ? new Date(restaurant.subscriptionEnd) : null;
+        const isCurrent = end ? end > new Date() : true;
+        return {
+            text: isCurrent ? `Activa - ${planName}` : `Inactiva / Vencida (${planName})`,
+            color: isCurrent ? 'text-emerald-600' : 'text-red-500',
+            active: isCurrent
+        };
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -362,11 +567,19 @@ export default function RestaurantProfile() {
     if (!restaurant) {
         return (
             <div className="text-center py-20">
-                <h2 className="text-2xl font-black text-slate-900">Restaurante no encontrado</h2>
-                <button onClick={() => navigate('/restaurants')} className="mt-4 text-slate-900 font-bold hover:underline">Volver a la lista</button>
+                <h2 className="text-2xl font-black text-slate-900">Negocio no encontrado</h2>
+                <button onClick={() => navigate('/restaurants')} className="mt-4 text-slate-900 font-bold hover:underline">VOLVER A NEGOCIOS</button>
             </div>
         );
     }
+
+    const handleOpenExternalRestaurantApp = () => {
+        const baseUrl = (import.meta.env.VITE_RESTAURANT_APP_URL as string) || 
+            (window.location.hostname.includes('localhost') ? 'http://localhost:5174' : 'https://negocios.deliexpress.app');
+        const url = `${baseUrl}?impersonate_restaurant_id=${restaurant.id}`;
+        window.open(url, '_blank');
+        setIsLoginChooserOpen(false);
+    };
 
     return (
         <div className="space-y-8 pb-20">
@@ -379,7 +592,7 @@ export default function RestaurantProfile() {
                     <div className="w-10 h-10 rounded-xl bg-white border border-slate-100 flex items-center justify-center group-hover:border-slate-200 shadow-sm transition-all">
                         <ArrowLeft className="w-5 h-5" />
                     </div>
-                    <span className="font-black text-xs uppercase tracking-widest">Volver a Restaurantes</span>
+                    <span className="font-black text-xs uppercase tracking-widest">VOLVER A NEGOCIOS</span>
                 </button>
 
                 <div className="flex items-center gap-3">
@@ -389,11 +602,108 @@ export default function RestaurantProfile() {
                     >
                         Editar Perfil
                     </button>
-                    <button className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20">
+                    <button 
+                        onClick={() => setIsLoginChooserOpen(true)}
+                        className="px-6 py-3 bg-slate-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-colors shadow-lg shadow-slate-900/20 active:scale-95 flex items-center gap-2"
+                    >
+                        <Store className="w-4 h-4 text-primary" />
                         Login como Local
                     </button>
                 </div>
             </div>
+
+            {/* Login como Local Action Modal */}
+            <AnimatePresence>
+                {isLoginChooserOpen && (
+                    <div className="fixed inset-0 z-[110] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="bg-white rounded-[36px] max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-100 relative"
+                        >
+                            <button
+                                onClick={() => setIsLoginChooserOpen(false)}
+                                className="absolute top-6 right-6 p-2 rounded-full hover:bg-slate-100 text-slate-400"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+
+                            <div className="w-14 h-14 rounded-2xl bg-amber-400/20 flex items-center justify-center text-amber-900 mb-4">
+                                <Store className="w-7 h-7 text-slate-900" />
+                            </div>
+
+                            <h3 className="text-xl font-black text-slate-900 leading-tight">
+                                Acceso al Local: {restaurant.name}
+                            </h3>
+                            <p className="text-xs text-slate-500 font-medium mt-1">
+                                Selecciona cómo deseas gestionar este comercio como Superadministrador:
+                            </p>
+
+                            <div className="grid grid-cols-1 gap-3 mt-6">
+                                <button
+                                    onClick={handleOpenExternalRestaurantApp}
+                                    className="p-5 rounded-2xl border-2 border-slate-100 hover:border-amber-400 bg-slate-50/50 hover:bg-amber-50/30 text-left transition-all group flex items-start gap-4"
+                                >
+                                    <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-sm">
+                                        <ExternalLink className="w-5 h-5" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h4 className="font-black text-sm text-slate-900 group-hover:text-amber-950">
+                                            Abrir App Negocios (Pestaña Externa)
+                                        </h4>
+                                        <p className="text-xs text-slate-400 font-medium mt-0.5">
+                                            Abre el portal completo en nueva pestaña impersonando la sesión de este negocio.
+                                        </p>
+                                    </div>
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        setIsLoginChooserOpen(false);
+                                        setIsDirectManagerOpen(true);
+                                    }}
+                                    className="p-5 rounded-2xl border-2 border-slate-100 hover:border-slate-900 bg-slate-50/50 hover:bg-slate-100 text-left transition-all group flex items-start gap-4"
+                                >
+                                    <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0 shadow-sm">
+                                        <Store className="w-5 h-5 text-primary" />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h4 className="font-black text-sm text-slate-900">
+                                            Gestión Directa del Local (Sin Salir de Aquí)
+                                        </h4>
+                                        <p className="text-xs text-slate-400 font-medium mt-0.5">
+                                            Panel completo en modal para ver/editar Productos, Pedidos, Mesas, Meseros y Cajeras.
+                                        </p>
+                                    </div>
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Direct Business Manager Modal */}
+            <DirectBusinessManagerModal
+                isOpen={isDirectManagerOpen}
+                onClose={() => setIsDirectManagerOpen(false)}
+                business={{
+                    id: restaurant.id,
+                    name: restaurant.name,
+                    category: restaurant.category,
+                    sector: restaurant.sector,
+                    image: restaurant.image,
+                    logoUrl: restaurant.logoUrl,
+                    whatsapp: restaurant.whatsapp,
+                    isActive: restaurant.isActive,
+                    status: restaurant.status,
+                    deliveryFee: (restaurant as any).deliveryFee,
+                    deliveryTime: restaurant.deliveryTime,
+                    address: restaurant.location?.address,
+                    hasCashea: restaurant.hasCashea
+                }}
+                onBusinessUpdated={fetchData}
+            />
 
             {pendingBannerCount > 0 && (
                 <div className="bg-amber-50 border border-amber-200 rounded-3xl p-6 flex items-center justify-between">
@@ -407,7 +717,7 @@ export default function RestaurantProfile() {
                         </div>
                     </div>
                     <button 
-                        onClick={() => navigate('/finances')}
+                        onClick={() => navigate('/banners')}
                         className="px-6 py-3 bg-amber-600 hover:bg-amber-700 text-white font-black text-sm uppercase tracking-widest rounded-2xl transition-all shadow-lg shadow-amber-600/20 active:scale-95 flex items-center gap-2"
                     >
                         Gestionar
@@ -483,13 +793,11 @@ export default function RestaurantProfile() {
                             </div>
                         </div>
                         <div className="p-4 bg-slate-50 rounded-2xl flex items-center gap-3">
-                            <CheckCircle className={`w-5 h-5 ${restaurant.subscriptionEnd && new Date(restaurant.subscriptionEnd) > new Date() ? 'text-emerald-500' : 'text-slate-400'}`} />
+                            <CheckCircle className={`w-5 h-5 ${getSubscriptionStatusInfo().active ? 'text-emerald-500' : 'text-slate-400'}`} />
                             <div>
                                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Suscripción</p>
-                                <p className={`font-bold text-sm ${restaurant.subscriptionEnd && new Date(restaurant.subscriptionEnd) > new Date() ? 'text-emerald-600' : 'text-slate-500'}`}>
-                                    {restaurant.subscriptionEnd && new Date(restaurant.subscriptionEnd) > new Date() 
-                                        ? `Activa (Vence: ${new Date(restaurant.subscriptionEnd).toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year:'numeric' })})`
-                                        : 'Inactiva / Vencida'}
+                                <p className={`font-bold text-sm ${getSubscriptionStatusInfo().color}`}>
+                                    {getSubscriptionStatusInfo().text}
                                 </p>
                             </div>
                         </div>
@@ -524,6 +832,482 @@ export default function RestaurantProfile() {
                     icon={Users}
                     color="bg-indigo-50 text-indigo-600"
                 />
+            </div>
+
+            {/* ⚙️ Modalidad Comercial, Suscripción y Módulos Habilitados */}
+            <div className="bg-white rounded-[40px] border-2 border-slate-100 p-8 md:p-10 shadow-xl shadow-slate-200/50 space-y-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 rounded-3xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 shadow-sm shrink-0">
+                            <Store className="w-7 h-7 text-amber-600" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                                    ⚙️ Modalidad Comercial, Suscripción y Módulos Habilitados
+                                </h2>
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white">
+                                    SuperAdmin Control
+                                </span>
+                            </div>
+                            <p className="text-sm text-slate-500 font-medium mt-1">
+                                Selecciona cómo opera comercialmente este negocio en Un 2x3 y qué herramientas tiene desbloqueadas.
+                            </p>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={handleSaveModality}
+                        disabled={isSavingModality}
+                        className="flex items-center justify-center gap-2.5 px-8 py-4 bg-primary text-slate-900 hover:bg-primary font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 shrink-0 cursor-pointer"
+                    >
+                        <Save className="w-5 h-5" />
+                        {isSavingModality ? 'Guardando...' : 'Guardar Modalidad y Módulos'}
+                    </button>
+                </div>
+
+                {/* Selector de las 3 Modalidades */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* MODALIDAD 1 */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setModalityMode('subscription');
+                            const plan = globalPlansConfig?.plans?.find((p: any) => p.id === modalityPlanId);
+                            if (plan?.features) {
+                                setModalityCustomFeatures(plan.features);
+                            } else if (modalityPlanId === 'corporativo') {
+                                setModalityCustomFeatures({
+                                    orders: true, cash_internal: true, products: true, notifications: true,
+                                    clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                                    waiters: true, cashiers: true, tables: true, printer_stations: true
+                                });
+                            } else {
+                                setModalityCustomFeatures({
+                                    orders: true, cash_internal: true, products: true, notifications: true,
+                                    clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                                    waiters: false, cashiers: false, tables: false, printer_stations: false
+                                });
+                            }
+                        }}
+                        className={`p-6 rounded-3xl border-2 text-left transition-all relative overflow-hidden flex flex-col justify-between cursor-pointer ${
+                            modalityMode === 'subscription'
+                                ? 'border-primary bg-amber-50/40 shadow-lg shadow-primary/10 ring-2 ring-primary/20'
+                                : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                        }`}
+                    >
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="p-3 bg-white rounded-2xl border border-slate-200/60 shadow-xs text-slate-900">
+                                <CreditCard className="w-6 h-6 text-primary" />
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                modalityMode === 'subscription' ? 'bg-primary text-slate-900' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                                {modalityMode === 'subscription' ? '✓ Seleccionada' : 'Opción 1'}
+                            </span>
+                        </div>
+                        <div>
+                            <h3 className="font-black text-slate-900 text-base">Modalidad 1: Suscripción Mensual</h3>
+                            <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                                Paga mensualidad fija según el plan asignado. Hereda automáticamente los módulos y respeta el período gratis global.
+                            </p>
+                        </div>
+                    </button>
+
+                    {/* MODALIDAD 2 */}
+                    <button
+                        type="button"
+                        onClick={() => setModalityMode('commission')}
+                        className={`p-6 rounded-3xl border-2 text-left transition-all relative overflow-hidden flex flex-col justify-between cursor-pointer ${
+                            modalityMode === 'commission'
+                                ? 'border-emerald-500 bg-emerald-50/40 shadow-lg shadow-emerald-500/10 ring-2 ring-emerald-500/20'
+                                : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                        }`}
+                    >
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="p-3 bg-white rounded-2xl border border-slate-200/60 shadow-xs text-emerald-600">
+                                <Percent className="w-6 h-6 text-emerald-600" />
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                modalityMode === 'commission' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                                {modalityMode === 'commission' ? '✓ Seleccionada' : 'Opción 2'}
+                            </span>
+                        </div>
+                        <div>
+                            <h3 className="font-black text-slate-900 text-base">Modalidad 2: Tarifa por Venta</h3>
+                            <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                                Sin mensualidad fija. Cobra una comisión (% o $ fijo) por cada pedido vendido acumulado en su cuenta.
+                            </p>
+                        </div>
+                    </button>
+
+                    {/* MODALIDAD 3 */}
+                    <button
+                        type="button"
+                        onClick={() => setModalityMode('free_custom')}
+                        className={`p-6 rounded-3xl border-2 text-left transition-all relative overflow-hidden flex flex-col justify-between cursor-pointer ${
+                            modalityMode === 'free_custom'
+                                ? 'border-indigo-500 bg-indigo-50/40 shadow-lg shadow-indigo-500/10 ring-2 ring-indigo-500/20'
+                                : 'border-slate-200/80 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                        }`}
+                    >
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="p-3 bg-white rounded-2xl border border-slate-200/60 shadow-xs text-indigo-600">
+                                <Gift className="w-6 h-6 text-indigo-600" />
+                            </div>
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                modalityMode === 'free_custom' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                            }`}>
+                                {modalityMode === 'free_custom' ? '✓ Seleccionada' : 'Opción 3'}
+                            </span>
+                        </div>
+                        <div>
+                            <h3 className="font-black text-slate-900 text-base">Modalidad 3: Gratis / Desbloqueo Manual</h3>
+                            <p className="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                                Acuerdos especiales o prueba personalizada con fecha límite opcional y módulos elegidos a medida.
+                            </p>
+                        </div>
+                    </button>
+                </div>
+
+                {/* CONFIGURACIÓN DETALLADA SEGÚN LA MODALIDAD SELECCIONADA */}
+                {modalityMode === 'subscription' && (
+                    <div className="p-6 md:p-8 bg-slate-50 rounded-3xl border border-slate-200/80 space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div>
+                                <h4 className="font-black text-slate-900 text-lg flex items-center gap-2">
+                                    <CreditCard className="w-5 h-5 text-amber-600" />
+                                    Plan Asignado al Negocio
+                                </h4>
+                                <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                    El negocio heredará el precio mensual y los módulos activos configurados en dicho plan.
+                                </p>
+                            </div>
+                            {globalPlansConfig?.freeTrialEnabled && (
+                                <div className="px-4 py-2 bg-emerald-100 text-emerald-800 rounded-2xl border border-emerald-200 text-xs font-black flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-emerald-600" />
+                                    Lanzamiento Activo: Gratis hasta {globalPlansConfig.transitionDate || 'Fecha Global'}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Plan Emprendedor */}
+                            <div
+                                onClick={() => {
+                                    setModalityPlanId('emprendedor');
+                                    const plan = globalPlansConfig?.plans?.find((p: any) => p.id === 'emprendedor');
+                                    if (plan?.features) {
+                                        setModalityCustomFeatures(plan.features);
+                                    } else {
+                                        setModalityCustomFeatures({
+                                            orders: true, cash_internal: true, products: true, notifications: true,
+                                            clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                                            waiters: false, cashiers: false, tables: false, printer_stations: false
+                                        });
+                                    }
+                                }}
+                                className={`p-6 rounded-2xl border-2 cursor-pointer transition-all ${
+                                    modalityPlanId === 'emprendedor'
+                                        ? 'bg-white border-primary shadow-md ring-2 ring-primary/20'
+                                        : 'bg-white/70 border-slate-200 hover:border-slate-300'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between mb-3">
+                                    <span className="font-black text-slate-900 text-base">Plan Aliado Emprendedor</span>
+                                    <span className="text-xl font-black text-slate-900">
+                                        ${globalPlansConfig?.plans?.find((p: any) => p.id === 'emprendedor')?.price || 15} USD
+                                        <span className="text-xs font-bold text-slate-400">/mes</span>
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 font-medium mb-3">
+                                    {globalPlansConfig?.plans?.find((p: any) => p.id === 'emprendedor')?.description || 'Recepción de pedidos, caja interna, fidelización, clientes y catálogo de productos.'}
+                                </p>
+                                <div className="flex items-center gap-1.5 text-[11px] font-black text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200/60 w-fit">
+                                    <Lock className="w-3.5 h-3.5" />
+                                    Bloquea Meseros, Cajeras, Mesas QR y Estaciones
+                                </div>
+                            </div>
+
+                            {/* Plan Corporativo */}
+                            <div
+                                onClick={() => {
+                                    setModalityPlanId('corporativo');
+                                    const plan = globalPlansConfig?.plans?.find((p: any) => p.id === 'corporativo');
+                                    if (plan?.features) {
+                                        setModalityCustomFeatures(plan.features);
+                                    } else {
+                                        setModalityCustomFeatures({
+                                            orders: true, cash_internal: true, products: true, notifications: true,
+                                            clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                                            waiters: true, cashiers: true, tables: true, printer_stations: true
+                                        });
+                                    }
+                                }}
+                                className={`p-6 rounded-2xl border-2 cursor-pointer transition-all ${
+                                    modalityPlanId === 'corporativo'
+                                        ? 'bg-white border-indigo-600 shadow-md ring-2 ring-indigo-600/20'
+                                        : 'bg-white/70 border-slate-200 hover:border-slate-300'
+                                }`}
+                            >
+                                <div className="flex items-center justify-between mb-3">
+                                    <span className="font-black text-slate-900 text-base">Plan Aliado Corporativo</span>
+                                    <span className="text-xl font-black text-indigo-700">
+                                        ${globalPlansConfig?.plans?.find((p: any) => p.id === 'corporativo')?.price || 30} USD
+                                        <span className="text-xs font-bold text-slate-400">/mes</span>
+                                    </span>
+                                </div>
+                                <p className="text-xs text-slate-500 font-medium mb-3">
+                                    {globalPlansConfig?.plans?.find((p: any) => p.id === 'corporativo')?.description || 'Ecosistema completo con apps de Meseros, Cajeras, Mesas QR y Estaciones Térmicas.'}
+                                </p>
+                                <div className="flex items-center gap-1.5 text-[11px] font-black text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200/60 w-fit">
+                                    <Unlock className="w-3.5 h-3.5" />
+                                    Desbloquea TODOS los 12 módulos de la plataforma
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {modalityMode === 'commission' && (
+                    <div className="p-6 md:p-8 bg-emerald-50/50 rounded-3xl border border-emerald-200 space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div>
+                                <h4 className="font-black text-slate-900 text-lg flex items-center gap-2">
+                                    <Percent className="w-5 h-5 text-emerald-600" />
+                                    Configuración de Comisión por Venta
+                                </h4>
+                                <p className="text-xs text-slate-600 font-medium mt-0.5">
+                                    El negocio no paga mensualidad fija; la app acumula la comisión pactada con cada pedido completado.
+                                </p>
+                            </div>
+
+                            {/* Deuda acumulada stat */}
+                            <div className="bg-white p-4 rounded-2xl border border-emerald-200 shadow-sm flex items-center gap-4">
+                                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700">
+                                    <DollarSign className="w-5 h-5" />
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">Deuda Comisiones Acumulada</span>
+                                    <span className="text-xl font-black text-emerald-700">
+                                        ${Number(restaurant?.deudaComisionesAcumulada || 0).toFixed(2)} USD
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-2xl border border-emerald-100">
+                            <div className="space-y-2">
+                                <label className="text-xs font-black uppercase tracking-wider text-slate-500">Tipo de Comisión</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setModalityCommissionType('percentage')}
+                                        className={`p-3 rounded-xl border-2 text-xs font-black transition-all cursor-pointer ${
+                                            modalityCommissionType === 'percentage'
+                                                ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        Porcentaje (%)
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setModalityCommissionType('fixed')}
+                                        className={`p-3 rounded-xl border-2 text-xs font-black transition-all cursor-pointer ${
+                                            modalityCommissionType === 'fixed'
+                                                ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                                                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                        }`}
+                                    >
+                                        Monto Fijo ($ USD)
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                                    {modalityCommissionType === 'percentage' ? 'Porcentaje de Comisión (%)' : 'Monto Fijo por Pedido ($ USD)'}
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        value={modalityCommissionRate}
+                                        onChange={(e) => setModalityCommissionRate(parseFloat(e.target.value) || 0)}
+                                        placeholder={modalityCommissionType === 'percentage' ? 'Ej: 10' : 'Ej: 0.50'}
+                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-emerald-500 focus:bg-white rounded-xl p-3.5 pl-10 text-base font-black text-slate-900 outline-none transition-all"
+                                    />
+                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 font-black">
+                                        {modalityCommissionType === 'percentage' ? '%' : '$'}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    {modalityCommissionType === 'percentage'
+                                        ? `Se cobrará el ${modalityCommissionRate}% del total de cada pedido.`
+                                        : `Se cobrarán $${Number(modalityCommissionRate).toFixed(2)} USD fijos por cada pedido.`}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {modalityMode === 'free_custom' && (
+                    <div className="p-6 md:p-8 bg-indigo-50/50 rounded-3xl border border-indigo-200 space-y-6">
+                        <div>
+                            <h4 className="font-black text-slate-900 text-lg flex items-center gap-2">
+                                <Gift className="w-5 h-5 text-indigo-600" />
+                                Cortesía Especial / Período de Prueba Personalizado
+                            </h4>
+                            <p className="text-xs text-slate-600 font-medium mt-0.5">
+                                Define si este negocio goza de cortesía gratuita por tiempo limitado o indefinido, y a qué plan pasará luego.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-6 rounded-2xl border border-indigo-100">
+                            <div className="space-y-2">
+                                <label className="text-xs font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                                    <CalendarDays className="w-4 h-4 text-indigo-600" />
+                                    Fecha Límite Gratuita (Opcional)
+                                </label>
+                                <input
+                                    type="date"
+                                    value={modalityFreeUntil}
+                                    onChange={(e) => setModalityFreeUntil(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl p-3.5 text-sm font-bold text-slate-800 outline-none transition-all"
+                                />
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    {modalityFreeUntil
+                                        ? `Gratis hasta el ${modalityFreeUntil}. Después pasará al plan seleccionado.`
+                                        : 'Dejar vacío para cortesía gratuita indefinida.'}
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-xs font-black uppercase tracking-wider text-slate-500">
+                                    Plan al que pasará al culminar la cortesía
+                                </label>
+                                <select
+                                    value={modalityPlanId}
+                                    onChange={(e) => setModalityPlanId(e.target.value as any)}
+                                    className="w-full bg-slate-50 border-2 border-slate-200 focus:border-indigo-500 focus:bg-white rounded-xl p-3.5 text-sm font-bold text-slate-800 outline-none transition-all cursor-pointer"
+                                >
+                                    <option value="emprendedor">Plan Aliado Emprendedor ($15/mes)</option>
+                                    <option value="corporativo">Plan Aliado Corporativo ($30/mes)</option>
+                                </select>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    Plan que se le asignará automáticamente para renovación de pago mensual.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* CHECKBOXES DE MÓDULOS HABILITADOS */}
+                <div className="space-y-4 pt-2">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+                                <Grid className="w-5 h-5 text-slate-700" />
+                                Módulos y Herramientas Habilitadas para este Negocio
+                            </h3>
+                            <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                {modalityMode === 'subscription'
+                                    ? `Módulos heredados del ${modalityPlanId === 'corporativo' ? 'Plan Corporativo' : 'Plan Emprendedor'}. Si deseas personalizarlos libremente, cambia a Modalidad Comisión o Cortesía.`
+                                    : 'Marca o desmarca individualmente las herramientas que este negocio tendrá activas en su portal.'}
+                            </p>
+                        </div>
+
+                        {modalityMode !== 'subscription' && (
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const allOn: Record<string, boolean> = {};
+                                        AVAILABLE_MODULES.forEach(m => allOn[m.key] = true);
+                                        setModalityCustomFeatures(allOn);
+                                    }}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                                >
+                                    Habilitar Todos
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setModalityCustomFeatures({
+                                            orders: true, cash_internal: true, products: true, notifications: true,
+                                            clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                                            waiters: false, cashiers: false, tables: false, printer_stations: false
+                                        });
+                                    }}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                                >
+                                    Config. Emprendedor
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+                        {AVAILABLE_MODULES.map((mod) => {
+                            const IconComponent = mod.icon;
+                            const isChecked = Boolean(modalityCustomFeatures[mod.key]);
+                            const isReadOnly = modalityMode === 'subscription';
+
+                            return (
+                                <div
+                                    key={mod.key}
+                                    onClick={() => {
+                                        if (isReadOnly) return;
+                                        setModalityCustomFeatures(prev => ({
+                                            ...prev,
+                                            [mod.key]: !prev[mod.key]
+                                        }));
+                                    }}
+                                    className={`p-4 rounded-2xl border-2 transition-all flex items-start gap-3.5 ${
+                                        isReadOnly ? 'cursor-default' : 'cursor-pointer hover:shadow-sm'
+                                    } ${
+                                        isChecked
+                                            ? 'bg-white border-primary shadow-xs'
+                                            : 'bg-slate-50/60 border-slate-200/70 opacity-70'
+                                    }`}
+                                >
+                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                                        isChecked ? 'bg-primary text-slate-900' : 'bg-slate-200 text-slate-400'
+                                    }`}>
+                                        <IconComponent className="w-5 h-5" />
+                                    </div>
+
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <h4 className={`text-sm font-black truncate ${isChecked ? 'text-slate-900' : 'text-slate-500'}`}>
+                                                {mod.label}
+                                            </h4>
+                                            <input
+                                                type="checkbox"
+                                                checked={isChecked}
+                                                disabled={isReadOnly}
+                                                onChange={(e) => {
+                                                    if (isReadOnly) return;
+                                                    setModalityCustomFeatures(prev => ({
+                                                        ...prev,
+                                                        [mod.key]: e.target.checked
+                                                    }));
+                                                }}
+                                                className="w-4 h-4 rounded text-primary focus:ring-primary/20 accent-primary cursor-pointer shrink-0"
+                                            />
+                                        </div>
+                                        <p className="text-[11px] text-slate-400 font-medium line-clamp-1 mt-0.5">
+                                            {mod.description}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
 
             {/* Tabs & Content */}

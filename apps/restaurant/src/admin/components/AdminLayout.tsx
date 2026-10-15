@@ -1,6 +1,6 @@
 import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout, Star, MessageSquare, Megaphone, DollarSign, Gift, Volume2, VolumeX, Shield, Bell } from 'lucide-react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { LayoutDashboard, Store, UtensilsCrossed, ClipboardList, LogOut, ChevronRight, Menu, X, Settings, HelpCircle, Trash2, User, ChevronUp, Users, UserCheck, Printer, Key, Mail as MailIcon, AlertTriangle, Grid, CreditCard, Layout, Star, MessageSquare, Megaphone, DollarSign, Gift, Volume2, VolumeX, Shield, Bell, Lock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../context/BrandingContext';
 import { updateUserEmail, updateUserPassword } from '../../lib/auth-service';
@@ -15,10 +15,11 @@ interface AdminLayoutProps {
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
-    const { user } = useAuth();
+    const { user, userData } = useAuth();
     const { branding } = useBranding();
     const navigate = useNavigate();
-    const currentUid = user?.uid || (user as any)?.id;
+    const location = useLocation();
+    const currentUid = userData?.managedRestaurantId || user?.uid || (user as any)?.id;
     const [isSidebarOpen, setIsSidebarOpen] = React.useState(false);
     const [isProfileMenuOpen, setIsProfileMenuOpen] = React.useState(false);
     const [restaurantName, setRestaurantName] = React.useState('Mi Negocio');
@@ -35,6 +36,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     const [isUpdatingAudio, setIsUpdatingAudio] = React.useState(false);
     const [isActive, setIsActive] = React.useState<boolean | null>(null);
     const [supportPhone, setSupportPhone] = React.useState<string>('');
+    const [commercialData, setCommercialData] = React.useState<{
+        billing_mode?: string;
+        plan_id?: string;
+        custom_features?: Record<string, boolean>;
+    }>({});
+    const [plansConfig, setPlansConfig] = React.useState<any>(null);
+    const [showLockedModal, setShowLockedModal] = React.useState<string | null>(null);
     const { vibrateSelection } = useHaptics();
 
     useGlobalAudioAlerts('restaurant', currentUid);
@@ -54,6 +62,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 if (data) {
                     if (!isMounted) return;
                     setRestaurantName(data.name || 'Mi Negocio');
+                    setCommercialData({
+                        billing_mode: data.billing_mode,
+                        plan_id: data.plan_id,
+                        custom_features: data.custom_features || {}
+                    });
                     if (data.created_at) {
                         setCreatedAt(new Date(data.created_at));
                     }
@@ -114,8 +127,47 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             }
         };
 
+        const fetchPlansConfig = async () => {
+            try {
+                const { data } = await supabase
+                    .from('system_settings')
+                    .select('*')
+                    .eq('key', 'subscription_plans_config')
+                    .maybeSingle();
+                if (data && isMounted) {
+                    setPlansConfig(data.value || data.data);
+                }
+            } catch (err) {
+                console.warn("Error fetching plans config in layout:", err);
+            }
+        };
+
         fetchRestaurant();
+        fetchPlansConfig();
         fetchSupport();
+
+        // Listen for store commercial updates
+        const comercioChannel = supabase.channel(`admin-layout-comercio:${currentUid}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'comercios',
+                    filter: `id=eq.${currentUid}`
+                },
+                (payload) => {
+                    const data = payload.new as any;
+                    if (data && isMounted) {
+                        setCommercialData({
+                            billing_mode: data.billing_mode,
+                            plan_id: data.plan_id,
+                            custom_features: data.custom_features || {}
+                        });
+                    }
+                }
+            )
+            .subscribe();
 
         // Listen for new orders via Supabase Realtime
         const ordersChannel = supabase.channel(`admin-layout-orders:${currentUid}`)
@@ -213,6 +265,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
         return () => {
             isMounted = false;
+            supabase.removeChannel(comercioChannel);
             supabase.removeChannel(ordersChannel);
             supabase.removeChannel(followersChannel);
             supabase.removeChannel(notifsChannel);
@@ -334,6 +387,32 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         }
     };
 
+    const isFeatureUnlocked = (featureKey?: string) => {
+        if (!featureKey) return true;
+        const mode = commercialData.billing_mode || 'subscription';
+
+        if (mode === 'commission' || mode === 'free_custom') {
+            if (commercialData.custom_features && commercialData.custom_features[featureKey] !== undefined) {
+                return Boolean(commercialData.custom_features[featureKey]);
+            }
+            const advanced = ['waiters', 'cashiers', 'tables', 'printer_stations'];
+            return !advanced.includes(featureKey);
+        }
+
+        // Modalidad Suscripción
+        const planId = commercialData.plan_id || 'emprendedor';
+        const configuredPlan = plansConfig?.plans?.[planId];
+        if (configuredPlan?.features && configuredPlan.features[featureKey] !== undefined) {
+            return Boolean(configuredPlan.features[featureKey]);
+        }
+
+        if (planId === 'corporativo') return true;
+
+        // Plan Emprendedor: bloquea waiters, cashiers, tables, printer_stations por defecto
+        const lockedInEmprendedor = ['waiters', 'cashiers', 'tables', 'printer_stations'];
+        return !lockedInEmprendedor.includes(featureKey);
+    };
+
     const navItems = [
         { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
         { path: '/orders', icon: ClipboardList, label: 'Pedidos' },
@@ -342,10 +421,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { path: '/notifications', icon: Bell, label: 'Notificaciones' },
         { path: '/clients', icon: Users, label: 'Clientes' },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
-        { path: '/waiters', icon: UserCheck, label: 'Meseros' },
-        { path: '/cashiers', icon: Shield, label: 'Cajeras' },
-        { path: '/tables', icon: Grid, label: 'Mesas' },
-        { path: '/stations', icon: Printer, label: 'Estaciones' },
+        { path: '/waiters', icon: UserCheck, label: 'Meseros', featureKey: 'waiters' },
+        { path: '/cashiers', icon: Shield, label: 'Cajeras', featureKey: 'cashiers' },
+        { path: '/tables', icon: Grid, label: 'Mesas', featureKey: 'tables' },
+        { path: '/stations', icon: Printer, label: 'Estaciones', featureKey: 'printer_stations' },
         { path: '/profile', icon: Store, label: 'Mi Negocio' },
         { path: '/banners', icon: Layout, label: 'Publicidad' },
         { path: '/push-campaigns', icon: Megaphone, label: 'Campañas Push' },
@@ -353,18 +432,22 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         { path: '/subscriptions', icon: CreditCard, label: 'Suscripción' },
     ];
 
+    const currentCleanPath = location.pathname.replace(/^\/admin/, '') || '/';
+    const currentNavItem = navItems.find(i => i.path === currentCleanPath);
+    const isCurrentRouteLocked = currentNavItem?.featureKey && !isFeatureUnlocked(currentNavItem.featureKey);
+
     return (
         <div className="h-[100dvh] bg-slate-50 flex overflow-hidden">
-            {/* Mobile Sidebar Backdrop */}
+            {/* Mobile/Tablet Sidebar Backdrop */}
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+                    className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
             {/* Sidebar */}
-            <aside className={`fixed inset-y-0 left-0 w-[85vw] max-w-sm bg-slate-950 border-r border-white/10 z-50 transform transition-transform duration-300 ease-in-out md:relative md:w-72 md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside className={`fixed inset-y-0 left-0 w-[85vw] max-w-sm bg-slate-950 border-r border-white/10 z-50 transform transition-transform duration-300 ease-in-out lg:relative lg:w-72 lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="flex flex-col h-full pt-safe">
                     {/* Sidebar Header */}
                     <div className="p-6 border-b border-white/5 flex items-center justify-between">
@@ -381,32 +464,61 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Business Hub</p>
                             </div>
                         </div>
-                        <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
-                            <X className="w-6 h-6 text-slate-400" />
+                        <button className="lg:hidden p-2 text-slate-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}>
+                            <X className="w-6 h-6" />
                         </button>
                     </div>
 
                     {/* Nav Items */}
                     <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-                        {navItems.map((item) => (
-                            <NavLink
-                                key={item.path}
-                                to={item.path}
-                                className={({ isActive }) =>
-                                    `flex items-center justify-between p-4 rounded-2xl font-bold transition-all group ${isActive
-                                        ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20'
-                                        : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                                    }`
-                                }
-                                onClick={() => { vibrateSelection(); setIsSidebarOpen(false); }}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <item.icon className="w-5 h-5" />
-                                    <span>{item.label}</span>
-                                </div>
-                                <ChevronRight className={`w-4 h-4 transition-transform group-hover:translate-x-1 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} />
-                            </NavLink>
-                        ))}
+                        {navItems.map((item) => {
+                            const isUnlocked = isFeatureUnlocked((item as any).featureKey);
+
+                            if (!isUnlocked) {
+                                return (
+                                    <button
+                                        key={item.path}
+                                        type="button"
+                                        onClick={() => {
+                                            vibrateSelection();
+                                            setShowLockedModal(item.label);
+                                        }}
+                                        className="w-full flex items-center justify-between p-4 rounded-2xl font-bold transition-all text-slate-500 hover:text-slate-300 hover:bg-white/5 opacity-75 group text-left cursor-pointer"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <item.icon className="w-5 h-5 text-slate-500 group-hover:text-slate-400" />
+                                            <span>{item.label}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                                Corporativo
+                                            </span>
+                                            <Lock className="w-3.5 h-3.5 text-amber-400" />
+                                        </div>
+                                    </button>
+                                );
+                            }
+
+                            return (
+                                <NavLink
+                                    key={item.path}
+                                    to={item.path}
+                                    className={({ isActive }) =>
+                                        `flex items-center justify-between p-4 rounded-2xl font-bold transition-all group ${isActive
+                                            ? 'bg-primary text-slate-900 shadow-lg shadow-primary/20'
+                                            : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                        }`
+                                    }
+                                    onClick={() => { vibrateSelection(); setIsSidebarOpen(false); }}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <item.icon className="w-5 h-5" />
+                                        <span>{item.label}</span>
+                                    </div>
+                                    <ChevronRight className={`w-4 h-4 transition-transform group-hover:translate-x-1 ${isSidebarOpen ? 'opacity-100' : 'opacity-0'}`} />
+                                </NavLink>
+                            );
+                        })}
                     </nav>
 
                     {/* Sidebar Footer */}
@@ -591,11 +703,34 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
             {/* Main Content */}
             <main className="flex-1 flex flex-col min-w-0 overflow-hidden bg-slate-50 relative pb-[65px] md:pb-0">
+                {/* Sticky SuperAdmin Impersonation Banner */}
+                {userData?.isImpersonating && (
+                    <div className="sticky top-0 z-[100] bg-amber-400 text-amber-950 font-black text-xs md:text-sm px-4 py-2.5 flex items-center justify-between shadow-md border-b-2 border-amber-500 shrink-0">
+                        <div className="flex items-center gap-2 truncate">
+                            <span className="text-base animate-pulse">👁️</span>
+                            <span className="truncate">
+                                MODO SUPERADMIN: Gestionando el local <strong className="underline">{userData.impersonatedRestaurantName || restaurantName}</strong>
+                            </span>
+                        </div>
+                        <button
+                            onClick={() => {
+                                sessionStorage.removeItem('impersonate_restaurant_id');
+                                const cleanUrl = window.location.origin + window.location.pathname;
+                                window.location.href = cleanUrl;
+                            }}
+                            className="px-3.5 py-1 bg-amber-950 text-white rounded-xl text-xs uppercase tracking-wider hover:bg-black transition-all shrink-0 ml-3 shadow-xs active:scale-95"
+                        >
+                            Cerrar Vista Local
+                        </button>
+                    </div>
+                )}
+
                 {/* Top Header */}
-                <header className="h-14 md:h-20 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
+                <header className="h-14 lg:h-20 bg-white border-b border-slate-200 px-4 lg:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
                     <button
-                        className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
+                        className="lg:hidden p-2 -ml-2 text-slate-500 hover:text-slate-900 active:scale-95 transition-transform"
                         onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
+                        aria-label="Abrir menú"
                     >
                         <Menu className="w-6 h-6" />
                     </button>
@@ -661,7 +796,40 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </div>
 
                 <div className="flex-1 overflow-y-auto p-2 md:p-8 relative custom-scrollbar">
-                    {children}
+                    {isCurrentRouteLocked ? (
+                        <div className="flex items-center justify-center min-h-[500px]">
+                            <div className="max-w-md w-full bg-white rounded-[2.5rem] p-8 text-center border-2 border-amber-200/80 shadow-xl shadow-amber-500/5 space-y-5 animate-in zoom-in-95">
+                                <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+                                    <Lock className="w-10 h-10" />
+                                </div>
+                                <div className="space-y-2">
+                                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800">
+                                        Plan Aliado Corporativo
+                                    </span>
+                                    <h2 className="text-2xl font-black text-slate-900">
+                                        Módulo Bloqueado: {currentNavItem?.label}
+                                    </h2>
+                                    <p className="text-sm text-slate-500 font-medium leading-relaxed">
+                                        Este módulo no está habilitado para tu cuenta en este momento. Actualiza al <strong>Plan Aliado Corporativo</strong> o contacta al Superadministrador para desbloquearlo.
+                                    </p>
+                                </div>
+                                <div className="pt-3 flex flex-col gap-2">
+                                    <button
+                                        onClick={() => navigate('/subscriptions')}
+                                        className="w-full py-4 px-6 bg-primary hover:bg-amber-400 text-slate-900 font-black rounded-2xl shadow-lg shadow-primary/20 transition-all active:scale-95 text-sm cursor-pointer"
+                                    >
+                                        Ver Suscripción y Planes
+                                    </button>
+                                    <button
+                                        onClick={() => navigate('/')}
+                                        className="w-full py-3 px-6 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold rounded-2xl transition-colors text-xs cursor-pointer"
+                                    >
+                                        Volver al Inicio
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : children}
                 </div>
 
                 {/* Mobile Bottom Navigation */}
@@ -773,6 +941,45 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                         <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
                             ID del Negocio: {currentUid}
                         </p>
+                    </div>
+                </div>
+            )}
+            {/* Modal de Módulo Bloqueado */}
+            {showLockedModal && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in">
+                    <div className="bg-white rounded-[2.5rem] max-w-md w-full p-8 text-center space-y-5 shadow-2xl border border-slate-100">
+                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-3xl flex items-center justify-center mx-auto shadow-inner">
+                            <Lock className="w-8 h-8" />
+                        </div>
+                        <div className="space-y-2">
+                            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800">
+                                Plan Aliado Corporativo
+                            </span>
+                            <h3 className="text-xl font-black text-slate-900">
+                                Módulo: {showLockedModal}
+                            </h3>
+                            <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
+                                Este módulo está reservado para el <strong className="text-slate-800">Plan Aliado Corporativo</strong> o requiere habilitación personalizada por parte de la administración de Un 2x3.
+                            </p>
+                        </div>
+                        <div className="pt-2 flex flex-col sm:flex-row gap-2">
+                            <button
+                                onClick={() => setShowLockedModal(null)}
+                                className="flex-1 py-3.5 px-4 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors text-xs cursor-pointer"
+                            >
+                                Entendido
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setShowLockedModal(null);
+                                    setIsSidebarOpen(false);
+                                    navigate('/subscriptions');
+                                }}
+                                className="flex-1 py-3.5 px-4 rounded-xl font-black text-slate-900 bg-primary hover:bg-amber-400 transition-all text-xs shadow-md shadow-primary/20 cursor-pointer"
+                            >
+                                Ver Planes
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

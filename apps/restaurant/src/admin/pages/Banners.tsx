@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Loader2, CheckCircle2 } from 'lucide-react';
+import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Loader2, CheckCircle2, Globe, Map as MapIcon, MapPin as PinIcon, Sparkles } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
@@ -26,6 +26,11 @@ export default function Banners() {
         used: 0,
         total: 3,
         remaining: 3
+    });
+    const [bannerPricing, setBannerPricing] = useState<any>({
+        national: { price: 30, updateLimit: 3, availability: 'available' },
+        state: { price: 15, updateLimit: 3, availability: 'available' },
+        city: { price: 5, updateLimit: 3, availability: 'available' }
     });
 
     const fetchBanners = useCallback(async () => {
@@ -63,20 +68,34 @@ export default function Banners() {
     useEffect(() => {
         if (!rid) return;
 
-        // Fetch Business Data
-        const fetchBusiness = async () => {
-            const { data } = await supabase
-                .from('comercios')
-                .select('*')
-                .eq('id', rid)
-                .single();
-            if (data) {
-                setBusinessData(data);
-                const limit = (data as any).subscription?.bannerLimit || 3;
-                setBannerStats(prev => ({ ...prev, total: limit }));
+        // Fetch Business Data and Banner Pricing
+        const fetchBusinessAndPricing = async () => {
+            try {
+                const [bizRes, pricingRes] = await Promise.all([
+                    supabase.from('comercios').select('*').eq('id', rid).single(),
+                    supabase.from('system_settings').select('*').eq('key', 'banner_plans_config').maybeSingle()
+                ]);
+
+                if (bizRes.data) {
+                    setBusinessData(bizRes.data);
+                    const limit = (bizRes.data as any).subscription?.bannerLimit || 3;
+                    setBannerStats(prev => ({ ...prev, total: limit }));
+                }
+
+                if (pricingRes.data?.value) {
+                    setBannerPricing(pricingRes.data.value);
+                } else {
+                    const { data: appData } = await supabase.from('app_settings').select('*').eq('id', 'subscriptions').maybeSingle();
+                    if (appData?.banner_pricing) {
+                        setBannerPricing(appData.banner_pricing);
+                    }
+                }
+            } catch (err) {
+                console.warn("Error fetching business / pricing:", err);
             }
         };
-        fetchBusiness();
+
+        fetchBusinessAndPricing();
         fetchBanners();
 
         const channel = supabase
@@ -101,11 +120,12 @@ export default function Banners() {
 
     const handleSaveBanner = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || !rid || !businessData) return;
+        const isAnyPlanFree = bannerPricing.national?.availability === 'free' || bannerPricing.state?.availability === 'free' || bannerPricing.city?.availability === 'free';
+        const isExempt = isAnyPlanFree || businessData?.billing_mode === 'free_custom' || businessData?.billing_mode === 'commission';
 
-        // Check if user has subscription
-        if (!businessData.subscription) {
-            alert("Necesitas una suscripción activa para gestionar banners.");
+        // Check if user has subscription or is exempt
+        if (!businessData.subscription && !isExempt) {
+            alert("Necesitas una suscripción activa o que la promoción 'Gratis por tiempo limitado' esté vigente para gestionar banners.");
             return;
         }
 
@@ -246,19 +266,108 @@ export default function Banners() {
                 </div>
             </div>
 
-            {/* Alert if no subscription */}
-            {!businessData?.subscription && (
-                <div className="bg-amber-50 border-2 border-amber-100 p-6 rounded-[2rem] flex items-start gap-4">
-                    <AlertCircle className="w-6 h-6 text-amber-500 shrink-0 mt-1" />
+            {/* Costos Actuales y Disponibilidad de Banners */}
+            <div className="bg-white rounded-3xl p-6 border-2 border-slate-100 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                        <h3 className="font-black text-amber-900">Suscripción Requerida</h3>
-                        <p className="text-sm text-amber-800/80 font-medium mt-1">
-                            Para publicar anuncios en la plataforma necesitas adquirir un plan de suscripción.
-                            Ve a la sección de <span className="font-bold underline">Suscripción</span> para ver los planes.
+                        <h3 className="text-base font-black text-slate-900">Costos y Tarifas de Banners</h3>
+                        <p className="text-xs text-slate-500 font-medium">Revisa las tarifas oficiales según el alcance geográfico de tu anuncio:</p>
+                    </div>
+                    {(bannerPricing.national?.availability === 'free' || bannerPricing.state?.availability === 'free' || bannerPricing.city?.availability === 'free') && (
+                        <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider rounded-full self-start flex items-center gap-1.5 shadow-xs">
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> 🎁 Gratis por tiempo limitado Activo
+                        </span>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                    {/* Nacional */}
+                    <div className="p-4 rounded-2xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                                    <Globe className="w-4 h-4" />
+                                </div>
+                                <span className="font-black text-slate-900 text-xs">Banner Nacional</span>
+                            </div>
+                            {bannerPricing.national?.availability === 'free' ? (
+                                <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
+                                    ¡Gratis!
+                                </span>
+                            ) : (
+                                <span className="font-black text-slate-800 text-xs">
+                                    ${bannerPricing.national?.price || 30}/mes
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight">
+                            Visible para todos los clientes en toda Venezuela.
                         </p>
+                        <div className="pt-1 text-[10px] font-bold text-slate-400">
+                            {bannerPricing.national?.availability === 'free' ? '🎁 Postulación gratuita' : bannerPricing.national?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                        </div>
+                    </div>
+
+                    {/* Regional / Estado */}
+                    <div className="p-4 rounded-2xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                                    <MapIcon className="w-4 h-4" />
+                                </div>
+                                <span className="font-black text-slate-900 text-xs">Banner Regional</span>
+                            </div>
+                            {bannerPricing.state?.availability === 'free' ? (
+                                <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
+                                    ¡Gratis!
+                                </span>
+                            ) : (
+                                <span className="font-black text-slate-800 text-xs">
+                                    ${bannerPricing.state?.price || 15}/mes
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight">
+                            Visible para los clientes ubicados en tu estado.
+                        </p>
+                        <div className="pt-1 text-[10px] font-bold text-slate-400">
+                            {bannerPricing.state?.availability === 'free' ? '🎁 Postulación gratuita' : bannerPricing.state?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                        </div>
+                    </div>
+
+                    {/* Local / Ciudad */}
+                    <div className="p-4 rounded-2xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                                    <PinIcon className="w-4 h-4" />
+                                </div>
+                                <span className="font-black text-slate-900 text-xs">Banner Local</span>
+                            </div>
+                            {bannerPricing.city?.availability === 'free' ? (
+                                <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
+                                    ¡Gratis!
+                                </span>
+                            ) : (
+                                <span className="font-black text-slate-800 text-xs">
+                                    ${bannerPricing.city?.price || 5}/mes
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight">
+                            Visible para clientes de tu misma ciudad.
+                        </p>
+                        <div className="pt-1 text-[10px] font-bold text-slate-400">
+                            {bannerPricing.city?.availability === 'free' ? '🎁 Postulación gratuita' : bannerPricing.city?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                        </div>
                     </div>
                 </div>
-            )}
+
+                <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/60 text-xs text-amber-900 font-medium flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Todo banner solicitado pasará a revisión del Superadministrador antes de hacerse visible para los clientes.</span>
+                </div>
+            </div>
 
             <AnimatePresence mode="wait">
                 {isAdding && (

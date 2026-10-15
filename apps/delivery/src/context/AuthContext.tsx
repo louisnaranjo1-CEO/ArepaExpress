@@ -162,6 +162,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, []);
 
+    // Activity heartbeat (every 60s)
+    useEffect(() => {
+        if (!user?.id) return;
+        const pingActivity = async () => {
+            try {
+                await supabase.rpc('ping_user_activity', {
+                    p_user_id: user.id,
+                    p_app_type: 'delivery'
+                });
+            } catch (err) {
+                // silently fail ping
+            }
+        };
+        pingActivity();
+        const interval = setInterval(pingActivity, 60000);
+        return () => clearInterval(interval);
+    }, [user?.id]);
+
     const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null);
 
     // Watch Geolocation

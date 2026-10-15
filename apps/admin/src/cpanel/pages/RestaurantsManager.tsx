@@ -4,7 +4,7 @@ import {
     Store, CheckCircle, XCircle, ChevronRight, X, Phone, MapPin, 
     Tag, Box, Star, Users, ShoppingBag, Database, ShieldCheck, 
     ShieldAlert, Trash2, Plus, Loader2, Lock, Mail, Copy, 
-    ExternalLink, Image as ImageIcon, Check 
+    ExternalLink, Image as ImageIcon, Check, Search, Filter 
 } from 'lucide-react';
 import { Restaurant, seedDatabase, clearMockDatabase } from '../../lib/seed';
 import { GLOBAL_CATEGORIES } from '../../lib/constants';
@@ -29,6 +29,8 @@ export default function RestaurantsManager() {
     const [loading, setLoading] = useState(true);
     const [isMocking, setIsMocking] = useState(false);
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedSector, setSelectedSector] = useState('all');
 
     // Create Store Modal states
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -273,16 +275,29 @@ export default function RestaurantsManager() {
         return <div className="animate-pulse space-y-4"><div className="h-8 bg-slate-200 rounded w-1/4"></div><div className="h-64 bg-slate-200 rounded"></div></div>;
     }
 
+    const availableSectors = Array.from(new Set(restaurants.map(r => r.category).filter(Boolean)));
+
+    const filteredRestaurants = restaurants.filter(r => {
+        const query = searchTerm.toLowerCase().trim();
+        const matchesSearch = !query ||
+            r.name?.toLowerCase().includes(query) ||
+            r.email?.toLowerCase().includes(query) ||
+            r.category?.toLowerCase().includes(query) ||
+            r.id?.toLowerCase().includes(query);
+        const matchesSector = selectedSector === 'all' || r.category === selectedSector;
+        return matchesSearch && matchesSector;
+    });
+
     return (
         <div className="space-y-6">
             {/* Header with Title and Create Button */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 md:p-8 rounded-[36px] border border-slate-100 shadow-sm">
                 <div className="flex flex-col gap-1">
                     <h1 className="text-2xl md:text-3xl font-black text-slate-900 leading-tight">
-                        Gestión de Tiendas y Comercios
+                        Gestión de Negocios y Comercios
                     </h1>
                     <p className="text-slate-500 font-medium text-sm">
-                        Crea nuevas tiendas, asigna credenciales a los dueños y administra sus catálogos de productos.
+                        Administra negocios aliados (farmacias, autopartes, ferreterías, supermercados, restaurantes y más), asigna credenciales y gestiona sus catálogos.
                     </p>
                 </div>
                 <button
@@ -290,13 +305,58 @@ export default function RestaurantsManager() {
                     className="flex items-center justify-center gap-2.5 px-6 py-4 bg-primary text-slate-950 font-black rounded-2xl shadow-xl shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] transition-all text-sm uppercase tracking-wider shrink-0"
                 >
                     <Plus className="w-5 h-5 stroke-[2.5]" />
-                    Crear Nueva Tienda
+                    Crear Nuevo Negocio
                 </button>
             </div>
 
+            {/* Search and Sector Filter Bar */}
+            <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 relative">
+                    <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                        type="text"
+                        placeholder="Buscar negocios por nombre, categoría, correo o ID..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-2xl pl-11 pr-4 py-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
+                    />
+                    {searchTerm && (
+                        <button
+                            onClick={() => setSearchTerm('')}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                        >
+                            <X className="w-4 h-4" />
+                        </button>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-2xl px-4 py-2 shrink-0">
+                    <Filter className="w-4 h-4 text-slate-400" />
+                    <select
+                        value={selectedSector}
+                        onChange={(e) => setSelectedSector(e.target.value)}
+                        className="bg-transparent text-sm font-bold text-slate-700 focus:outline-none cursor-pointer pr-4"
+                    >
+                        <option value="all">Todos los Sectores ({restaurants.length})</option>
+                        {availableSectors.map(sec => (
+                            <option key={sec} value={sec}>
+                                {sec} ({restaurants.filter(r => r.category === sec).length})
+                            </option>
+                        ))}
+                    </select>
+                </div>
+            </div>
+
             {/* Restaurants Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 pb-24">
-                {restaurants.map((restaurant) => {
+            {filteredRestaurants.length === 0 ? (
+                <div className="bg-white rounded-[32px] p-16 text-center border border-slate-100">
+                    <Store className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                    <h3 className="font-black text-slate-700 text-lg">No se encontraron negocios</h3>
+                    <p className="text-xs text-slate-400 mt-1">Prueba con otro término de búsqueda o sector.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6 pb-24">
+                    {filteredRestaurants.map((restaurant) => {
                     const isActive = restaurant.isActive !== false;
                     const logo = (restaurant as any).logoUrl || restaurant.image;
                     
@@ -427,6 +487,7 @@ export default function RestaurantsManager() {
                     );
                 })}
             </div>
+            )}
 
             {/* Modal: Crear Nueva Tienda */}
             {isCreateModalOpen && (
@@ -444,8 +505,8 @@ export default function RestaurantsManager() {
                                 <Store className="w-6 h-6 text-slate-900" />
                             </div>
                             <div>
-                                <h3 className="text-2xl font-black text-slate-900">Apertura de Nueva Tienda</h3>
-                                <p className="text-xs font-bold text-slate-400">Registra el comercio y asígnale credenciales para su portal.</p>
+                                <h3 className="text-2xl font-black text-slate-900">Apertura de Nuevo Negocio</h3>
+                                <p className="text-xs font-bold text-slate-400">Registra el negocio aliado y asígnale credenciales para su portal.</p>
                             </div>
                         </div>
 
