@@ -239,10 +239,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Periodic heartbeat to track real user active minutes
     useEffect(() => {
         if (!user?.id) return;
-        supabase.rpc('ping_user_activity', { p_user_id: user.id, p_app_type: 'restaurant' }).catch(() => {});
-        const interval = setInterval(() => {
-            supabase.rpc('ping_user_activity', { p_user_id: user.id, p_app_type: 'restaurant' }).catch(() => {});
-        }, 60000);
+        const pingActivity = async () => {
+            try {
+                await supabase.rpc('ping_user_activity', {
+                    p_user_id: user.id,
+                    p_app_type: 'restaurant'
+                });
+            } catch (err) {
+                // Silently ignore ping errors
+            }
+        };
+        pingActivity();
+        const interval = setInterval(pingActivity, 60000);
         return () => clearInterval(interval);
     }, [user?.id]);
 
