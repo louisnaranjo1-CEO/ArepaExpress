@@ -262,14 +262,32 @@ export default function LiquidationsManager() {
 
             const currentDebt = Number(dRow?.commission_debt || 0);
             const newDebt = Math.max(0, currentDebt - amountUsd);
-            const newStatus = newDebt < 15 ? 'current' : (dRow?.commission_status || 'current');
+            const newStatus = newDebt <= 0 ? 'current' : (newDebt < 15 ? 'current' : (dRow?.commission_status || 'current'));
+
+            // Calculate next Friday if debt is completely settled (<= 0)
+            const getNextFridayISO = () => {
+                const now = new Date();
+                const day = now.getDay(); // 0: Sun, 5: Fri
+                let daysUntilFriday = (5 - day + 7) % 7;
+                if (daysUntilFriday === 0) daysUntilFriday = 7;
+                const nextFri = new Date(now);
+                nextFri.setDate(now.getDate() + daysUntilFriday);
+                nextFri.setHours(23, 59, 59, 999);
+                return nextFri.toISOString();
+            };
+
+            const driverUpdates: Record<string, any> = {
+                commission_debt: newDebt,
+                commission_status: newStatus
+            };
+
+            if (newDebt <= 0) {
+                driverUpdates.next_commission_deadline = getNextFridayISO();
+            }
 
             const { error: dErr } = await supabase
                 .from('drivers')
-                .update({
-                    commission_debt: newDebt,
-                    commission_status: newStatus
-                })
+                .update(driverUpdates)
                 .eq('id', payment.driver_id);
             if (dErr) throw dErr;
 

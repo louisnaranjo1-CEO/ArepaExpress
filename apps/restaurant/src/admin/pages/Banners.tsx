@@ -165,10 +165,13 @@ export default function Banners() {
                 title: newBanner.title || '',
                 link_url: newBanner.linkUrl || '',
                 image_url: finalImageUrl,
-                duration: newBanner.duration || 5,
                 is_active: false,
                 updated_at: new Date().toISOString()
             };
+
+            if (!editingId) {
+                bannerData.duration = 5; // Default duration controlled by SuperAdmin
+            }
 
             if (editingId) {
                 const { error: updErr } = await supabase.from('banners').update(bannerData).eq('id', editingId);
@@ -409,21 +412,6 @@ export default function Banners() {
                                             onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
                                             className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                             placeholder="https://wa.me/..."
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Duración en Pantalla (Segundos)</label>
-                                    <div className="relative">
-                                        <Timer className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                        <input
-                                            type="number"
-                                            min="3"
-                                            max="15"
-                                            value={newBanner.duration}
-                                            onChange={e => setNewBanner({ ...newBanner, duration: parseInt(e.target.value) })}
-                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                         />
                                     </div>
                                 </div>

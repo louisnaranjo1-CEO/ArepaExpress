@@ -182,15 +182,20 @@ export default function BannersManager() {
         }
     };
 
-    const handleUpdateBannerRequestStatus = async (id: string, newStatus: 'approved' | 'rejected') => {
+    const handleUpdateBannerRequestStatus = async (id: string, newStatus: 'approved' | 'rejected', customDuration?: number) => {
         try {
+            const updates: Record<string, any> = {
+                status: newStatus,
+                is_active: newStatus === 'approved',
+                updated_at: new Date().toISOString()
+            };
+            if (customDuration !== undefined && !isNaN(customDuration) && customDuration > 0) {
+                updates.duration = customDuration;
+            }
+
             const { error } = await supabase
                 .from('banners')
-                .update({
-                    status: newStatus,
-                    is_active: newStatus === 'approved',
-                    updated_at: new Date().toISOString()
-                })
+                .update(updates)
                 .eq('id', id);
 
             if (error) throw error;
@@ -199,6 +204,25 @@ export default function BannersManager() {
         } catch (err: any) {
             console.error(err);
             toast.error("Error al actualizar estado del banner");
+        }
+    };
+
+    const handleUpdateBannerDuration = async (id: string, durationSec: number) => {
+        try {
+            const { error } = await supabase
+                .from('banners')
+                .update({
+                    duration: durationSec,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id);
+
+            if (error) throw error;
+            toast.success(`Duración actualizada a ${durationSec}s`);
+            fetchBanners();
+        } catch (err: any) {
+            console.error(err);
+            toast.error("Error al actualizar duración");
         }
     };
 
@@ -1629,11 +1653,35 @@ export default function BannersManager() {
                                                     </p>
                                                 )}
 
-                                                <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500">
-                                                    <span className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-md">
-                                                        <Timer className="w-3 h-3 text-slate-400" /> {req.duration || 5}s
-                                                    </span>
-                                                    <span className="flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-md">
+                                                 <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500">
+                                                    <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-xl text-amber-900">
+                                                        <Timer className="w-3.5 h-3.5 text-amber-600" />
+                                                        <span className="text-[10px] uppercase tracking-wider font-black">Duración:</span>
+                                                        <input
+                                                            type="number"
+                                                            min="2"
+                                                            max="60"
+                                                            defaultValue={req.duration || 5}
+                                                            onBlur={(e) => {
+                                                                const val = parseInt(e.target.value);
+                                                                if (!isNaN(val) && val > 0 && val !== req.duration) {
+                                                                    handleUpdateBannerDuration(req.id, val);
+                                                                }
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    const val = parseInt((e.target as HTMLInputElement).value);
+                                                                    if (!isNaN(val) && val > 0 && val !== req.duration) {
+                                                                        handleUpdateBannerDuration(req.id, val);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="w-12 text-center bg-white border border-amber-300 rounded-lg py-0.5 px-1 font-black text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-400"
+                                                            title="Solo el Superadministrador define la duración en segundos"
+                                                        />
+                                                        <span className="font-bold text-xs">seg</span>
+                                                    </div>
+                                                    <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-xl">
                                                         <Globe className="w-3 h-3 text-slate-400" />
                                                         {req.visibilityScope === 'national' ? 'Nacional' : req.visibilityScope === 'state' ? `Estado: ${req.targetState}` : `Ciudad: ${req.targetCity}`}
                                                     </span>

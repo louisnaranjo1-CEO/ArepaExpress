@@ -274,10 +274,14 @@ export default function OrdersRadar() {
     const activeServicesCount = (activeTransport ? 1 : 0) + (activeOrder ? 1 : 0) + myReservations.length;
     const hasReachedServiceLimit = activeServicesCount >= 2;
 
-    // Suspension check: debt >= $15, suspended status, or deadline expired
-    const isSuspended = Boolean(
+    const commissionDebt = Number(driverProfile?.commission_debt || 0);
+    const hasPendingDebt = commissionDebt > 0;
+
+    // Suspension check: ONLY applies if there is actual pending debt > 0.
+    // If debt is $0.00, the driver is up-to-date and waits until next Friday cycle.
+    const isSuspended = hasPendingDebt && Boolean(
         driverProfile?.commission_status === 'suspended' || 
-        Number(driverProfile?.commission_debt || 0) >= 15 || 
+        commissionDebt >= 15 || 
         (driverProfile?.next_commission_deadline && new Date(driverProfile.next_commission_deadline).getTime() < Date.now())
     );
 
@@ -404,9 +408,33 @@ export default function OrdersRadar() {
     useEffect(() => {
         if (!user) return;
 
+        const getNextFridayDeadline = () => {
+            const d = new Date();
+            const day = d.getDay();
+            let daysUntilFriday = (5 - day + 7) % 7;
+            if (daysUntilFriday === 0) daysUntilFriday = 7;
+            const nextFri = new Date(d);
+            nextFri.setDate(d.getDate() + daysUntilFriday);
+            nextFri.setHours(23, 59, 59, 999);
+            return nextFri.toISOString();
+        };
+
         const fetchProfile = async () => {
             try {
                 const profile = await driversApi.getDriver(user.uid);
+                if (profile) {
+                    const cDebt = Number(profile.commission_debt || 0);
+                    const isExpired = profile.next_commission_deadline && new Date(profile.next_commission_deadline).getTime() < Date.now();
+                    if (cDebt <= 0 && (!profile.next_commission_deadline || isExpired || profile.commission_status === 'suspended')) {
+                        const nextFri = getNextFridayDeadline();
+                        profile.next_commission_deadline = nextFri;
+                        profile.commission_status = 'current';
+                        supabase.from('drivers').update({
+                            next_commission_deadline: nextFri,
+                            commission_status: 'current'
+                        }).eq('id', user.uid).then(() => {});
+                    }
+                }
                 setDriverProfile(profile);
             } catch (err) {
                 console.error("Error fetching radar profile:", err);
@@ -425,7 +453,21 @@ export default function OrdersRadar() {
                     filter: `id=eq.${user.uid}`
                 },
                 (payload) => {
-                    setDriverProfile(payload.new);
+                    const updated = payload.new as any;
+                    if (updated) {
+                        const cDebt = Number(updated.commission_debt || 0);
+                        const isExpired = updated.next_commission_deadline && new Date(updated.next_commission_deadline).getTime() < Date.now();
+                        if (cDebt <= 0 && (!updated.next_commission_deadline || isExpired || updated.commission_status === 'suspended')) {
+                            const nextFri = getNextFridayDeadline();
+                            updated.next_commission_deadline = nextFri;
+                            updated.commission_status = 'current';
+                            supabase.from('drivers').update({
+                                next_commission_deadline: nextFri,
+                                commission_status: 'current'
+                            }).eq('id', user.uid).then(() => {});
+                        }
+                    }
+                    setDriverProfile(updated);
                 }
             )
             .subscribe();

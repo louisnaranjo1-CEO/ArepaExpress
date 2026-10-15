@@ -7,7 +7,7 @@ import { useCurrency } from '../../context/CurrencyContext';
 
 export default function LiquidationsManager() {
     const { bcvRate } = useCurrency();
-    const [activeTab, setActiveTab] = useState<'restaurants' | 'drivers' | 'commissions' | 'history'>('commissions');
+    const [activeTab, setActiveTab] = useState<'restaurants' | 'commissions' | 'history'>('restaurants');
     
     // Data states
     const [restaurants, setRestaurants] = useState<any[]>([]);
@@ -49,8 +49,20 @@ export default function LiquidationsManager() {
     const fetchDriversAndEarnings = async () => {
         try {
             const { data: driversData } = await supabase.from('drivers').select('*');
-            const { data: ordersData } = await supabase.from('orders').select('*').in('status', ['completed', 'delivered']);
-            const { data: transportData } = await supabase.from('transport_requests').select('*').eq('status', 'completed');
+            const { data: ordersData } = await supabase
+                .from('orders')
+                .select('*')
+                .in('status', ['completed', 'delivered'])
+                .or('delivery_paid.is.null,delivery_paid.eq.false')
+                .order('created_at', { ascending: false })
+                .limit(200);
+            const { data: transportData } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .eq('status', 'completed')
+                .or('driver_paid.is.null,driver_paid.eq.false')
+                .order('created_at', { ascending: false })
+                .limit(200);
 
             const processedDrivers = (driversData || []).map((driver: any) => {
                 const driverOrders = (ordersData || []).filter((o: any) => 
@@ -250,14 +262,32 @@ export default function LiquidationsManager() {
 
             const currentDebt = Number(dRow?.commission_debt || 0);
             const newDebt = Math.max(0, currentDebt - amountUsd);
-            const newStatus = newDebt < 15 ? 'current' : (dRow?.commission_status || 'current');
+            const newStatus = newDebt <= 0 ? 'current' : (newDebt < 15 ? 'current' : (dRow?.commission_status || 'current'));
+
+            // Calculate next Friday if debt is completely settled (<= 0)
+            const getNextFridayISO = () => {
+                const now = new Date();
+                const day = now.getDay(); // 0: Sun, 5: Fri
+                let daysUntilFriday = (5 - day + 7) % 7;
+                if (daysUntilFriday === 0) daysUntilFriday = 7;
+                const nextFri = new Date(now);
+                nextFri.setDate(now.getDate() + daysUntilFriday);
+                nextFri.setHours(23, 59, 59, 999);
+                return nextFri.toISOString();
+            };
+
+            const driverUpdates: Record<string, any> = {
+                commission_debt: newDebt,
+                commission_status: newStatus
+            };
+
+            if (newDebt <= 0) {
+                driverUpdates.next_commission_deadline = getNextFridayISO();
+            }
 
             const { error: dErr } = await supabase
                 .from('drivers')
-                .update({
-                    commission_debt: newDebt,
-                    commission_status: newStatus
-                })
+                .update(driverUpdates)
                 .eq('id', payment.driver_id);
             if (dErr) throw dErr;
 
@@ -395,7 +425,7 @@ export default function LiquidationsManager() {
                         <DollarSign className="w-8 h-8 text-primary" />
                         Módulo de Liquidaciones
                     </h1>
-                    <p className="text-slate-500 font-medium">Gestiona comisiones y deudas de tiendas, así como pagos a pilotos.</p>
+                    <p className="text-slate-500 font-medium">Gestiona comisiones y deudas de tiendas, y concilia los pagos de comisiones de conductores Un 2x3.</p>
                 </div>
             </div>
 
@@ -425,15 +455,6 @@ export default function LiquidationsManager() {
                     )}
                 </button>
                 <button
-                    onClick={() => setActiveTab('drivers')}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold whitespace-nowrap transition-all ${
-                        activeTab === 'drivers' ? 'bg-primary text-slate-900 shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
-                    }`}
-                >
-                    <CheckCircle className="w-5 h-5" />
-                    Liquidación Pilotos
-                </button>
-                <button
                     onClick={() => setActiveTab('history')}
                     className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold whitespace-nowrap transition-all ${
                         activeTab === 'history' ? 'bg-primary text-slate-900 shadow-sm' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
@@ -450,7 +471,7 @@ export default function LiquidationsManager() {
                     <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
                     <input
                         type="text"
-                        placeholder={`Buscar ${activeTab === 'restaurants' ? 'tienda / comercio' : activeTab === 'commissions' ? 'conductor o referencia...' : 'piloto'}...`}
+                        placeholder={`Buscar ${activeTab === 'restaurants' ? 'tienda o comercio...' : 'conductor o referencia...'}`}
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl outline-none focus:border-primary/50"
@@ -839,88 +860,6 @@ export default function LiquidationsManager() {
                             </div>
                         )}
                     </div>
-                </div>
-            )}
-
-            {activeTab === 'drivers' && (
-                <div className="space-y-4">
-                    {filteredDrivers.length === 0 ? (
-                        <div className="text-center py-12 bg-white rounded-3xl border border-slate-200">
-                            <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-3" />
-                            <h3 className="font-bold text-slate-900">Sin pagos pendientes</h3>
-                            <p className="text-slate-500 text-sm">Todos los pilotos han sido liquidados.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {filteredDrivers.map(driver => (
-                                <div key={driver.id} className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm">
-                                    <div className="flex items-start justify-between border-b border-slate-100 pb-4 mb-4">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center">
-                                                <User className="w-6 h-6 text-primary" />
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <h3 className="font-bold text-slate-900">{driver.fullName}</h3>
-                                                    {driver.hasRequested && (
-                                                        <span className="px-2 py-0.5 bg-red-100 text-red-600 text-[10px] font-black rounded-full animate-pulse">
-                                                            PAGO SOLICITADO
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <p className="text-sm font-medium text-slate-500">{driver.phone || 'Sin teléfono'}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[10px] uppercase font-bold text-slate-400">Total a Liquidar</p>
-                                            <DualPrice usdAmount={driver.totalUnpaid} usdClassName="text-2xl font-black text-slate-900" showDivider={false} className="flex flex-col items-end" />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4 mb-4">
-                                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                            <p className="text-[10px] uppercase font-bold text-slate-400">Envíos (Delivery)</p>
-                                            <p className="text-lg font-bold text-slate-800">{driver.unpaidOrders.length}</p>
-                                        </div>
-                                        <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
-                                            <p className="text-[10px] uppercase font-bold text-slate-400">Viajes (Transporte)</p>
-                                            <p className="text-lg font-bold text-slate-800">{driver.unpaidTransports.length}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-4 bg-blue-50 text-blue-900 rounded-2xl border border-blue-100 mb-6">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <p className="text-xs uppercase font-bold tracking-wider">Datos Bancarios (Pago Móvil)</p>
-                                            {driver.paymentMobile?.phone && (
-                                                <button 
-                                                    onClick={() => copyPaymentInfo(driver)}
-                                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-blue-700 border border-blue-200 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-sm hover:bg-blue-50 active:scale-95 transition-all"
-                                                >
-                                                    <Copy className="w-3 h-3" /> Copiar Datos
-                                                </button>
-                                            )}
-                                        </div>
-                                        {driver.paymentMobile?.phone ? (
-                                            <div className="text-sm font-medium space-y-1">
-                                                <p><span className="font-bold">Banco:</span> {driver.paymentMobile.bank}</p>
-                                                <p><span className="font-bold">Cédula:</span> {driver.paymentMobile.cedula}</p>
-                                                <p><span className="font-bold">Teléfono:</span> {driver.paymentMobile.phone}</p>
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm italic opacity-75">No ha registrado datos de Pago Móvil.</p>
-                                        )}
-                                    </div>
-
-                                    <button 
-                                        onClick={() => handlePayDriver(driver)}
-                                        className="w-full py-3 bg-primary text-slate-900 rounded-xl font-bold hover:brightness-105 transition-all shadow-md"
-                                    >
-                                        Marcar como Pagado
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
                 </div>
             )}
 

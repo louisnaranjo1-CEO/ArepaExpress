@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, setDoc, getDoc } from 'firebase/firestore';
-import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Save } from 'lucide-react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../lib/firebase';
+import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Save, Shield, FileText, Check, Layout, Info, Store, Navigation, CheckCircle, XCircle, Sparkles, Filter, Tag, DollarSign } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'react-hot-toast';
 
@@ -25,8 +23,12 @@ export interface GlobalLoyaltyBanner {
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import { Globe, Map as MapIcon, MapPin as PinIcon } from 'lucide-react';
 
+const DEFAULT_DISCLAIMER =
+    "Grupo Un 2x3 VE, C.A. (RIF J-cambiar Rif-0) no está autorizado por la Superintendencia de Instituciones del Sector Bancario (SUDEBAN) para intermediar o fungir como pasarela de pagos entre clientes y comercios. Grupo Un 2x3 es un portal que ofrece a los clientes acceder a compras a plazo en comercios afiliados pero son estos últimos quienes otorgan dicho beneficio. Los clientes abonarán o depositarán los pagos o cuotas directamente en las cuentas bancarias de los comercios.";
+
 export default function BannersManager() {
     const [banners, setBanners] = useState<any[]>([]);
+    const [restaurants, setRestaurants] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAdding, setIsAdding] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -35,13 +37,33 @@ export default function BannersManager() {
     const [newBanner, setNewBanner] = useState({
         imageUrl: '',
         title: '',
+        subtitle: '',
         linkUrl: '',
         duration: 5,
-        type: 'top_banner' as 'top_banner' | 'welcome_popup',
+        type: 'top_banner' as 'top_banner' | 'welcome_popup' | 'card_banner',
+        bgColor: '#FEF9C3',
         visibilityScope: 'national' as 'national' | 'state' | 'city',
         targetState: '',
-        targetCity: ''
+        targetCity: '',
+        actionType: 'info_modal' as 'info_modal' | 'restaurant' | 'internal_section' | 'external_url',
+        restaurantId: ''
     });
+
+    // SUDEBAN Legal Disclaimer State
+    const [disclaimerText, setDisclaimerText] = useState(DEFAULT_DISCLAIMER);
+    const [isDisclaimerActive, setIsDisclaimerActive] = useState(true);
+    const [savingDisclaimer, setSavingDisclaimer] = useState(false);
+
+    // Tabs
+    const [currentMainTab, setCurrentMainTab] = useState<'banners' | 'requests' | 'pricing'>('banners');
+    const [requestFilter, setRequestFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
+    const [bannerPricing, setBannerPricing] = useState({
+        national: { price: 30, updateLimit: 3, availability: 'available' },
+        state: { price: 15, updateLimit: 3, availability: 'available' },
+        city: { price: 5, updateLimit: 3, availability: 'available' }
+    });
+    const [savingPricing, setSavingPricing] = useState(false);
+
     // Existing banner states
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -64,16 +86,168 @@ export default function BannersManager() {
 
     const fetchBanners = async () => {
         try {
-            const querySnapshot = await getDocs(collection(db, 'banners'));
-            const data = querySnapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data()
+            const [bannersRes, restRes] = await Promise.all([
+                supabase.from('banners').select('*').order('created_at', { ascending: false }),
+                supabase.from('comercios').select('id, name').order('name')
+            ]);
+
+            if (bannersRes.error) throw bannersRes.error;
+            if (restRes.data) setRestaurants(restRes.data);
+
+            const mapped = (bannersRes.data || []).map(b => ({
+                ...b,
+                imageUrl: b.image_url || b.imageUrl,
+                linkUrl: b.link_url || b.linkUrl,
+                targetScreen: b.target_screen || b.targetScreen,
+                isActive: b.is_active !== undefined ? b.is_active : b.isActive,
+                visibilityScope: b.visibility_scope || b.visibilityScope,
+                targetState: b.target_state || b.targetState,
+                targetCity: b.target_city || b.targetCity,
+                actionType: b.action_type || b.actionType || (
+                    b.restaurant_id ? 'restaurant' :
+                    (b.link_url || b.linkUrl)?.startsWith('/') ? 'internal_section' :
+                    (b.link_url || b.linkUrl)?.startsWith('http') ? 'external_url' :
+                    'info_modal'
+                ),
+                restaurantId: b.restaurant_id || b.restaurantId || ''
             }));
-            setBanners(data);
+            setBanners(mapped);
+
+            // Fetch SUDEBAN Disclaimer config
+            try {
+                const { data: discData } = await supabase
+                    .from('system_configs')
+                    .select('*')
+                    .eq('id', 'home_disclaimer')
+                    .maybeSingle();
+                if (discData) {
+                    const text = discData.text || discData.data?.text;
+                    const active = discData.is_active !== undefined ? discData.is_active : discData.data?.is_active;
+                    if (text) setDisclaimerText(text);
+                    if (active !== undefined) setIsDisclaimerActive(active);
+                }
+            } catch (e) {
+                console.warn("Could not fetch home disclaimer:", e);
+            }
+            // Fetch banner pricing config
+            try {
+                const { data: pData } = await supabase
+                    .from('system_settings')
+                    .select('*')
+                    .eq('key', 'banner_plans_config')
+                    .maybeSingle();
+                if (pData?.value) {
+                    setBannerPricing(pData.value);
+                } else {
+                    const { data: appData } = await supabase
+                        .from('app_settings')
+                        .select('*')
+                        .eq('id', 'subscriptions')
+                        .maybeSingle();
+                    if (appData?.banner_pricing) {
+                        setBannerPricing(appData.banner_pricing);
+                    }
+                }
+            } catch (pErr) {
+                console.warn("Could not fetch banner pricing:", pErr);
+            }
         } catch (error) {
             console.error("Error fetching banners: ", error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSavePricing = async () => {
+        setSavingPricing(true);
+        try {
+            await Promise.all([
+                supabase.from('system_settings').upsert({
+                    key: 'banner_plans_config',
+                    value: bannerPricing,
+                    updated_at: new Date().toISOString()
+                }),
+                supabase.from('app_settings').upsert({
+                    id: 'subscriptions',
+                    banner_pricing: bannerPricing,
+                    updated_at: new Date().toISOString()
+                })
+            ]);
+            toast.success("Precios y disponibilidad de banners guardados con éxito");
+        } catch (err: any) {
+            console.error("Save pricing error:", err);
+            toast.error("Error al guardar precios: " + (err.message || "Error de red"));
+        } finally {
+            setSavingPricing(false);
+        }
+    };
+
+    const handleUpdateBannerRequestStatus = async (id: string, newStatus: 'approved' | 'rejected', customDuration?: number) => {
+        try {
+            const updates: Record<string, any> = {
+                status: newStatus,
+                is_active: newStatus === 'approved',
+                updated_at: new Date().toISOString()
+            };
+            if (customDuration !== undefined && !isNaN(customDuration) && customDuration > 0) {
+                updates.duration = customDuration;
+            }
+
+            const { error } = await supabase
+                .from('banners')
+                .update(updates)
+                .eq('id', id);
+
+            if (error) throw error;
+            toast.success(`Banner ${newStatus === 'approved' ? 'aprobado y activado' : 'rechazado'}`);
+            fetchBanners();
+        } catch (err: any) {
+            console.error(err);
+            toast.error("Error al actualizar estado del banner");
+        }
+    };
+
+    const handleUpdateBannerDuration = async (id: string, durationSec: number) => {
+        try {
+            const { error } = await supabase
+                .from('banners')
+                .update({
+                    duration: durationSec,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id);
+
+            if (error) throw error;
+            toast.success(`Duración actualizada a ${durationSec}s`);
+            fetchBanners();
+        } catch (err: any) {
+            console.error(err);
+            toast.error("Error al actualizar duración");
+        }
+    };
+
+    const handleSaveDisclaimer = async () => {
+        setSavingDisclaimer(true);
+        try {
+            const { error } = await supabase
+                .from('system_configs')
+                .upsert({
+                    id: 'home_disclaimer',
+                    text: disclaimerText,
+                    is_active: isDisclaimerActive,
+                    data: {
+                        text: disclaimerText,
+                        is_active: isDisclaimerActive
+                    },
+                    updated_at: new Date().toISOString()
+                });
+            if (error) throw error;
+            toast.success("Aviso legal SUDEBAN guardado con éxito");
+        } catch (err: any) {
+            console.error(err);
+            toast.error("Error al guardar aviso legal: " + (err.message || "Error de red"));
+        } finally {
+            setSavingDisclaimer(false);
         }
     };
 
@@ -100,24 +274,26 @@ export default function BannersManager() {
 
             const bannerData = {
                 type: 'fidelization',
-                isActive: Boolean(currentBanner.isActive),
+                is_active: Boolean(currentBanner.isActive),
                 title: String(currentBanner.title || ''),
                 explanation: String(currentBanner.explanation || ''),
                 prizes: prizes,
-                imageUrl: String(currentBanner.bannerImageUrl || ''),
-                visibilityScope: currentBanner.visibilityScope || 'national',
-                targetState: currentBanner.targetState || '',
-                targetCity: currentBanner.targetCity || '',
-                linkUrl: '',
+                image_url: String(currentBanner.bannerImageUrl || ''),
+                visibility_scope: currentBanner.visibilityScope || 'national',
+                target_state: currentBanner.targetState || '',
+                target_city: currentBanner.targetCity || '',
+                link_url: '',
                 duration: 5,
-                updatedAt: serverTimestamp()
+                updated_at: new Date().toISOString()
             };
 
             if (editingFidelizationId) {
-                await updateDoc(doc(db, 'banners', editingFidelizationId), bannerData);
+                const { error } = await supabase.from('banners').update(bannerData).eq('id', editingFidelizationId);
+                if (error) throw error;
                 toast.success("Banner de fidelización actualizado");
             } else {
-                await addDoc(collection(db, 'banners'), { ...bannerData, createdAt: serverTimestamp() });
+                const { error } = await supabase.from('banners').insert([{ ...bannerData, created_at: new Date().toISOString() }]);
+                if (error) throw error;
                 toast.success("Banner de fidelización guardado correctamente");
             }
 
@@ -148,9 +324,11 @@ export default function BannersManager() {
         setUploadingBannerImage(true);
         const loadingToast = toast.loading("Subiendo imagen principal...");
         try {
-            const imageRef = ref(storage, `loyalty_prizes/main_banner_${Date.now()}_${file.name}`);
-            await uploadBytes(imageRef, file);
-            const imageUrl = await getDownloadURL(imageRef);
+            const filePath = `loyalty_prizes/main_banner_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            const imageUrl = pubData.publicUrl;
 
             setGlobalBanner(prev => ({ ...prev, bannerImageUrl: imageUrl }));
             toast.success("Imagen subida correctamente", { id: loadingToast });
@@ -169,9 +347,11 @@ export default function BannersManager() {
         }
         setAddingPrize(true);
         try {
-            const imageRef = ref(storage, `loyalty_prizes/${Date.now()}_${newPrize.image.name}`);
-            await uploadBytes(imageRef, newPrize.image);
-            const imageUrl = await getDownloadURL(imageRef);
+            const filePath = `loyalty_prizes/${Date.now()}_${newPrize.image.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, newPrize.image, { upsert: true });
+            if (upErr) throw upErr;
+            const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+            const imageUrl = pubData.publicUrl;
 
             setGlobalBanner(prev => ({
                 ...prev,
@@ -209,7 +389,7 @@ export default function BannersManager() {
     const handleSaveBanner = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedFile && !newBanner.imageUrl) {
-            alert("Por favor selecciona una imagen");
+            toast.error("Por favor selecciona una imagen");
             return;
         }
 
@@ -218,25 +398,48 @@ export default function BannersManager() {
             let finalImageUrl = newBanner.imageUrl;
 
             if (selectedFile) {
-                const storageRef = ref(storage, `banners/${Date.now()}_${selectedFile.name}`);
-                const snapshot = await uploadBytes(storageRef, selectedFile);
-                finalImageUrl = await getDownloadURL(snapshot.ref);
+                const filePath = `banners/${Date.now()}_${selectedFile.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, selectedFile, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                finalImageUrl = pubData.publicUrl;
+            }
+
+            let resolvedLinkUrl = newBanner.linkUrl;
+            if (newBanner.actionType === 'restaurant') {
+                resolvedLinkUrl = newBanner.restaurantId ? `/restaurant/${newBanner.restaurantId}` : '';
+            } else if (newBanner.actionType === 'info_modal') {
+                resolvedLinkUrl = '';
             }
 
             const bannerData = {
-                ...newBanner,
-                imageUrl: finalImageUrl,
-                updatedAt: serverTimestamp(),
-                isActive: true
+                title: newBanner.title,
+                explanation: newBanner.subtitle || '',
+                target_screen: newBanner.bgColor || '#FEF9C3',
+                image_url: finalImageUrl,
+                link_url: resolvedLinkUrl,
+                duration: newBanner.duration,
+                type: newBanner.type,
+                action_type: newBanner.actionType,
+                restaurant_id: (newBanner.actionType === 'restaurant' && newBanner.restaurantId) ? newBanner.restaurantId : null,
+                visibility_scope: newBanner.visibilityScope,
+                target_state: newBanner.targetState,
+                target_city: newBanner.targetCity,
+                updated_at: new Date().toISOString(),
+                is_active: true
             };
 
             if (editingId) {
-                await updateDoc(doc(db, 'banners', editingId), bannerData);
+                const { error } = await supabase.from('banners').update(bannerData).eq('id', editingId);
+                if (error) throw error;
+                toast.success("Banner actualizado con éxito");
             } else {
-                await addDoc(collection(db, 'banners'), {
+                const { error } = await supabase.from('banners').insert([{
                     ...bannerData,
-                    createdAt: serverTimestamp(),
-                });
+                    created_at: new Date().toISOString(),
+                }]);
+                if (error) throw error;
+                toast.success("Banner creado con éxito");
             }
 
             setIsAdding(false);
@@ -244,19 +447,23 @@ export default function BannersManager() {
             setNewBanner({
                 imageUrl: '',
                 title: '',
+                subtitle: '',
                 linkUrl: '',
                 duration: 5,
                 type: 'top_banner',
+                bgColor: '#FEF9C3',
                 visibilityScope: 'national',
                 targetState: '',
-                targetCity: ''
+                targetCity: '',
+                actionType: 'info_modal',
+                restaurantId: ''
             });
             setSelectedFile(null);
             setImagePreview(null);
             fetchBanners();
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error saving banner: ", error);
-            alert("Error al guardar el banner");
+            toast.error("Error al guardar el banner: " + (error.message || ''));
         } finally {
             setUploading(false);
         }
@@ -265,17 +472,22 @@ export default function BannersManager() {
     const handleDelete = async (id: string) => {
         if (!window.confirm("¿Seguro que deseas eliminar este banner?")) return;
         try {
-            await deleteDoc(doc(db, 'banners', id));
+            const { error } = await supabase.from('banners').delete().eq('id', id);
+            if (error) throw error;
             setBanners(prev => prev.filter(b => b.id !== id));
+            toast.success("Banner eliminado");
         } catch (error) {
             console.error("Error deleting banner: ", error);
+            toast.error("No se pudo eliminar el banner");
         }
     };
 
     const toggleActive = async (id: string, currentStatus: boolean) => {
         try {
-            await updateDoc(doc(db, 'banners', id), { isActive: !currentStatus });
+            const { error } = await supabase.from('banners').update({ is_active: !currentStatus }).eq('id', id);
+            if (error) throw error;
             setBanners(prev => prev.map(b => b.id === id ? { ...b, isActive: !currentStatus } : b));
+            toast.success(!currentStatus ? "Banner activado" : "Banner desactivado");
         } catch (error) {
             console.error("Error updating status: ", error);
         }
@@ -289,27 +501,42 @@ export default function BannersManager() {
                 title: banner.title || '',
                 explanation: banner.explanation || '',
                 prizes: banner.prizes || [],
-                bannerImageUrl: banner.imageUrl || '',
-                visibilityScope: banner.visibilityScope || 'national',
-                targetState: banner.targetState || '',
-                targetCity: banner.targetCity || ''
+                bannerImageUrl: banner.imageUrl || banner.image_url || '',
+                visibilityScope: banner.visibilityScope || banner.visibility_scope || 'national',
+                targetState: banner.targetState || banner.target_state || '',
+                targetCity: banner.targetCity || banner.target_city || ''
             });
             window.scrollTo({ top: 0, behavior: 'smooth' });
+            toast.success("Editando banner en sección superior");
         } else {
             setEditingId(banner.id);
+            const actType = banner.actionType || banner.action_type || (
+                (banner.restaurantId || banner.restaurant_id) ? 'restaurant' :
+                (banner.linkUrl || banner.link_url)?.startsWith('/') ? 'internal_section' :
+                (banner.linkUrl || banner.link_url)?.startsWith('http') ? 'external_url' :
+                'info_modal'
+            );
             setNewBanner({
-                imageUrl: banner.imageUrl || '',
+                imageUrl: banner.imageUrl || banner.image_url || '',
                 title: banner.title || '',
-                linkUrl: banner.linkUrl || '',
+                subtitle: banner.explanation || banner.subtitle || '',
+                linkUrl: banner.linkUrl || banner.link_url || '',
                 duration: banner.duration || 5,
                 type: banner.type || 'top_banner',
-                visibilityScope: banner.visibilityScope || 'national',
-                targetState: banner.targetState || '',
-                targetCity: banner.targetCity || ''
+                bgColor: banner.target_screen || banner.targetScreen || '#FEF9C3',
+                visibilityScope: banner.visibilityScope || banner.visibility_scope || 'national',
+                targetState: banner.targetState || banner.target_state || '',
+                targetCity: banner.targetCity || banner.target_city || '',
+                actionType: actType,
+                restaurantId: banner.restaurantId || banner.restaurant_id || ''
             });
-            setImagePreview(banner.imageUrl || null);
+            setImagePreview(banner.imageUrl || banner.image_url || null);
             setIsAdding(true);
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setTimeout(() => {
+                const el = document.getElementById('banner-form-container');
+                if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+            toast.success("Editando banner seleccionado");
         }
     };
 
@@ -324,45 +551,100 @@ export default function BannersManager() {
         );
     }
 
+    const bannerRequests = banners.filter(b => Boolean(b.restaurantId || b.restaurant_id || b.status));
+    const pendingRequestsCount = bannerRequests.filter(b => b.status === 'pending_approval' || (!b.isActive && b.status !== 'rejected')).length;
+
+    const filteredRequests = bannerRequests.filter(r => {
+        if (requestFilter === 'all') return true;
+        if (requestFilter === 'pending') return r.status === 'pending_approval' || (!r.isActive && r.status !== 'rejected');
+        if (requestFilter === 'approved') return r.status === 'approved' || r.isActive;
+        if (requestFilter === 'rejected') return r.status === 'rejected';
+        return true;
+    });
+
     return (
         <div className="space-y-8 animate-in fade-in duration-700">
             {/* Header section */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Gestión de Banners</h1>
-                    <p className="text-slate-500 font-medium">Administra los anuncios publicitarios de la aplicación cliente.</p>
+                    <h1 className="text-3xl font-black text-slate-900 tracking-tight">Gestión de Banners y Publicidad</h1>
+                    <p className="text-slate-500 font-medium">Administra los anuncios publicitarios, solicitudes de comercios y tarifas.</p>
                 </div>
+                {currentMainTab === 'banners' && (
+                    <button
+                        onClick={() => {
+                            if (isAdding) {
+                                setIsAdding(false);
+                                setEditingId(null);
+                                setNewBanner({
+                                    imageUrl: '',
+                                    title: '',
+                                    subtitle: '',
+                                    linkUrl: '',
+                                    duration: 5,
+                                    type: 'top_banner',
+                                    bgColor: '#FEF9C3',
+                                    visibilityScope: 'national',
+                                    targetState: '',
+                                    targetCity: '',
+                                    actionType: 'info_modal',
+                                    restaurantId: ''
+                                });
+                                setImagePreview(null);
+                            } else {
+                                setIsAdding(true);
+                            }
+                        }}
+                        className="flex items-center justify-center gap-2 bg-primary hover:bg-primary text-slate-900 px-6 py-3 rounded-2xl transition-all font-black shadow-lg shadow-primary/20 active:scale-95"
+                    >
+                        {isAdding ? 'Cancelar' : (
+                            <>
+                                <Plus className="w-5 h-5 text-indigo-200" />
+                                Nuevo Banner
+                            </>
+                        )}
+                    </button>
+                )}
+            </div>
+
+            {/* Navigation Tabs */}
+            <div className="flex overflow-x-auto hide-scrollbar gap-2 pb-2">
                 <button
-                    onClick={() => {
-                        if (isAdding) {
-                            setIsAdding(false);
-                            setEditingId(null);
-                            setNewBanner({
-                                imageUrl: '',
-                                title: '',
-                                linkUrl: '',
-                                duration: 5,
-                                type: 'top_banner',
-                                visibilityScope: 'national',
-                                targetState: '',
-                                targetCity: ''
-                            });
-                            setImagePreview(null);
-                        } else {
-                            setIsAdding(true);
-                        }
-                    }}
-                    className="flex items-center justify-center gap-2 bg-primary hover:bg-primary text-slate-900 px-6 py-3 rounded-2xl transition-all font-black shadow-lg shadow-primary/20 active:scale-95"
+                    onClick={() => setCurrentMainTab('banners')}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm whitespace-nowrap transition-all ${
+                        currentMainTab === 'banners' ? 'bg-primary text-slate-900 shadow-md shadow-primary/20' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+                    }`}
                 >
-                    {isAdding ? 'Cancelar' : (
-                        <>
-                            <Plus className="w-5 h-5 text-indigo-200" />
-                            Nuevo Banner
-                        </>
+                    <ImageIcon className="w-4 h-4" />
+                    Anuncios Activos y Campañas
+                </button>
+                <button
+                    onClick={() => setCurrentMainTab('requests')}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm whitespace-nowrap transition-all relative ${
+                        currentMainTab === 'requests' ? 'bg-primary text-slate-900 shadow-md shadow-primary/20' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                    <FileText className="w-4 h-4" />
+                    Solicitudes de Negocios
+                    {pendingRequestsCount > 0 && (
+                        <span className="px-2 py-0.5 bg-red-500 text-white text-[10px] font-black rounded-full animate-pulse ml-1">
+                            {pendingRequestsCount}
+                        </span>
                     )}
+                </button>
+                <button
+                    onClick={() => setCurrentMainTab('pricing')}
+                    className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm whitespace-nowrap transition-all ${
+                        currentMainTab === 'pricing' ? 'bg-primary text-slate-900 shadow-md shadow-primary/20' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
+                    }`}
+                >
+                    <DollarSign className="w-4 h-4" />
+                    Planes y Precios Banners
                 </button>
             </div>
 
+            {currentMainTab === 'banners' && (
+                <>
             {/* Global Loyalty Banner Configuration */}
             <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-8">
                 <div className="p-6 border-b border-slate-50 bg-slate-50/50 flex items-center justify-between">
@@ -571,6 +853,78 @@ export default function BannersManager() {
                 </div>
             </div>
 
+            {/* SUDEBAN Legal Disclaimer Configuration */}
+            <div className="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-8">
+                <div className="p-6 border-b border-slate-50 bg-amber-50/40 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shadow-sm shrink-0">
+                            <Shield className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <h3 className="font-black text-slate-800 uppercase tracking-widest text-sm flex items-center gap-2">
+                                Aviso Legal SUDEBAN (Pie de Banner en Inicio)
+                            </h3>
+                            <p className="text-xs text-slate-500 font-medium">
+                                Texto legal obligatorio mostrado en la pantalla de inicio debajo de las tarjetas/banners. Modifica tu RIF o condiciones.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-500">Mostrar en App:</span>
+                        <button
+                            type="button"
+                            onClick={() => setIsDisclaimerActive(!isDisclaimerActive)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase transition-all ${
+                                isDisclaimerActive
+                                    ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                    : 'bg-slate-100 text-slate-400 border border-slate-200'
+                            }`}
+                        >
+                            {isDisclaimerActive ? 'Activo' : 'Oculto'}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="p-6 space-y-4">
+                    <div>
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                            Contenido del Mensaje Legal
+                        </label>
+                        <textarea
+                            rows={4}
+                            value={disclaimerText}
+                            onChange={(e) => setDisclaimerText(e.target.value)}
+                            placeholder="Escribe el texto legal..."
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl p-4 font-medium text-xs sm:text-sm text-slate-700 outline-none focus:border-amber-400 focus:bg-white transition-all resize-none mt-1.5"
+                        />
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => setDisclaimerText(DEFAULT_DISCLAIMER)}
+                            className="text-xs font-bold text-slate-400 hover:text-slate-600 underline"
+                        >
+                            Restaurar texto predeterminado
+                        </button>
+
+                        <button
+                            type="button"
+                            disabled={savingDisclaimer}
+                            onClick={handleSaveDisclaimer}
+                            className="bg-slate-900 hover:bg-black text-white text-xs font-black px-6 py-3 rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {savingDisclaimer ? (
+                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <Save className="w-4 h-4 text-amber-400" />
+                            )}
+                            Guardar Aviso Legal
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             {/* Banners List Header */}
             <div className="flex items-center gap-4 bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 mt-8 mb-4">
                 <ImageIcon className="w-8 h-8 text-primary" />
@@ -583,6 +937,7 @@ export default function BannersManager() {
             <AnimatePresence>
                 {isAdding && (
                     <motion.form
+                        id="banner-form-container"
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
@@ -597,7 +952,7 @@ export default function BannersManager() {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             <div className="space-y-4">
                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Tipo de Publicidad</label>
-                                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                                <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl">
                                     <button
                                         type="button"
                                         onClick={() => setNewBanner({ ...newBanner, type: 'top_banner' })}
@@ -612,19 +967,77 @@ export default function BannersManager() {
                                     >
                                         Ventana Emergente
                                     </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, type: 'card_banner' })}
+                                        className={`flex-1 py-2 px-3 rounded-xl font-bold text-xs transition-all ${newBanner.type === 'card_banner' ? 'bg-white text-amber-600 shadow-sm font-black' : 'text-slate-500'}`}
+                                    >
+                                        Tarjeta Inicio (Img 2)
+                                    </button>
                                 </div>
                             </div>
                             <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Título / Nombre Interno</label>
+                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">
+                                    {newBanner.type === 'card_banner' ? 'Título Principal (ej: Creemos en tu negocio.)' : 'Título / Nombre Interno'}
+                                </label>
                                 <input
                                     type="text"
                                     required
                                     value={newBanner.title}
                                     onChange={e => setNewBanner({ ...newBanner, title: e.target.value })}
                                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-primary focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold text-slate-700"
-                                    placeholder="Ej: Promo San Valentín"
+                                    placeholder={newBanner.type === 'card_banner' ? "Creemos en tu negocio." : "Ej: Promo San Valentín"}
                                 />
                             </div>
+
+                            {newBanner.type === 'card_banner' && (
+                                <>
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">
+                                            Subtítulo (ej: Regístrate como aliado en Un 2x3)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={newBanner.subtitle}
+                                            onChange={e => setNewBanner({ ...newBanner, subtitle: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-primary focus:bg-white outline-none transition-all font-bold text-slate-700"
+                                            placeholder="Regístrate como aliado en Un 2x3."
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">
+                                            Color de Fondo de la Tarjeta
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            {[
+                                                { label: 'Amarillo Cashea', color: '#FEF9C3' },
+                                                { label: 'Blanco', color: '#FFFFFF' },
+                                                { label: 'Gris suave', color: '#F8FAFC' },
+                                                { label: 'Azul suave', color: '#EFF6FF' },
+                                                { label: 'Verde suave', color: '#ECFDF5' },
+                                            ].map(c => (
+                                                <button
+                                                    key={c.color}
+                                                    type="button"
+                                                    title={c.label}
+                                                    onClick={() => setNewBanner({ ...newBanner, bgColor: c.color })}
+                                                    style={{ backgroundColor: c.color }}
+                                                    className={`w-8 h-8 rounded-xl border-2 transition-transform ${
+                                                        newBanner.bgColor === c.color ? 'border-amber-500 scale-110 shadow-md' : 'border-slate-200'
+                                                    }`}
+                                                />
+                                            ))}
+                                            <input
+                                                type="text"
+                                                value={newBanner.bgColor}
+                                                onChange={e => setNewBanner({ ...newBanner, bgColor: e.target.value })}
+                                                className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-bold text-slate-700 outline-none text-center"
+                                                placeholder="#FEF9C3"
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
                             <div className="space-y-2 md:col-span-2">
                                 <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1 flex items-center gap-2">
                                     <ImageIcon className="w-3 h-3" /> Imagen del Banner (1000 x 450 px recomendados)
@@ -671,15 +1084,171 @@ export default function BannersManager() {
                                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-primary focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold text-slate-700"
                                 />
                             </div>
-                            <div className="md:col-span-2 lg:col-span-3 space-y-2">
-                                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest pl-1">Enlace de destino (opcional)</label>
-                                <input
-                                    type="url"
-                                    value={newBanner.linkUrl}
-                                    onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
-                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-[1.25rem] px-5 py-3.5 focus:border-primary focus:bg-white focus:ring-4 focus:ring-indigo-100 outline-none transition-all font-bold text-slate-700"
-                                    placeholder="https://instagram.com/..."
-                                />
+
+                            {/* Configuración de Acción al Presionar */}
+                            <div className="md:col-span-2 lg:col-span-3 space-y-4 bg-slate-50/80 p-6 rounded-3xl border border-slate-200">
+                                <div>
+                                    <label className="block text-xs font-black text-slate-800 uppercase tracking-widest mb-1">
+                                        Acción al presionar este banner en la App
+                                    </label>
+                                    <p className="text-xs text-slate-500 font-medium">
+                                        Elige qué ocurre cuando el usuario hace clic o toca el anuncio en su dispositivo:
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, actionType: 'info_modal' })}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                                            newBanner.actionType === 'info_modal'
+                                                ? 'border-primary bg-amber-50/80 shadow-md ring-2 ring-primary/20'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-1.5 text-amber-600 mb-1">
+                                                <Info className="w-4 h-4" />
+                                                <span className="font-black text-xs uppercase tracking-wider">1. Informativo</span>
+                                            </div>
+                                            <p className="font-black text-slate-900 text-sm">Abrir Ventana</p>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium leading-tight">
+                                            Muestra ventana modal con imagen, título y la explicación completa.
+                                        </p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, actionType: 'restaurant' })}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                                            newBanner.actionType === 'restaurant'
+                                                ? 'border-primary bg-amber-50/80 shadow-md ring-2 ring-primary/20'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-1.5 text-indigo-600 mb-1">
+                                                <Store className="w-4 h-4" />
+                                                <span className="font-black text-xs uppercase tracking-wider">2. Comercio</span>
+                                            </div>
+                                            <p className="font-black text-slate-900 text-sm">Ir a Negocio Aliado</p>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium leading-tight">
+                                            Redirige directo al perfil, catálogo y menú de un restaurante o tienda.
+                                        </p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, actionType: 'internal_section' })}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                                            newBanner.actionType === 'internal_section'
+                                                ? 'border-primary bg-amber-50/80 shadow-md ring-2 ring-primary/20'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-1.5 text-emerald-600 mb-1">
+                                                <Navigation className="w-4 h-4" />
+                                                <span className="font-black text-xs uppercase tracking-wider">3. Sección</span>
+                                            </div>
+                                            <p className="font-black text-slate-900 text-sm">Sección de la App</p>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium leading-tight">
+                                            Abre Taxi, Personal Shopper, Recompensas, Mis Pedidos o Perfil.
+                                        </p>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setNewBanner({ ...newBanner, actionType: 'external_url' })}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all flex flex-col justify-between ${
+                                            newBanner.actionType === 'external_url'
+                                                ? 'border-primary bg-amber-50/80 shadow-md ring-2 ring-primary/20'
+                                                : 'border-slate-200 bg-white hover:border-slate-300'
+                                        }`}
+                                    >
+                                        <div>
+                                            <div className="flex items-center gap-1.5 text-blue-600 mb-1">
+                                                <ExternalLink className="w-4 h-4" />
+                                                <span className="font-black text-xs uppercase tracking-wider">4. Externo</span>
+                                            </div>
+                                            <p className="font-black text-slate-900 text-sm">Enlace Web</p>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium leading-tight">
+                                            Abre una dirección web o red social externa en el navegador del usuario.
+                                        </p>
+                                    </button>
+                                </div>
+
+                                {newBanner.actionType === 'info_modal' && (
+                                    <div className="space-y-2 pt-2 bg-white p-4 rounded-2xl border border-slate-200">
+                                        <label className="block text-xs font-black text-slate-700 uppercase tracking-widest">
+                                            Explicación Completa del Banner (Texto que verá el cliente al abrir la ventana)
+                                        </label>
+                                        <textarea
+                                            rows={4}
+                                            value={newBanner.subtitle}
+                                            onChange={e => setNewBanner({ ...newBanner, subtitle: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl p-4 font-medium text-xs sm:text-sm text-slate-700 outline-none focus:border-amber-400 focus:bg-white transition-all resize-none"
+                                            placeholder="Detalla aquí la promoción, bases del concurso, horarios o instrucciones completas..."
+                                        />
+                                    </div>
+                                )}
+
+                                {newBanner.actionType === 'restaurant' && (
+                                    <div className="space-y-2 pt-2 bg-white p-4 rounded-2xl border border-slate-200">
+                                        <label className="block text-xs font-black text-slate-700 uppercase tracking-widest">
+                                            Seleccionar Negocio o Comercio Aliado
+                                        </label>
+                                        <select
+                                            value={newBanner.restaurantId}
+                                            onChange={e => setNewBanner({ ...newBanner, restaurantId: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-amber-400 focus:bg-white transition-all text-sm"
+                                        >
+                                            <option value="">-- Elige un Comercio Registrado --</option>
+                                            {restaurants.map(r => (
+                                                <option key={r.id} value={r.id}>{r.name}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {newBanner.actionType === 'internal_section' && (
+                                    <div className="space-y-2 pt-2 bg-white p-4 rounded-2xl border border-slate-200">
+                                        <label className="block text-xs font-black text-slate-700 uppercase tracking-widest">
+                                            Sección Interna de Un 2x3
+                                        </label>
+                                        <select
+                                            value={newBanner.linkUrl}
+                                            onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 font-bold text-slate-800 outline-none focus:border-amber-400 focus:bg-white transition-all text-sm"
+                                        >
+                                            <option value="">-- Selecciona a dónde dirigir al cliente --</option>
+                                            <option value="/taxi">🚕 Pedir Taxi / Mototaxi</option>
+                                            <option value="/mandao">📦 Personal Shopper y Encomiendas</option>
+                                            <option value="/rewards">🎁 Centro de Fidelización y DeliPuntos</option>
+                                            <option value="/orders">📋 Mis Pedidos</option>
+                                            <option value="/profile">👤 Mi Perfil y Cuenta</option>
+                                        </select>
+                                    </div>
+                                )}
+
+                                {newBanner.actionType === 'external_url' && (
+                                    <div className="space-y-2 pt-2 bg-white p-4 rounded-2xl border border-slate-200">
+                                        <label className="block text-xs font-black text-slate-700 uppercase tracking-widest">
+                                            URL o Enlace Web Externo
+                                        </label>
+                                        <input
+                                            type="url"
+                                            value={newBanner.linkUrl}
+                                            onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
+                                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-5 py-3.5 focus:border-amber-400 focus:bg-white outline-none transition-all font-bold text-slate-700 text-sm"
+                                            placeholder="https://instagram.com/..."
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
 
@@ -819,11 +1388,13 @@ export default function BannersManager() {
                                 <div className="bg-white/90 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-white">
                                     {banner.type === 'welcome_popup' ? (
                                         <div className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></div>
+                                    ) : banner.type === 'card_banner' ? (
+                                        <Layout className="w-3.5 h-3.5 text-amber-500" />
                                     ) : (
                                         <Timer className="w-3.5 h-3.5 text-primary" />
                                     )}
                                     <span className="text-xs font-black text-slate-900">
-                                        {banner.type === 'welcome_popup' ? 'Welcome Popup' : `${banner.duration}s`}
+                                        {banner.type === 'welcome_popup' ? 'Welcome Popup' : banner.type === 'card_banner' ? 'Tarjeta Inicio' : `${banner.duration}s`}
                                     </span>
                                 </div>
                                 <div className="bg-primary text-slate-900 px-3 py-1.5 rounded-xl shadow-sm flex items-center gap-1.5 border border-primary">
@@ -845,15 +1416,17 @@ export default function BannersManager() {
                             <div className="absolute top-4 right-4 flex gap-2">
                                 <button
                                     onClick={() => handleEdit(banner)}
-                                    className="bg-white/90 backdrop-blur-md text-primary p-2.5 rounded-xl shadow-sm hover:bg-primary hover:text-slate-900 transition-all opacity-0 group-hover:opacity-100"
+                                    className="bg-white/95 backdrop-blur-md text-slate-900 p-2.5 rounded-xl shadow-md hover:bg-primary transition-all"
+                                    title="Modificar Banner"
                                 >
-                                    <Pencil className="w-5 h-5" />
+                                    <Pencil className="w-4 h-4" />
                                 </button>
                                 <button
                                     onClick={() => handleDelete(banner.id)}
-                                    className="bg-white/90 backdrop-blur-md text-red-600 p-2.5 rounded-xl shadow-sm hover:bg-red-600 hover:text-white transition-all opacity-0 group-hover:opacity-100"
+                                    className="bg-white/95 backdrop-blur-md text-red-600 p-2.5 rounded-xl shadow-md hover:bg-red-600 hover:text-white transition-all"
+                                    title="Eliminar Banner"
                                 >
-                                    <Trash2 className="w-5 h-5" />
+                                    <Trash2 className="w-4 h-4" />
                                 </button>
                             </div>
                         </div>
@@ -862,37 +1435,76 @@ export default function BannersManager() {
                         <div className="p-6 space-y-4">
                             <div>
                                 <h3 className="font-black text-slate-900 text-xl leading-tight mb-1">{banner.title}</h3>
-                                <div className="flex items-center gap-2">
-                                    {banner.linkUrl ? (
+                                
+                                {/* Action badge */}
+                                <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    {banner.actionType === 'info_modal' ? (
+                                        <span className="bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                                            <Info className="w-3.5 h-3.5 text-amber-500" />
+                                            Abre Ventana Informativa
+                                        </span>
+                                    ) : banner.actionType === 'restaurant' ? (
+                                        <span className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                                            <Store className="w-3.5 h-3.5 text-indigo-500" />
+                                            Redirige a Comercio Aliado
+                                        </span>
+                                    ) : banner.actionType === 'internal_section' ? (
+                                        <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                                            <Navigation className="w-3.5 h-3.5 text-emerald-500" />
+                                            Sección: {banner.linkUrl}
+                                        </span>
+                                    ) : banner.linkUrl ? (
                                         <a
                                             href={banner.linkUrl}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-primary font-bold text-xs hover:underline flex items-center gap-1 truncate"
+                                            className="bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 truncate max-w-full hover:underline"
                                         >
-                                            <ExternalLink className="w-3 h-3" />
-                                            {banner.linkUrl}
+                                            <ExternalLink className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                                            <span className="truncate">{banner.linkUrl}</span>
                                         </a>
                                     ) : (
-                                        <p className="text-slate-400 font-bold text-xs">Sin enlace externo</p>
+                                        <span className="bg-slate-50 text-slate-500 border border-slate-200 px-2.5 py-1 rounded-lg text-xs font-bold">
+                                            Sin enlace externo
+                                        </span>
                                     )}
                                 </div>
+
+                                {banner.explanation && (
+                                    <p className="text-xs text-slate-500 mt-2 line-clamp-2 font-medium">
+                                        {banner.explanation}
+                                    </p>
+                                )}
                             </div>
 
-                            <div className="flex items-center justify-between pt-2">
+                            {/* Action Bar */}
+                            <div className="flex items-center justify-between pt-3 border-t border-slate-100 gap-2">
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => handleEdit(banner)}
+                                        className="bg-primary hover:bg-amber-400 text-slate-900 px-4 py-2 rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition-all active:scale-95"
+                                    >
+                                        <Pencil className="w-3.5 h-3.5" /> Modificar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => handleDelete(banner.id)}
+                                        className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-3 py-2 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-1 transition-all"
+                                        title="Eliminar banner"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                                 <button
                                     onClick={() => toggleActive(banner.id, banner.isActive)}
-                                    className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${banner.isActive
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${banner.isActive
                                         ? 'bg-emerald-50 text-emerald-600 border border-emerald-100'
                                         : 'bg-slate-100 text-slate-500 border border-slate-200'
                                         }`}
                                 >
                                     {banner.isActive ? 'Activo' : 'Inactivo'}
                                 </button>
-                                <div className="flex items-center gap-2 text-slate-400">
-                                    <Clock className="w-4 h-4" />
-                                    <span className="text-[10px] font-bold">Auto-rotativo</span>
-                                </div>
                             </div>
                         </div>
                     </motion.div>
@@ -918,6 +1530,485 @@ export default function BannersManager() {
                     </div>
                 )}
             </div>
+            </>
+            )}
+
+            {/* TAB 2: SOLICITUDES DE NEGOCIOS */}
+            {currentMainTab === 'requests' && (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2">
+                    {/* Filter Pills */}
+                    <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                        <div className="flex items-center gap-2">
+                            <Filter className="w-4 h-4 text-slate-400" />
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-wider">Filtrar Solicitudes:</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            <button
+                                onClick={() => setRequestFilter('all')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                                    requestFilter === 'all'
+                                        ? 'bg-slate-900 text-white shadow-sm'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                }`}
+                            >
+                                Todas ({bannerRequests.length})
+                            </button>
+                            <button
+                                onClick={() => setRequestFilter('pending')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                                    requestFilter === 'pending'
+                                        ? 'bg-amber-500 text-white shadow-sm'
+                                        : 'bg-amber-50 text-amber-800 hover:bg-amber-100'
+                                }`}
+                            >
+                                Pendientes ({bannerRequests.filter(r => r.status === 'pending_approval' || (!r.isActive && r.status !== 'rejected')).length})
+                            </button>
+                            <button
+                                onClick={() => setRequestFilter('approved')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                                    requestFilter === 'approved'
+                                        ? 'bg-emerald-600 text-white shadow-sm'
+                                        : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                }`}
+                            >
+                                Aprobadas ({bannerRequests.filter(r => r.status === 'approved' || r.isActive).length})
+                            </button>
+                            <button
+                                onClick={() => setRequestFilter('rejected')}
+                                className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                                    requestFilter === 'rejected'
+                                        ? 'bg-red-600 text-white shadow-sm'
+                                        : 'bg-red-50 text-red-800 hover:bg-red-100'
+                                }`}
+                            >
+                                Rechazadas ({bannerRequests.filter(r => r.status === 'rejected').length})
+                            </button>
+                        </div>
+                    </div>
+
+                    {filteredRequests.length === 0 ? (
+                        <div className="text-center py-16 bg-white rounded-3xl border border-dashed border-slate-200">
+                            <FileText className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                            <h3 className="font-bold text-slate-800 text-lg">No hay solicitudes en esta categoría</h3>
+                            <p className="text-sm text-slate-400 mt-1">Los banners enviados por los comercios aparecerán aquí para tu revisión.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {filteredRequests.map(req => {
+                                const restId = req.restaurantId || req.restaurant_id;
+                                const restaurantObj = restaurants.find(r => r.id === restId);
+                                const restaurantName = restaurantObj?.name || 'Comercio Asociado';
+                                const isPending = req.status === 'pending_approval' || (!req.isActive && req.status !== 'rejected');
+                                const isApproved = req.status === 'approved' || req.isActive;
+                                const isRejected = req.status === 'rejected';
+
+                                return (
+                                    <div key={req.id} className="bg-white border border-slate-200 rounded-3xl overflow-hidden shadow-sm flex flex-col group hover:shadow-md transition-all">
+                                        {/* Image Area */}
+                                        <div
+                                            className="h-36 bg-slate-100 relative cursor-pointer group focus:outline-none"
+                                            onClick={() => req.imageUrl && window.open(req.imageUrl, '_blank')}
+                                            title="Clic para ver imagen completa"
+                                        >
+                                            {req.imageUrl ? (
+                                                <img src={req.imageUrl} alt={req.title || 'Banner'} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                                    <ImageIcon className="w-8 h-8" />
+                                                </div>
+                                            )}
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                                <span className="text-white text-xs font-bold uppercase tracking-widest bg-black/60 px-3 py-1.5 rounded-full backdrop-blur-sm">
+                                                    Ver Imagen
+                                                </span>
+                                            </div>
+                                            <div className="absolute top-3 left-3">
+                                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider shadow-sm ${
+                                                    isApproved
+                                                        ? 'bg-emerald-500 text-white'
+                                                        : isRejected
+                                                        ? 'bg-red-500 text-white'
+                                                        : 'bg-amber-500 text-white animate-pulse'
+                                                }`}>
+                                                    {isApproved ? 'Aprobado / Activo' : isRejected ? 'Rechazado' : 'Pendiente de Aprobación'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Content Area */}
+                                        <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                                            <div>
+                                                <div className="flex items-center gap-2 text-indigo-700 bg-indigo-50 px-3 py-1.5 rounded-xl w-fit mb-3">
+                                                    <Store className="w-3.5 h-3.5 shrink-0" />
+                                                    <span className="text-xs font-black truncate max-w-[200px]">{restaurantName}</span>
+                                                </div>
+
+                                                <h4 className="font-black text-slate-900 text-base leading-tight mb-1">
+                                                    {req.title || 'Sin Título'}
+                                                </h4>
+
+                                                {req.linkUrl && (
+                                                    <p className="text-xs text-slate-500 font-medium truncate mb-2">
+                                                        🔗 {req.linkUrl}
+                                                    </p>
+                                                )}
+
+                                                 <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500">
+                                                    <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-xl text-amber-900">
+                                                        <Timer className="w-3.5 h-3.5 text-amber-600" />
+                                                        <span className="text-[10px] uppercase tracking-wider font-black">Duración:</span>
+                                                        <input
+                                                            type="number"
+                                                            min="2"
+                                                            max="60"
+                                                            defaultValue={req.duration || 5}
+                                                            onBlur={(e) => {
+                                                                const val = parseInt(e.target.value);
+                                                                if (!isNaN(val) && val > 0 && val !== req.duration) {
+                                                                    handleUpdateBannerDuration(req.id, val);
+                                                                }
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    const val = parseInt((e.target as HTMLInputElement).value);
+                                                                    if (!isNaN(val) && val > 0 && val !== req.duration) {
+                                                                        handleUpdateBannerDuration(req.id, val);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="w-12 text-center bg-white border border-amber-300 rounded-lg py-0.5 px-1 font-black text-xs text-slate-800 outline-none focus:ring-2 focus:ring-amber-400"
+                                                            title="Solo el Superadministrador define la duración en segundos"
+                                                        />
+                                                        <span className="font-bold text-xs">seg</span>
+                                                    </div>
+                                                    <span className="flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-xl">
+                                                        <Globe className="w-3 h-3 text-slate-400" />
+                                                        {req.visibilityScope === 'national' ? 'Nacional' : req.visibilityScope === 'state' ? `Estado: ${req.targetState}` : `Ciudad: ${req.targetCity}`}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div className="pt-3 border-t border-slate-100">
+                                                {isPending ? (
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <button
+                                                            onClick={() => handleUpdateBannerRequestStatus(req.id, 'rejected')}
+                                                            className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-black text-red-600 bg-red-50 hover:bg-red-100 transition-colors"
+                                                        >
+                                                            <XCircle className="w-4 h-4" /> Rechazar
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleUpdateBannerRequestStatus(req.id, 'approved')}
+                                                            className="flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs font-black text-emerald-700 bg-emerald-100 hover:bg-emerald-200 transition-colors"
+                                                        >
+                                                            <CheckCircle className="w-4 h-4" /> Aprobar
+                                                        </button>
+                                                    </div>
+                                                ) : isApproved ? (
+                                                    <button
+                                                        onClick={() => handleUpdateBannerRequestStatus(req.id, 'rejected')}
+                                                        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold text-slate-500 bg-slate-100 hover:bg-red-50 hover:text-red-600 transition-colors"
+                                                    >
+                                                        <XCircle className="w-3.5 h-3.5" /> Desactivar / Rechazar
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleUpdateBannerRequestStatus(req.id, 'approved')}
+                                                        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                                    >
+                                                        <CheckCircle className="w-3.5 h-3.5" /> Re-aprobar Banner
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* TAB 3: PLANES Y PRECIOS BANNERS */}
+            {currentMainTab === 'pricing' && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2">
+                    {/* Explanatory Info Card */}
+                    <div className="bg-gradient-to-r from-amber-500/10 via-primary/10 to-amber-500/5 p-6 rounded-3xl border border-amber-200/60 shadow-sm flex items-start gap-4">
+                        <div className="w-12 h-12 bg-amber-500 text-slate-900 rounded-2xl flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20">
+                            <Sparkles className="w-6 h-6" />
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="font-black text-slate-900 text-base">
+                                Modalidad Especial: 🎁 Gratis por tiempo limitado
+                            </h3>
+                            <p className="text-xs sm:text-sm text-slate-600 font-medium leading-relaxed">
+                                Si seleccionas <strong className="text-slate-900">"🎁 Gratis por tiempo limitado"</strong> en la disponibilidad de un plan (Nacional, Regional o Local), los restaurantes podrán postular sus anuncios de banner sin costo mensual. Toda postulación requerirá la aprobación previa del Superadministrador en la pestaña <strong className="text-slate-900">"Solicitudes de Negocios"</strong> antes de ser visible para los clientes.
+                            </p>
+                        </div>
+                    </div>
+
+                    {/* 3 Pricing Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* 1. Banner Nacional */}
+                        <div className="bg-white rounded-3xl border-2 border-slate-200/80 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-700 flex items-center justify-center">
+                                        <Globe className="w-5 h-5" />
+                                    </div>
+                                    {bannerPricing.national?.availability === 'free' && (
+                                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                                            🎁 Gratis Activo
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-slate-900 text-lg">Banner Nacional</h4>
+                                    <p className="text-xs text-slate-500 font-medium mt-1">
+                                        Visible para todos los clientes en cualquier estado y ciudad de Venezuela.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-3 pt-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Precio Mensual ($ USD)
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={bannerPricing.national?.price || 0}
+                                                onChange={e => setBannerPricing({
+                                                    ...bannerPricing,
+                                                    national: { ...bannerPricing.national, price: parseFloat(e.target.value) || 0 }
+                                                })}
+                                                className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Límite de Cambios de Banners / Mes
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={bannerPricing.national?.updateLimit || 3}
+                                            onChange={e => setBannerPricing({
+                                                ...bannerPricing,
+                                                national: { ...bannerPricing.national, updateLimit: parseInt(e.target.value) || 1 }
+                                            })}
+                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Disponibilidad del Plan
+                                        </label>
+                                        <select
+                                            value={bannerPricing.national?.availability || 'available'}
+                                            onChange={e => setBannerPricing({
+                                                ...bannerPricing,
+                                                national: { ...bannerPricing.national, availability: e.target.value as any }
+                                            })}
+                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                        >
+                                            <option value="available">✅ Disponible para contratación</option>
+                                            <option value="free">🎁 Gratis por tiempo limitado</option>
+                                            <option value="not_available">❌ No disponible</option>
+                                            <option value="full">⚠️ Cupos llenos</option>
+                                            <option value="soon">⏳ Muy pronto</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 2. Banner Regional / Estado */}
+                        <div className="bg-white rounded-3xl border-2 border-slate-200/80 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center">
+                                        <MapIcon className="w-5 h-5" />
+                                    </div>
+                                    {bannerPricing.state?.availability === 'free' && (
+                                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                                            🎁 Gratis Activo
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-slate-900 text-lg">Banner Regional (Estado)</h4>
+                                    <p className="text-xs text-slate-500 font-medium mt-1">
+                                        Visible para los usuarios ubicados en el mismo estado del comercio.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-3 pt-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Precio Mensual ($ USD)
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={bannerPricing.state?.price || 0}
+                                                onChange={e => setBannerPricing({
+                                                    ...bannerPricing,
+                                                    state: { ...bannerPricing.state, price: parseFloat(e.target.value) || 0 }
+                                                })}
+                                                className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Límite de Cambios de Banners / Mes
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={bannerPricing.state?.updateLimit || 3}
+                                            onChange={e => setBannerPricing({
+                                                ...bannerPricing,
+                                                state: { ...bannerPricing.state, updateLimit: parseInt(e.target.value) || 1 }
+                                            })}
+                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Disponibilidad del Plan
+                                        </label>
+                                        <select
+                                            value={bannerPricing.state?.availability || 'available'}
+                                            onChange={e => setBannerPricing({
+                                                ...bannerPricing,
+                                                state: { ...bannerPricing.state, availability: e.target.value as any }
+                                            })}
+                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                        >
+                                            <option value="available">✅ Disponible para contratación</option>
+                                            <option value="free">🎁 Gratis por tiempo limitado</option>
+                                            <option value="not_available">❌ No disponible</option>
+                                            <option value="full">⚠️ Cupos llenos</option>
+                                            <option value="soon">⏳ Muy pronto</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 3. Banner Local / Ciudad */}
+                        <div className="bg-white rounded-3xl border-2 border-slate-200/80 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
+                                        <PinIcon className="w-5 h-5" />
+                                    </div>
+                                    {bannerPricing.city?.availability === 'free' && (
+                                        <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-full uppercase tracking-wider">
+                                            🎁 Gratis Activo
+                                        </span>
+                                    )}
+                                </div>
+                                <div>
+                                    <h4 className="font-black text-slate-900 text-lg">Banner Local (Ciudad)</h4>
+                                    <p className="text-xs text-slate-500 font-medium mt-1">
+                                        Visible exclusivamente para los usuarios ubicados en la misma ciudad.
+                                    </p>
+                                </div>
+
+                                <div className="space-y-3 pt-2">
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Precio Mensual ($ USD)
+                                        </label>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={bannerPricing.city?.price || 0}
+                                                onChange={e => setBannerPricing({
+                                                    ...bannerPricing,
+                                                    city: { ...bannerPricing.city, price: parseFloat(e.target.value) || 0 }
+                                                })}
+                                                className="w-full pl-8 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Límite de Cambios de Banners / Mes
+                                        </label>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={bannerPricing.city?.updateLimit || 3}
+                                            onChange={e => setBannerPricing({
+                                                ...bannerPricing,
+                                                city: { ...bannerPricing.city, updateLimit: parseInt(e.target.value) || 1 }
+                                            })}
+                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                            Disponibilidad del Plan
+                                        </label>
+                                        <select
+                                            value={bannerPricing.city?.availability || 'available'}
+                                            onChange={e => setBannerPricing({
+                                                ...bannerPricing,
+                                                city: { ...bannerPricing.city, availability: e.target.value as any }
+                                            })}
+                                            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-xs text-slate-800 outline-none focus:bg-white focus:border-primary"
+                                        >
+                                            <option value="available">✅ Disponible para contratación</option>
+                                            <option value="free">🎁 Gratis por tiempo limitado</option>
+                                            <option value="not_available">❌ No disponible</option>
+                                            <option value="full">⚠️ Cupos llenos</option>
+                                            <option value="soon">⏳ Muy pronto</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Save Button */}
+                    <div className="flex justify-end pt-4">
+                        <button
+                            onClick={handleSavePricing}
+                            disabled={savingPricing}
+                            className="bg-primary hover:bg-primary text-slate-900 font-black px-8 py-3.5 rounded-2xl shadow-lg shadow-primary/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                            {savingPricing ? (
+                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <Save className="w-5 h-5" />
+                            )}
+                            {savingPricing ? 'Guardando Tarifas...' : 'Guardar Precios de Banners'}
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
+

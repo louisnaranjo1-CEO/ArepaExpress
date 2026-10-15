@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
-import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2, X, Receipt, ShieldCheck, Check, Calculator } from 'lucide-react';
+import { useBranding } from '../../context/BrandingContext';
+import { Car, Bike, MapPin, Navigation, Phone, CheckCircle2, MessageSquare, Send, User as UserIcon, Star, MessageCircle, Clock, AlertTriangle, ArrowLeft, Package, Sparkles, DollarSign, ShieldAlert, ExternalLink, Volume2, X, Receipt, ShieldCheck, Check, Calculator, ShoppingBag, FileText, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
@@ -19,9 +20,12 @@ import { playChatChime, playCallAlertChime } from '../../utils/audioChimes';
 import { supabase } from '../../lib/supabase';
 import { driversApi } from '../../lib/api';
 import { vibrate } from '../../utils/haptics';
+import { acquireWakeLock, releaseWakeLock, requestIgnoreBatteryOptimizations, triggerHaptic } from '../../services/nativeNotificationService';
+import { registerModalDismiss } from '../../utils/backButtonManager';
 
 export default function OrdersRadar() {
     const { user } = useAuth();
+    const { branding } = useBranding();
     const { bcvRate } = useCurrency();
     const navigate = useNavigate();
     const [driverProfile, setDriverProfile] = useState<any>(null);
@@ -188,8 +192,19 @@ export default function OrdersRadar() {
     // Estado en espera de Muchacho e' Mandao postulados
     const [myPendingBids, setMyPendingBids] = useState<any[]>([]);
 
-    // Muchacho e' Mandado Bids State
+    // Muchacho e' Mandado / Personal Shopper Bids State
     const [mandadoBids, setMandadoBids] = useState<{ [reqId: string]: { amount: string; eta: string; submitted: boolean } }>({});
+    const [selectedPersonalShopperReq, setSelectedPersonalShopperReq] = useState<any | null>(null);
+
+    // Manejo de botón Atrás en Android para cerrar el modal de Personal Shopper
+    useEffect(() => {
+        if (!selectedPersonalShopperReq) return;
+        const unregister = registerModalDismiss(() => {
+            setSelectedPersonalShopperReq(null);
+            return true;
+        });
+        return () => unregister();
+    }, [selectedPersonalShopperReq]);
 
     // Solicitudes omitidas por este conductor (sesión local, no afecta base de datos ni a otros conductores)
     const [dismissedRequestIds, setDismissedRequestIds] = useState<string[]>(() => {
@@ -259,10 +274,14 @@ export default function OrdersRadar() {
     const activeServicesCount = (activeTransport ? 1 : 0) + (activeOrder ? 1 : 0) + myReservations.length;
     const hasReachedServiceLimit = activeServicesCount >= 2;
 
-    // Suspension check: debt >= $15, suspended status, or deadline expired
-    const isSuspended = Boolean(
+    const commissionDebt = Number(driverProfile?.commission_debt || 0);
+    const hasPendingDebt = commissionDebt > 0;
+
+    // Suspension check: ONLY applies if there is actual pending debt > 0.
+    // If debt is $0.00, the driver is up-to-date and waits until next Friday cycle.
+    const isSuspended = hasPendingDebt && Boolean(
         driverProfile?.commission_status === 'suspended' || 
-        Number(driverProfile?.commission_debt || 0) >= 15 || 
+        commissionDebt >= 15 || 
         (driverProfile?.next_commission_deadline && new Date(driverProfile.next_commission_deadline).getTime() < Date.now())
     );
 
@@ -334,7 +353,7 @@ export default function OrdersRadar() {
     const getCommissionForCategory = (categoryOrType: string) => {
         const cat = (categoryOrType || '').toLowerCase();
         if (cat.includes('confort') || cat.includes('ejecutivo')) return liveCommissions.confort;
-        if (cat.includes('mandao') || cat.includes('mandado')) return liveCommissions.mandao;
+        if (cat.includes('mandao') || cat.includes('mandado') || cat.includes('shopper') || cat.includes('personal')) return liveCommissions.mandao;
         if (cat.includes('delivery') || cat.includes('envio') || cat.includes('paquete') || cat.includes('food') || cat.includes('comida')) return liveCommissions.delivery;
         if (cat.includes('moto')) return liveCommissions.mototaxi;
         return liveCommissions.taxi;
@@ -389,9 +408,33 @@ export default function OrdersRadar() {
     useEffect(() => {
         if (!user) return;
 
+        const getNextFridayDeadline = () => {
+            const d = new Date();
+            const day = d.getDay();
+            let daysUntilFriday = (5 - day + 7) % 7;
+            if (daysUntilFriday === 0) daysUntilFriday = 7;
+            const nextFri = new Date(d);
+            nextFri.setDate(d.getDate() + daysUntilFriday);
+            nextFri.setHours(23, 59, 59, 999);
+            return nextFri.toISOString();
+        };
+
         const fetchProfile = async () => {
             try {
                 const profile = await driversApi.getDriver(user.uid);
+                if (profile) {
+                    const cDebt = Number(profile.commission_debt || 0);
+                    const isExpired = profile.next_commission_deadline && new Date(profile.next_commission_deadline).getTime() < Date.now();
+                    if (cDebt <= 0 && (!profile.next_commission_deadline || isExpired || profile.commission_status === 'suspended')) {
+                        const nextFri = getNextFridayDeadline();
+                        profile.next_commission_deadline = nextFri;
+                        profile.commission_status = 'current';
+                        supabase.from('drivers').update({
+                            next_commission_deadline: nextFri,
+                            commission_status: 'current'
+                        }).eq('id', user.uid).then(() => {});
+                    }
+                }
                 setDriverProfile(profile);
             } catch (err) {
                 console.error("Error fetching radar profile:", err);
@@ -410,7 +453,21 @@ export default function OrdersRadar() {
                     filter: `id=eq.${user.uid}`
                 },
                 (payload) => {
-                    setDriverProfile(payload.new);
+                    const updated = payload.new as any;
+                    if (updated) {
+                        const cDebt = Number(updated.commission_debt || 0);
+                        const isExpired = updated.next_commission_deadline && new Date(updated.next_commission_deadline).getTime() < Date.now();
+                        if (cDebt <= 0 && (!updated.next_commission_deadline || isExpired || updated.commission_status === 'suspended')) {
+                            const nextFri = getNextFridayDeadline();
+                            updated.next_commission_deadline = nextFri;
+                            updated.commission_status = 'current';
+                            supabase.from('drivers').update({
+                                next_commission_deadline: nextFri,
+                                commission_status: 'current'
+                            }).eq('id', user.uid).then(() => {});
+                        }
+                    }
+                    setDriverProfile(updated);
                 }
             )
             .subscribe();
@@ -481,7 +538,7 @@ export default function OrdersRadar() {
             const { data } = await supabase
                 .from('orders')
                 .select('*')
-                .eq('delivery_driver_id', myDriverId)
+                .or(`driver_id.eq.${myDriverId},delivery_driver_id.eq.${myDriverId},preferred_driver_id.eq.${myDriverId}`)
                 .in('status', ['en_camino', 'in_transit', 'delivering'])
                 .limit(1);
             if (data && data.length > 0) {
@@ -559,7 +616,7 @@ export default function OrdersRadar() {
                     }
 
                     const reqType = req.type || req.service_category || 'transport';
-                    const isMandado = reqType === 'muchacho_mandado' || req.service_category === 'muchacho_mandado';
+                    const isMandado = reqType === 'muchacho_mandado' || req.service_category === 'muchacho_mandado' || reqType === 'personal_shopper' || req.service_category === 'personal_shopper' || reqType === 'mandado' || req.service_category === 'mandado';
 
                     // Geolocation proximity filter: evaluate both direct and nested coordinates
                     const reqOriginLat = req.origin?.lat || req.origin?.coords?.lat;
@@ -580,12 +637,8 @@ export default function OrdersRadar() {
                     if (reqType === 'food_delivery' || reqType === 'package_delivery' || reqType === 'delivery_envios') return true;
 
                     const isComfortDriver = Boolean(
-                        driverProfile?.is_comfort_eligible ||
-                        driverProfile?.isComfortEligible ||
-                        drvVehicle === 'confort' ||
-                        drvVehicle === 'ejecutivo' ||
-                        drvVehicle === 'carro_ejecutivo' ||
-                        (drvVehicle === 'carro' && (driverProfile?.has_ac || driverProfile?.hasAc) && Number(driverProfile?.vehicle_year || driverProfile?.vehicleYear || 0) >= 2009)
+                        drvVehicle !== 'moto' &&
+                        Number(driverProfile?.vehicle_year || driverProfile?.vehicleYear || 0) >= 2016
                     );
 
                     const reqVehicle = (req.vehicle_type || req.vehicleType || 'moto').toLowerCase();
@@ -698,7 +751,7 @@ export default function OrdersRadar() {
             if (!activeOrder && !activeTransport && !isSuspended && hasFaresConfigured) {
                 const newestTransport = availableTransport.find((t: any) => {
                     const reqType = t.type || t.service_category || 'transport';
-                    const isMandado = reqType === 'muchacho_mandado' || t.service_category === 'muchacho_mandado' || t.service_category === 'mandado';
+                    const isMandado = reqType === 'muchacho_mandado' || t.service_category === 'muchacho_mandado' || t.service_category === 'mandado' || t.service_category === 'personal_shopper' || reqType === 'personal_shopper' || reqType === 'mandado';
                     return !isMandado;
                 });
                 const newest = newestTransport || availableOrders[0];
@@ -761,33 +814,44 @@ export default function OrdersRadar() {
         };
     }, [user]);
 
-    // 4. Geolocalización constante si el conductor está en línea o en viaje activo
+    // 4. Geolocalización constante si el conductor está en línea o en viaje activo con WakeLock
     useEffect(() => {
         if (!user) return;
         const isOnline = driverProfile?.is_online ?? driverProfile?.isOnline ?? true;
-        if (!isOnline && !activeOrder && !activeTransport) return;
+        if (!isOnline && !activeOrder && !activeTransport) {
+            releaseWakeLock();
+            return;
+        }
 
-        const reportLocation = () => {
+        // Mantener WakeLock activo y solicitar exención de optimización de batería
+        acquireWakeLock();
+        requestIgnoreBatteryOptimizations();
+
+        const reportLocation = (force = false) => {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const { latitude, longitude, heading, speed } = position.coords;
                         setDriverGps({ lat: latitude, lng: longitude });
-                        updateDriverLocation(user.uid, latitude, longitude, heading || undefined, speed || undefined);
+                        updateDriverLocation(user.uid, latitude, longitude, heading || undefined, speed || undefined, force);
                     },
                     (err) => console.warn("Aviso obteniendo ubicación GPS del piloto:", err.message),
-                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 8000 }
+                    { enableHighAccuracy: true, maximumAge: 5000, timeout: 8000 }
                 );
             }
         };
 
-        // Reportar de inmediato al conectar
-        reportLocation();
+        // Reportar de inmediato al conectar o iniciar viaje (forzando actualización en drivers)
+        reportLocation(true);
 
-        // Actualizar cada 30 segundos mientras esté conectado
-        const locInterval = setInterval(reportLocation, 30000);
+        // Throttling inteligente: 8s durante viaje activo, 20s en patrullaje
+        const intervalMs = (activeOrder || activeTransport) ? 8000 : 20000;
+        const locInterval = setInterval(() => reportLocation(false), intervalMs);
 
-        return () => clearInterval(locInterval);
+        return () => {
+            clearInterval(locInterval);
+            releaseWakeLock();
+        };
     }, [user, driverProfile?.is_online, driverProfile?.isOnline, activeOrder, activeTransport]);
 
     // 5. Cargar sonido de notificación y escuchar chat
@@ -923,6 +987,10 @@ export default function OrdersRadar() {
                 return;
             }
 
+            const driverDocs = driverProfile?.documents || {};
+            const realSelfie = driverProfile?.photo_url || driverDocs?.selfie_url || driverDocs?.selfieUrl || driverProfile?.photoURL || driverProfile?.avatar_url || null;
+            const driverName = driverProfile?.full_name || driverProfile?.fullName || driverProfile?.displayName || driverProfile?.name || 'Conductor';
+
             // 2. Asignar orden al conductor
             const { data: updatedOrders, error: updateErr } = await supabase
                 .from('orders')
@@ -930,10 +998,14 @@ export default function OrdersRadar() {
                     status: 'en_camino', 
                     delivery_driver_id: myDriverId, 
                     driver_id: myDriverId,
+                    driver_name: driverName,
+                    driver_photo: realSelfie,
                     driver_assigned_at: new Date().toISOString() 
                 })
                 .eq('id', orderId)
                 .select();
+
+            await triggerHaptic('success');
                 
             if (updateErr || !updatedOrders || updatedOrders.length === 0) {
                 throw new Error("ALREADY_TAKEN");
@@ -1048,11 +1120,17 @@ export default function OrdersRadar() {
         }
         setProcessingAction(reqId);
         try {
+            const driverDocs = driverProfile?.documents || {};
+            const realSelfie = driverProfile?.photo_url || driverDocs?.selfie_url || driverDocs?.selfieUrl || driverProfile?.photoURL || driverProfile?.avatar_url || null;
+            const driverName = driverProfile?.full_name || driverProfile?.fullName || driverProfile?.displayName || driverProfile?.name || 'Conductor';
+
             const { data, error } = await supabase
                 .from('transport_requests')
                 .update({ 
                     status: 'accepted', 
                     driver_id: user.uid, 
+                    driver_name: driverName,
+                    driver_photo: realSelfie,
                     driver_assigned_at: new Date().toISOString() 
                 })
                 .eq('id', reqId)
@@ -1061,6 +1139,8 @@ export default function OrdersRadar() {
                 
             if (error || !data || data.length === 0) {
                 alert("Este viaje ya fue tomado por otro conductor.");
+            } else {
+                await triggerHaptic('success');
             }
         } catch (error) {
             console.error("Error al aceptar viaje:", error);
@@ -1413,7 +1493,7 @@ export default function OrdersRadar() {
         try {
             const bidId = crypto.randomUUID();
             const driverDocs = driverProfile?.documents || {};
-            const realSelfie = driverDocs?.selfieUrl || driverDocs?.selfie_url || driverProfile?.photoURL || driverProfile?.avatar_url || driverProfile?.photo_url || null;
+            const realSelfie = driverProfile?.photo_url || driverDocs?.selfie_url || driverDocs?.selfieUrl || driverProfile?.photoURL || driverProfile?.avatar_url || null;
 
             const insertPayload = {
                 id: bidId,
@@ -1993,6 +2073,8 @@ export default function OrdersRadar() {
                                             <img 
                                                 src={activeTransport.payment_proof_url} 
                                                 alt="Comprobante" 
+                                                loading="lazy"
+                                                decoding="async"
                                                 className="max-h-48 object-contain hover:scale-105 transition-transform" 
                                             />
                                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
@@ -2341,7 +2423,10 @@ export default function OrdersRadar() {
     const taxisList = visibleTransport.filter(r => 
         r.service_category !== 'mandado' && 
         r.service_category !== 'muchacho_mandado' && 
+        r.service_category !== 'personal_shopper' && 
         r.type !== 'muchacho_mandado' && 
+        r.type !== 'personal_shopper' && 
+        r.type !== 'mandado' && 
         r.type !== 'food_delivery' && 
         r.type !== 'package_delivery'
     );
@@ -2354,7 +2439,10 @@ export default function OrdersRadar() {
     const mandadosList = visibleTransport.filter(r => 
         r.service_category === 'mandado' || 
         r.service_category === 'muchacho_mandado' || 
-        r.type === 'muchacho_mandado'
+        r.service_category === 'personal_shopper' || 
+        r.type === 'muchacho_mandado' ||
+        r.type === 'personal_shopper' ||
+        r.type === 'mandado'
     );
 
     const allCount = taxisList.length + deliveriesList.length + mandadosList.length + myReservations.length;
@@ -2824,7 +2912,7 @@ export default function OrdersRadar() {
 
             {activeTab === 'pending_payments' ? (
                 <div className="space-y-4">
-                    {/* Header Banner de Garantía Arepa Express */}
+                    {/* Header Banner de Garantía */}
                     <div className="bg-gradient-to-br from-emerald-950 via-slate-900 to-slate-950 rounded-3xl p-4 sm:p-5 border border-emerald-500/30 text-white shadow-xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-4 opacity-10">
                             <ShieldCheck className="w-24 h-24 text-emerald-400" />
@@ -2836,7 +2924,7 @@ export default function OrdersRadar() {
                             <div className="space-y-1">
                                 <div className="flex items-center gap-2">
                                     <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
-                                        Garantía Arepa Express
+                                        Garantía {branding.app_client_name || 'Un 2x3'}
                                     </span>
                                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                                         Protección 48h
@@ -2991,6 +3079,8 @@ export default function OrdersRadar() {
                                                         <img 
                                                             src={item.payment_proof_url} 
                                                             alt="Capture de Pago" 
+                                                            loading="lazy"
+                                                            decoding="async"
                                                             className="w-full h-full object-cover group-hover:scale-110 transition-all duration-300"
                                                         />
                                                         <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3039,7 +3129,7 @@ export default function OrdersRadar() {
                                             <div className="flex items-center gap-2">
                                                 {(item.user_phone || item.userPhone) && (
                                                     <a
-                                                        href={`https://wa.me/${(item.user_phone || item.userPhone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${item.user_name || ''}, te saluda tu chofer de Arepa Express sobre el viaje realizado por $${priceNum.toFixed(2)} USD.`)}`}
+                                                        href={`https://wa.me/${(item.user_phone || item.userPhone).replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${item.user_name || ''}, te saluda tu chofer de ${branding.app_client_name || 'Un 2x3'} sobre el viaje realizado por $${priceNum.toFixed(2)} USD.`)}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
                                                         className="flex-1 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all"
@@ -3222,14 +3312,15 @@ export default function OrdersRadar() {
                         </div>
                     )}
 
-                    {/* Lista de Muchacho e' Mandao (Visible en "Todos" y "Mandao") */}
+                    {/* Lista de Muchacho e' Mandao / Personal Shopper (Visible en "Todos" y "Mandados") */}
                     {(activeTab === 'all' || activeTab === 'mandados') && (
                         <AnimatePresence mode="popLayout">
                             {mandadosList.map(req => {
                                 const bidData = mandadoBids[req.id] || { amount: '', eta: '15', submitted: false };
-                                const bidAmountNum = parseFloat(bidData.amount) || 0;
-                                const commMandado = getCommissionForCategory('mandao');
-                                const netMandado = Math.max(0, bidAmountNum - commMandado);
+                                const hasAudio = Boolean(req.mandado_details?.audioUrl || req.audio_url);
+                                const hasStore = Boolean(req.mandado_details?.storeName);
+                                const hasPhoto = Boolean(req.mandado_details?.referenceUrl || req.reference_url);
+                                const isPassenger = Boolean(req.mandado_details?.transportPassenger);
 
                                 return (
                                     <motion.div
@@ -3237,17 +3328,17 @@ export default function OrdersRadar() {
                                         initial={{ opacity: 0, x: -20 }}
                                         animate={{ opacity: 1, x: 0 }}
                                         exit={{ opacity: 0, scale: 0.95 }}
-                                        className="bg-gradient-to-b from-amber-50/80 via-white to-white rounded-[2.5rem] p-6 shadow-xl shadow-amber-500/10 border-2 border-amber-300 relative overflow-hidden"
+                                        className="bg-gradient-to-b from-amber-50/90 via-white to-white rounded-[2.5rem] p-5 sm:p-6 shadow-xl shadow-amber-500/10 border-2 border-amber-300 relative overflow-hidden"
                                     >
-                                        <div className="flex justify-between items-center mb-4">
+                                        <div className="flex justify-between items-center mb-3">
                                             <div className="flex items-center gap-2 px-3.5 py-1.5 bg-amber-400 text-slate-950 rounded-full text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-400/20">
-                                                <Package className="w-3.5 h-3.5" />
-                                                Muchacho e' Mandado
+                                                <ShoppingBag className="w-3.5 h-3.5" />
+                                                Personal Shopper / Mandado
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <div className="text-xs font-black uppercase px-2.5 py-1 bg-amber-100 text-amber-900 rounded-full border border-amber-200">
-                                                    Puja Abierta
-                                                </div>
+                                                <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full border ${bidData.submitted ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-900 border-amber-200'}`}>
+                                                    {bidData.submitted ? '✓ Oferta Enviada' : 'Puja Abierta'}
+                                                </span>
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDismissRequest(req.id)}
@@ -3260,200 +3351,81 @@ export default function OrdersRadar() {
                                         </div>
 
                                         {/* Advertencia Cero Intermediación */}
-                                        <div className="bg-amber-100/70 border border-amber-300 rounded-2xl p-3.5 mb-4 text-xs font-bold text-amber-950 flex items-start gap-2.5">
-                                            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                        <div className="bg-amber-100/70 border border-amber-300/80 rounded-2xl p-3 mb-3 text-[11px] font-bold text-amber-950 flex items-start gap-2">
+                                            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                                             <div>
-                                                <span className="font-black">CERO INTERMEDIACIÓN:</span> No financias compras de mercancía. El cliente le transfiere directo al comercio mediante Pago Móvil. Tú sólo cobras tu tarifa de mandado.
+                                                <span className="font-black">CERO INTERMEDIACIÓN:</span> No financias compras de mercancía. El cliente transfiere directo al comercio. Tú sólo cobras tu tarifa de mandado.
                                             </div>
                                         </div>
 
-                                        {/* Detalle del Encargo / Diligencia */}
-                                        <div className="bg-white border border-slate-200 p-4 rounded-2xl mb-4 space-y-2">
-                                            <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Detalle del Mandado / Encargo:</div>
-                                            <p className="text-sm font-bold text-slate-800 leading-snug">
+                                        {/* Detalle del Encargo / Solicitante */}
+                                        <div className="bg-white border border-slate-200 p-3.5 rounded-2xl mb-3 space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Cliente:</span>
+                                                <span className="text-xs font-black text-slate-800">{req.userName || 'Cliente'} {req.userCedula ? `(C.I: ${req.userCedula})` : ''}</span>
+                                            </div>
+                                            <p className="text-xs font-bold text-slate-700 line-clamp-2 leading-snug">
                                                 {req.mandado_details?.description || req.packageDescription || req.notes || 'Encargo personalizado solicitado por el cliente.'}
                                             </p>
-                                            {req.mandado_details?.storeName && (
-                                                <p className="text-xs text-slate-600 font-medium">
-                                                    🏪 Comercio/Lugar: <span className="font-bold text-slate-800">{req.mandado_details.storeName}</span>
-                                                </p>
-                                            )}
-                                            {(req.mandado_details?.audioUrl || req.audio_url) && (
-                                                <div className="mt-2">
-                                                    <AudioNotePlayer src={req.mandado_details?.audioUrl || req.audio_url} />
-                                                </div>
-                                            )}
+                                            {/* Badges de contenido */}
+                                            <div className="flex flex-wrap gap-1.5 pt-1">
+                                                {hasAudio && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 rounded-full">
+                                                        <Volume2 className="w-3 h-3" /> Nota de voz adjunta
+                                                    </span>
+                                                )}
+                                                {hasStore && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full">
+                                                        🏪 {req.mandado_details.storeName}
+                                                    </span>
+                                                )}
+                                                {hasPhoto && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
+                                                        📷 Foto/Factura de referencia
+                                                    </span>
+                                                )}
+                                                {isPassenger && (
+                                                    <span className="inline-flex items-center gap-1 text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full">
+                                                        ⚠️ Traslado de persona
+                                                    </span>
+                                                )}
+                                            </div>
                                         </div>
 
                                         {/* Direcciones */}
-                                        <div className="space-y-3 mb-5">
-                                            <div className="flex items-start gap-3">
-                                                <div className="w-8 h-8 bg-amber-100 text-amber-700 rounded-xl flex items-center justify-center shrink-0 text-xs font-black">
-                                                    1
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Retiro / Compra:</p>
-                                                    <p className="text-xs font-bold text-slate-800 truncate">{req.origin?.address || 'Punto de partida'}</p>
-                                                </div>
+                                        <div className="space-y-1.5 mb-4 text-xs">
+                                            <div className="flex items-center gap-2 text-slate-600 truncate">
+                                                <span className="w-4 h-4 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center text-[10px] font-black shrink-0">1</span>
+                                                <span className="font-semibold text-slate-400 text-[10px] uppercase shrink-0">Retiro:</span>
+                                                <span className="font-bold text-slate-800 truncate">{req.origin?.address || 'Punto de partida'}</span>
                                             </div>
-                                            <div className="flex items-start gap-3">
-                                                <div className="w-8 h-8 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center shrink-0 text-xs font-black">
-                                                    2
-                                                </div>
-                                                <div className="min-w-0">
-                                                    <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Entrega al Cliente:</p>
-                                                    <p className="text-xs font-bold text-slate-800 truncate">{req.destination?.address || 'Destino final'}</p>
-                                                    <p className="text-[11px] text-slate-500 font-medium">{req.userName} {req.userCedula ? `(C.I: ${req.userCedula})` : ''}</p>
-                                                </div>
+                                            <div className="flex items-center gap-2 text-slate-600 truncate">
+                                                <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-800 flex items-center justify-center text-[10px] font-black shrink-0">2</span>
+                                                <span className="font-semibold text-emerald-600 text-[10px] uppercase shrink-0">Entrega:</span>
+                                                <span className="font-bold text-slate-800 truncate">{req.destination?.address || 'Destino final'}</span>
                                             </div>
                                         </div>
 
-                                        {/* Indicador de traslado de persona o diligencia */}
-                                        <div className="p-3.5 rounded-2xl border text-xs font-bold mb-3 bg-slate-50 border-slate-200 space-y-2">
-                                            {req.mandado_details?.transportPassenger ? (
-                                                <>
-                                                    <div className="text-amber-600 flex items-center gap-2">
-                                                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
-                                                        <span>⚠️ Este mandado incluye el traslado de una persona</span>
-                                                    </div>
-                                                    <div className="p-3 bg-amber-100/90 border border-amber-300 rounded-xl space-y-1">
-                                                        <div className="text-[10px] font-black uppercase text-amber-900 tracking-wider">
-                                                            📍 Ruta de traslado de la persona:
-                                                        </div>
-                                                        <p className="text-xs font-black text-amber-950 leading-relaxed">
-                                                            {req.mandado_details?.passengerRouteDescription || req.mandado_details?.passenger_route_description || 'Ruta no especificada'}
-                                                        </p>
-                                                    </div>
-                                                </>
-                                            ) : (
-                                                <div className="text-emerald-700 flex items-center gap-2">
-                                                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
-                                                    <span>🛍️ Solo diligencias / compras (sin traslado de personas)</span>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* Foto o factura de referencia si existe */}
-                                        {(req.mandado_details?.referenceUrl || req.reference_url) && (
-                                            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-3 space-y-2">
-                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Foto o factura de referencia:</span>
-                                                <a
-                                                    href={req.mandado_details?.referenceUrl || req.reference_url}
-                                                    target="_blank"
-                                                    rel="noreferrer"
-                                                    className="block rounded-xl overflow-hidden border border-slate-300 max-h-48 group relative shadow-sm"
-                                                >
-                                                    <img
-                                                        src={req.mandado_details?.referenceUrl || req.reference_url}
-                                                        alt="Referencia mandado"
-                                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                                    />
-                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <span className="text-xs font-black text-white bg-slate-900/80 px-3 py-1 rounded-lg">Ver foto completa</span>
-                                                    </div>
-                                                </a>
-                                            </div>
-                                        )}
-
-                                        {/* Formulario de Puja */}
+                                        {/* Botón para abrir el Modal de Revisión y Puja */}
                                         {bidData.submitted ? (
-                                            <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-center">
-                                                <CheckCircle2 className="w-6 h-6 text-emerald-600 mx-auto mb-1" />
-                                                <p className="text-xs font-black text-emerald-900 uppercase tracking-wider">¡Oferta enviada al cliente!</p>
-                                                <p className="text-sm font-bold text-emerald-700 mt-0.5">
-                                                    Tu puja: ${Number(bidData.amount).toFixed(2)} USD • ETA: {bidData.eta} min
-                                                </p>
-                                                <p className="text-[11px] text-emerald-600/80 mt-1">
-                                                    El cliente está revisando las propuestas en su radar.
-                                                </p>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDismissRequest(req.id)}
-                                                    className="w-full mt-3 py-2 bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 active:scale-95 transition-all flex items-center justify-center gap-1.5"
-                                                >
-                                                    <X className="w-3.5 h-3.5" />
-                                                    <span>Omitir mandado de pantalla</span>
-                                                </button>
-                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedPersonalShopperReq(req)}
+                                                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                <span>Ver Oferta Enviada (${Number(bidData.amount).toFixed(2)} USD)</span>
+                                            </button>
                                         ) : (
-                                            <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <div>
-                                                        <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-                                                             Tu Tarifa ($ USD)
-                                                        </label>
-                                                        <div className="relative">
-                                                            <span className="absolute left-3 top-2.5 text-slate-400 font-black text-sm">$</span>
-                                                            <input
-                                                                type="number"
-                                                                min="0.50"
-                                                                step="0.25"
-                                                                placeholder="Min 0.50"
-                                                                value={bidData.amount}
-                                                                onChange={(e) => setMandadoBids(prev => ({
-                                                                    ...prev,
-                                                                    [req.id]: { ...bidData, amount: e.target.value }
-                                                                }))}
-                                                                className="w-full pl-7 pr-3 py-2 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                                                            />
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <label className="text-[10px] font-black uppercase text-slate-500 tracking-wider block mb-1">
-                                                            Tiempo llegada
-                                                        </label>
-                                                        <div className="relative">
-                                                            <input
-                                                                type="number"
-                                                                min="5"
-                                                                step="5"
-                                                                placeholder="15"
-                                                                value={bidData.eta}
-                                                                onChange={(e) => setMandadoBids(prev => ({
-                                                                    ...prev,
-                                                                    [req.id]: { ...bidData, eta: e.target.value }
-                                                                }))}
-                                                                className="w-full px-3 py-2 bg-white rounded-xl border border-slate-300 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-400"
-                                                            />
-                                                            <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs">min</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                {/* Desglose de comisión */}
-                                                {bidAmountNum >= 0.50 && (
-                                                    <div className="text-[11px] bg-white p-2.5 rounded-xl border border-slate-200 flex items-center justify-between">
-                                                        <span className="text-slate-500">Comisión Un 2x3: <strong className="text-rose-500">-${commMandado.toFixed(2)}</strong></span>
-                                                        <span className="font-black text-emerald-600">Neto: ${netMandado.toFixed(2)} USD</span>
-                                                    </div>
-                                                )}
-
-                                                <button
-                                                    onClick={() => handleSendMandadoBid(req.id)}
-                                                    disabled={processingAction === `bid_${req.id}` || !bidData.amount || Number(bidData.amount) < 0.50 || hasReachedServiceLimit}
-                                                    className="w-full bg-slate-900 hover:bg-slate-800 active:scale-98 text-amber-400 font-black py-3.5 rounded-xl shadow-lg shadow-slate-900/10 text-xs uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50 transition-all"
-                                                >
-                                                    {processingAction === `bid_${req.id}` ? (
-                                                        <div className="w-5 h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
-                                                    ) : hasReachedServiceLimit ? (
-                                                        'Límite Alcanzado (2/2)'
-                                                    ) : (
-                                                        <>
-                                                            <Send className="w-4 h-4" />
-                                                            Enviar Oferta / Puja
-                                                        </>
-                                                    )}
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDismissRequest(req.id)}
-                                                    className="w-full mt-2 py-3 bg-white hover:bg-rose-50 text-slate-500 hover:text-rose-600 font-bold text-xs uppercase tracking-wider rounded-xl border border-slate-200 hover:border-rose-300 active:scale-98 transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                                                >
-                                                    <X className="w-3.5 h-3.5" />
-                                                    <span>Omitir / Rechazar mandado</span>
-                                                </button>
-                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedPersonalShopperReq(req)}
+                                                className="w-full py-3.5 px-4 bg-slate-900 hover:bg-slate-800 active:scale-98 text-amber-400 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-slate-900/10 transition-all flex items-center justify-center gap-2"
+                                            >
+                                                <ShoppingBag className="w-4 h-4" />
+                                                <span>Revisar Pedido y Cotizar Puja</span>
+                                                <ChevronRight className="w-4 h-4" />
+                                            </button>
                                         )}
                                     </motion.div>
                                 );
@@ -3829,6 +3801,290 @@ export default function OrdersRadar() {
                 </div>
             )}
 
+            {/* Modal Detallado de Revisión y Puja: Personal Shopper / Mandados */}
+            <AnimatePresence>
+                {selectedPersonalShopperReq && (
+                    <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in">
+                        <motion.div
+                            initial={{ opacity: 0, y: 40 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 40 }}
+                            className="bg-white w-full max-w-xl max-h-[92vh] sm:rounded-[2.5rem] rounded-t-[2.5rem] shadow-2xl flex flex-col overflow-hidden border border-slate-200"
+                        >
+                            {/* Header del Modal */}
+                            <div className="p-5 bg-gradient-to-r from-slate-950 via-slate-900 to-amber-950 text-white flex items-center justify-between shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-md">
+                                        <ShoppingBag className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider block">Revisión de Solicitud</span>
+                                        <h3 className="text-base font-black text-white">Personal Shopper / Mandado</h3>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPersonalShopperReq(null)}
+                                    className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-all active:scale-95"
+                                    title="Cerrar modal"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Contenido con scroll */}
+                            <div className="p-5 overflow-y-auto space-y-4 flex-1">
+                                {/* Advertencia Cero Intermediación */}
+                                <div className="bg-amber-50 border border-amber-300 rounded-2xl p-3.5 text-xs font-bold text-amber-950 flex items-start gap-2.5">
+                                    <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                    <div>
+                                        <span className="font-black">CERO INTERMEDIACIÓN:</span> No financias compras de mercancía ni adelantas tu dinero. El cliente paga directamente al comercio mediante Pago Móvil o transferencia. Tú sólo cobras tu tarifa de mandado.
+                                    </div>
+                                </div>
+
+                                {/* Datos del Cliente */}
+                                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-black">
+                                            <UserIcon className="w-4 h-4" />
+                                        </div>
+                                        <div>
+                                            <span className="font-black text-slate-900 block">{selectedPersonalShopperReq.userName || 'Cliente'}</span>
+                                            {selectedPersonalShopperReq.userCedula && (
+                                                <span className="text-[11px] text-slate-500 font-medium">C.I: {selectedPersonalShopperReq.userCedula}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {selectedPersonalShopperReq.userPhone && (
+                                        <span className="text-[11px] font-bold text-slate-600">{selectedPersonalShopperReq.userPhone}</span>
+                                    )}
+                                </div>
+
+                                {/* Lista escrita / Instrucciones detalladas */}
+                                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-2">
+                                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-slate-500 tracking-wider">
+                                        <FileText className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>Lista Escrita e Instrucciones del Pedido:</span>
+                                    </div>
+                                    <p className="text-sm font-bold text-slate-800 leading-relaxed whitespace-pre-line bg-white p-3 rounded-xl border border-slate-200/80">
+                                        {selectedPersonalShopperReq.mandado_details?.description || selectedPersonalShopperReq.packageDescription || selectedPersonalShopperReq.notes || 'Sin descripción adicional.'}
+                                    </p>
+                                    {selectedPersonalShopperReq.mandado_details?.storeName && (
+                                        <div className="text-xs text-slate-700 font-bold bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-center gap-1.5">
+                                            <span>🏪 Comercio o Lugar sugerido:</span>
+                                            <span className="font-black text-slate-900">{selectedPersonalShopperReq.mandado_details.storeName}</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Nota de Voz / Audio */}
+                                {(selectedPersonalShopperReq.mandado_details?.audioUrl || selectedPersonalShopperReq.audio_url) && (
+                                    <div className="bg-purple-50/70 border border-purple-200 p-4 rounded-2xl space-y-2">
+                                        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase text-purple-700 tracking-wider">
+                                            <Volume2 className="w-3.5 h-3.5" />
+                                            <span>Nota de Voz del Cliente (Instrucciones de Audio):</span>
+                                        </div>
+                                        <AudioNotePlayer src={selectedPersonalShopperReq.mandado_details?.audioUrl || selectedPersonalShopperReq.audio_url} />
+                                    </div>
+                                )}
+
+                                {/* Foto o Factura de Referencia */}
+                                {(selectedPersonalShopperReq.mandado_details?.referenceUrl || selectedPersonalShopperReq.reference_url) && (
+                                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 block">Foto o Factura de Referencia:</span>
+                                        <a
+                                            href={selectedPersonalShopperReq.mandado_details?.referenceUrl || selectedPersonalShopperReq.reference_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="block rounded-xl overflow-hidden border border-slate-300 max-h-52 group relative shadow-sm"
+                                        >
+                                            <img
+                                                src={selectedPersonalShopperReq.mandado_details?.referenceUrl || selectedPersonalShopperReq.reference_url}
+                                                alt="Referencia mandado"
+                                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                            />
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <span className="text-xs font-black text-white bg-slate-900/80 px-3 py-1 rounded-lg">Ver foto completa</span>
+                                            </div>
+                                        </a>
+                                    </div>
+                                )}
+
+                                {/* Direcciones / Ruta */}
+                                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-3">
+                                    <div className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Ruta del Servicio:</div>
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-7 h-7 bg-amber-100 text-amber-700 rounded-xl flex items-center justify-center shrink-0 text-xs font-black">
+                                            1
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Retiro / Compra / Trámite:</p>
+                                            <p className="text-xs font-bold text-slate-800">{selectedPersonalShopperReq.origin?.address || 'Punto de partida'}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-7 h-7 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center shrink-0 text-xs font-black">
+                                            2
+                                        </div>
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Entrega al Cliente:</p>
+                                            <p className="text-xs font-bold text-slate-800">{selectedPersonalShopperReq.destination?.address || 'Destino final'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Indicador de traslado de persona */}
+                                <div className="p-3.5 rounded-2xl border text-xs font-bold bg-slate-50 border-slate-200 space-y-2">
+                                    {selectedPersonalShopperReq.mandado_details?.transportPassenger ? (
+                                        <>
+                                            <div className="text-amber-600 flex items-center gap-2">
+                                                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping shrink-0" />
+                                                <span>⚠️ Este mandado incluye el traslado de una persona</span>
+                                            </div>
+                                            <div className="p-3 bg-amber-100/90 border border-amber-300 rounded-xl space-y-1">
+                                                <div className="text-[10px] font-black uppercase text-amber-900 tracking-wider">
+                                                    📍 Ruta de traslado de la persona:
+                                                </div>
+                                                <p className="text-xs font-black text-amber-950 leading-relaxed">
+                                                    {selectedPersonalShopperReq.mandado_details?.passengerRouteDescription || selectedPersonalShopperReq.mandado_details?.passenger_route_description || 'Ruta no especificada'}
+                                                </p>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="text-emerald-700 flex items-center gap-2">
+                                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                                            <span>🛍️ Solo diligencias / compras (sin traslado de personas)</span>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Sección de Puja / Postulación */}
+                                {(() => {
+                                    const mBid = mandadoBids[selectedPersonalShopperReq.id] || { amount: '', eta: '15', submitted: false };
+                                    const bAmount = parseFloat(mBid.amount) || 0;
+                                    const comm = getCommissionForCategory('mandao');
+                                    const netEarnings = Math.max(0, bAmount - comm);
+
+                                    if (mBid.submitted) {
+                                        return (
+                                            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 text-center space-y-2">
+                                                <CheckCircle2 className="w-7 h-7 text-emerald-600 mx-auto" />
+                                                <h4 className="text-sm font-black text-emerald-950 uppercase tracking-wide">¡Puja enviada con éxito!</h4>
+                                                <p className="text-sm font-bold text-emerald-800">
+                                                    Tu oferta: ${bAmount.toFixed(2)} USD • Tiempo llegada: {mBid.eta} min
+                                                </p>
+                                                <p className="text-xs text-emerald-700 font-medium">
+                                                    El cliente tiene tu propuesta en pantalla y decidirá si aceptarla.
+                                                </p>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white p-4 sm:p-5 rounded-2xl space-y-3.5 border border-slate-800 shadow-xl">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-xs font-black uppercase tracking-wider text-amber-400">Postularme con mi Tarifa:</span>
+                                                <span className="text-[10px] text-slate-400 font-medium">Mínimo $0.50 USD</span>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="text-[10px] font-black uppercase text-slate-300 tracking-wider block mb-1">
+                                                        Tu Oferta ($ USD)
+                                                    </label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-2.5 text-slate-400 font-black text-sm">$</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0.50"
+                                                            step="0.25"
+                                                            placeholder="Ej. 3.00"
+                                                            value={mBid.amount}
+                                                            onChange={(e) => setMandadoBids(prev => ({
+                                                                ...prev,
+                                                                [selectedPersonalShopperReq.id]: { ...mBid, amount: e.target.value }
+                                                            }))}
+                                                            className="w-full pl-7 pr-3 py-2 bg-slate-800 rounded-xl border border-slate-700 text-sm font-black text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label className="text-[10px] font-black uppercase text-slate-300 tracking-wider block mb-1">
+                                                        Llegada (min)
+                                                    </label>
+                                                    <div className="relative">
+                                                        <input
+                                                            type="number"
+                                                            min="5"
+                                                            step="5"
+                                                            placeholder="15"
+                                                            value={mBid.eta}
+                                                            onChange={(e) => setMandadoBids(prev => ({
+                                                                ...prev,
+                                                                [selectedPersonalShopperReq.id]: { ...mBid, eta: e.target.value }
+                                                            }))}
+                                                            className="w-full px-3 py-2 bg-slate-800 rounded-xl border border-slate-700 text-sm font-black text-white focus:outline-none focus:ring-2 focus:ring-amber-400"
+                                                        />
+                                                        <span className="absolute right-3 top-2.5 text-slate-400 font-bold text-xs">min</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {bAmount >= 0.50 && (
+                                                <div className="text-xs bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between">
+                                                    <span className="text-slate-400">Comisión Un 2x3: <strong className="text-rose-400">-${comm.toFixed(2)}</strong></span>
+                                                    <span className="font-black text-emerald-400">Ganancia neta: ${netEarnings.toFixed(2)} USD</span>
+                                                </div>
+                                            )}
+
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSendMandadoBid(selectedPersonalShopperReq.id)}
+                                                disabled={processingAction === `bid_${selectedPersonalShopperReq.id}` || !mBid.amount || Number(mBid.amount) < 0.50 || hasReachedServiceLimit}
+                                                className="w-full bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 font-black py-3.5 rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50 transition-all shadow-md"
+                                            >
+                                                {processingAction === `bid_${selectedPersonalShopperReq.id}` ? (
+                                                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                                                ) : hasReachedServiceLimit ? (
+                                                    'Límite de Servicios Alcanzado (2/2)'
+                                                ) : (
+                                                    <>
+                                                        <Send className="w-4 h-4" />
+                                                        <span>Enviar Mi Puja al Cliente</span>
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Footer con botón de cerrar */}
+                            <div className="p-4 bg-slate-100 border-t border-slate-200 flex items-center gap-3 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedPersonalShopperReq(null)}
+                                    className="flex-1 py-3 bg-white hover:bg-slate-200 text-slate-700 font-black text-xs uppercase tracking-wider rounded-xl border border-slate-300 transition-colors"
+                                >
+                                    Cerrar / Decidir Luego
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleDismissRequest(selectedPersonalShopperReq.id);
+                                        setSelectedPersonalShopperReq(null);
+                                    }}
+                                    className="py-3 px-4 bg-rose-50 hover:bg-rose-100 text-rose-600 font-black text-xs uppercase tracking-wider rounded-xl border border-rose-200 transition-colors flex items-center gap-1.5"
+                                >
+                                    <X className="w-4 h-4" />
+                                    <span>Omitir</span>
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
             {/* Modal de Vista Previa del Comprobante */}
             {previewProofUrl && (
                 <div 
@@ -3846,6 +4102,8 @@ export default function OrdersRadar() {
                     <img 
                         src={previewProofUrl} 
                         alt="Comprobante de pago" 
+                        loading="lazy"
+                        decoding="async"
                         className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl" 
                     />
                 </div>

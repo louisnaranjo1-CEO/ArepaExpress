@@ -708,13 +708,13 @@ export default function Earnings() {
                             </span>
                         </div>
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                            commissionStatus === 'suspended'
+                            commissionDebt <= 0
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : commissionStatus === 'suspended'
                                 ? 'bg-red-100 text-red-700'
-                                : commissionDebt > 0
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
                         }`}>
-                            {commissionStatus === 'suspended' ? 'Suspendido' : commissionDebt > 0 ? 'Pendiente' : 'Al Día'}
+                            {commissionDebt <= 0 ? 'Al Día' : (commissionStatus === 'suspended' ? 'Suspendido' : 'Pendiente')}
                         </span>
                     </div>
 

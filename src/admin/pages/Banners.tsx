@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { collection, query, where, getDocs, addDoc, deleteDoc, doc, updateDoc, serverTimestamp, onSnapshot, getDoc } from 'firebase/firestore';
-import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Loader2, CheckCircle2 } from 'lucide-react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../../lib/firebase';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Trash2, Plus, Image as ImageIcon, Clock, ExternalLink, Timer, Upload, AlertCircle, Pencil, Loader2, CheckCircle2, Globe, Map as MapIcon, MapPin as PinIcon, Sparkles } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -29,80 +27,95 @@ export default function Banners() {
         total: 3,
         remaining: 3
     });
+    const [bannerPricing, setBannerPricing] = useState<any>({
+        national: { price: 30, updateLimit: 3, availability: 'available' },
+        state: { price: 15, updateLimit: 3, availability: 'available' },
+        city: { price: 5, updateLimit: 3, availability: 'available' }
+    });
+    const [isGlobalFreePromo, setIsGlobalFreePromo] = useState(false);
+
+    const fetchBanners = useCallback(async () => {
+        if (!rid) return;
+        try {
+            const { data } = await supabase
+                .from('banners')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .order('created_at', { ascending: false });
+
+            const formatted = (data || []).map((b: any) => ({
+                id: b.id,
+                title: b.title,
+                linkUrl: b.link_url,
+                imageUrl: b.image_url,
+                duration: b.duration || 5,
+                isActive: b.is_active,
+                status: b.is_active ? 'active' : 'pending_approval',
+                createdAt: b.created_at
+            }));
+            setBanners(formatted);
+            setBannerStats(prev => ({
+                ...prev,
+                used: formatted.length,
+                remaining: Math.max(0, prev.total - formatted.length)
+            }));
+        } catch (error) {
+            console.error("Error fetching banners:", error);
+        } finally {
+            setLoading(false);
+        }
+    }, [rid]);
 
     useEffect(() => {
         if (!rid) return;
 
-        // Fetch Business Data (Subscription)
-        const unsubBus = onSnapshot(doc(db, 'restaurants', rid),
-            (docSnap) => {
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    setBusinessData(data);
-                    const limit = data.subscription?.bannerLimit || 3;
+        // Fetch Business Data and Banner Pricing
+        const fetchBusinessAndPricing = async () => {
+            try {
+                const [bizRes, pricingRes, plansRes] = await Promise.all([
+                    supabase.from('comercios').select('*').eq('id', rid).single(),
+                    supabase.from('system_settings').select('*').eq('key', 'banner_plans_config').maybeSingle(),
+                    supabase.from('system_settings').select('*').eq('key', 'subscription_plans_config').maybeSingle()
+                ]);
+
+                if (bizRes.data) {
+                    setBusinessData(bizRes.data);
+                    const limit = (bizRes.data as any).subscription?.bannerLimit || 3;
                     setBannerStats(prev => ({ ...prev, total: limit }));
                 }
-            },
-            (error) => {
-                console.error("Error fetching restaurant profile:", error);
-                setLoading(false);
+
+                if (pricingRes.data?.value) {
+                    setBannerPricing(pricingRes.data.value);
+                } else {
+                    const { data: appData } = await supabase.from('app_settings').select('*').eq('id', 'subscriptions').maybeSingle();
+                    if (appData?.banner_pricing) {
+                        setBannerPricing(appData.banner_pricing);
+                    }
+                }
+
+                const plansConf = plansRes.data?.value || plansRes.data?.data;
+                if (plansConf?.freeTrialEnabled) {
+                    setIsGlobalFreePromo(true);
+                }
+            } catch (err) {
+                console.warn("Error fetching business / pricing:", err);
             }
-        );
+        };
 
-        // Fetch Banners for this Restaurant
-        const q = query(
-            collection(db, 'banners'),
-            where('restaurantId', '==', rid)
-        );
+        fetchBusinessAndPricing();
+        fetchBanners();
 
-        const unsubBanners = onSnapshot(q,
-            (snapshot) => {
-                const data = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
-                }));
-                setBanners(data);
-                setLoading(false);
-            },
-            (error) => {
-                console.error("Error fetching banners:", error);
-                setLoading(false);
-            }
-        );
-
-        // Calculate Usage this month
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
-
-        const qStats = query(
-            collection(db, 'banner_updates'),
-            where('restaurantId', '==', rid),
-            where('timestamp', '>=', startOfMonth)
-        );
-
-        const unsubStats = onSnapshot(qStats,
-            (snapshot) => {
-                const count = snapshot.size;
-                setBannerStats(prev => ({
-                    ...prev,
-                    used: count,
-                    remaining: Math.max(0, prev.total - count)
-                }));
-            },
-            (error) => {
-                console.error("Error fetching stats:", error);
-                // Not strictly necessary to stop loading here as others should cover it,
-                // but good for completeness
-            }
-        );
+        const channel = supabase
+            .channel(`banners_${rid}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'banners', filter: `restaurant_id=eq.${rid}` }, () => {
+                fetchBanners();
+            })
+            .subscribe();
 
         return () => {
-            unsubBus();
-            unsubBanners();
-            unsubStats();
+            supabase.removeChannel(channel);
         };
-    }, [rid]);
+    }, [rid, fetchBanners]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -114,11 +127,12 @@ export default function Banners() {
 
     const handleSaveBanner = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!user || !rid || !businessData) return;
+        const isAnyPlanFree = bannerPricing.national?.availability === 'free' || bannerPricing.state?.availability === 'free' || bannerPricing.city?.availability === 'free';
+        const isExempt = isAnyPlanFree || businessData?.billing_mode === 'free_custom' || businessData?.billing_mode === 'commission';
 
-        // Check if user has subscription
-        if (!businessData.subscription) {
-            alert("Necesitas una suscripción activa para gestionar banners.");
+        // Check if user has subscription or is exempt
+        if (!businessData.subscription && !isExempt) {
+            alert("Necesitas una suscripción activa o que la promoción 'Gratis por tiempo limitado' esté vigente para gestionar banners.");
             return;
         }
 
@@ -138,48 +152,34 @@ export default function Banners() {
             let finalImageUrl = newBanner.imageUrl;
 
             if (selectedFile) {
-                const storageRef = ref(storage, `banners/${rid}/${Date.now()}_${selectedFile.name}`);
-                const snapshot = await uploadBytes(storageRef, selectedFile);
-                finalImageUrl = await getDownloadURL(snapshot.ref);
+                const ext = selectedFile.name.split('.').pop() || 'png';
+                const filePath = `${rid}/banners/${Date.now()}_${selectedFile.name.replace(/[^a-z0-9.]/gi, '_')}`;
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, selectedFile, { upsert: true });
+                if (upErr) throw upErr;
+                const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
+                finalImageUrl = urlData.publicUrl;
             }
 
-            const bannerData = {
-                ...newBanner,
-                imageUrl: finalImageUrl,
-                restaurantId: rid,
-                restaurantName: businessData.name || '',
-                updatedAt: serverTimestamp(),
-                isActive: false,
-                status: 'pending_approval',
-                // Inherit visibility from subscription
-                visibilityScope: businessData.subscription.scope || 'city',
-                targetState: businessData.location?.state || '',
-                targetCity: businessData.location?.city || ''
+            const bannerData: any = {
+                restaurant_id: rid,
+                title: newBanner.title || '',
+                link_url: newBanner.linkUrl || '',
+                image_url: finalImageUrl,
+                is_active: false,
+                updated_at: new Date().toISOString()
             };
 
+            if (!editingId) {
+                bannerData.duration = 5; // Default duration controlled by SuperAdmin
+            }
+
             if (editingId) {
-                await updateDoc(doc(db, 'banners', editingId), bannerData);
-                // Record update if image changed
-                if (selectedFile) {
-                    await addDoc(collection(db, 'banner_updates'), {
-                        restaurantId: rid,
-                        bannerId: editingId,
-                        timestamp: serverTimestamp(),
-                        type: 'update'
-                    });
-                }
+                const { error: updErr } = await supabase.from('banners').update(bannerData).eq('id', editingId);
+                if (updErr) throw updErr;
             } else {
-                const docRef = await addDoc(collection(db, 'banners'), {
-                    ...bannerData,
-                    createdAt: serverTimestamp(),
-                });
-                // Record update (creation counts as one)
-                await addDoc(collection(db, 'banner_updates'), {
-                    restaurantId: rid,
-                    bannerId: docRef.id,
-                    timestamp: serverTimestamp(),
-                    type: 'create'
-                });
+                bannerData.created_at = new Date().toISOString();
+                const { error: insErr } = await supabase.from('banners').insert(bannerData);
+                if (insErr) throw insErr;
             }
 
             setIsAdding(false);
@@ -192,6 +192,7 @@ export default function Banners() {
             });
             setSelectedFile(null);
             setImagePreview(null);
+            fetchBanners();
         } catch (error) {
             console.error("Error saving banner: ", error);
             alert("Error al guardar el banner");
@@ -203,7 +204,8 @@ export default function Banners() {
     const handleDelete = async (id: string) => {
         if (!window.confirm("¿Seguro que deseas eliminar este banner?")) return;
         try {
-            await deleteDoc(doc(db, 'banners', id));
+            await supabase.from('banners').delete().eq('id', id);
+            fetchBanners();
         } catch (error) {
             console.error("Error deleting banner: ", error);
         }
@@ -274,19 +276,108 @@ export default function Banners() {
                 </div>
             </div>
 
-            {/* Alert if no subscription */}
-            {!businessData?.subscription && (
-                <div className="bg-amber-50 border-2 border-amber-100 p-6 rounded-[2rem] flex items-start gap-4">
-                    <AlertCircle className="w-6 h-6 text-amber-500 shrink-0 mt-1" />
+            {/* Costos Actuales y Disponibilidad de Banners */}
+            <div className="bg-white rounded-3xl p-6 border-2 border-slate-100 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                     <div>
-                        <h3 className="font-black text-amber-900">Suscripción Requerida</h3>
-                        <p className="text-sm text-amber-800/80 font-medium mt-1">
-                            Para publicar anuncios en la plataforma necesitas adquirir un plan de suscripción.
-                            Ve a la sección de <span className="font-bold underline">Suscripción</span> para ver los planes.
+                        <h3 className="text-base font-black text-slate-900">Costos y Tarifas de Banners</h3>
+                        <p className="text-xs text-slate-500 font-medium">Revisa las tarifas oficiales según el alcance geográfico de tu anuncio:</p>
+                    </div>
+                    {(bannerPricing.national?.availability === 'free' || bannerPricing.state?.availability === 'free' || bannerPricing.city?.availability === 'free') && (
+                        <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider rounded-full self-start flex items-center gap-1.5 shadow-xs">
+                            <Sparkles className="w-3.5 h-3.5 text-emerald-600" /> 🎁 Gratis por tiempo limitado Activo
+                        </span>
+                    )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
+                    {/* Nacional */}
+                    <div className="p-4 rounded-2xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                                    <Globe className="w-4 h-4" />
+                                </div>
+                                <span className="font-black text-slate-900 text-xs">Banner Nacional</span>
+                            </div>
+                            {isGlobalFreePromo || bannerPricing.national?.availability === 'free' ? (
+                                <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
+                                    🎁 Gratis por tiempo limitado
+                                </span>
+                            ) : (
+                                <span className="font-black text-slate-800 text-xs">
+                                    ${bannerPricing.national?.price || 30}/mes
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight">
+                            Visible para todos los clientes en toda Venezuela.
                         </p>
+                        <div className="pt-1 text-[10px] font-bold text-slate-400">
+                            {isGlobalFreePromo || bannerPricing.national?.availability === 'free' ? '🎁 Postulación gratuita (Lanzamiento)' : bannerPricing.national?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                        </div>
+                    </div>
+
+                    {/* Regional / Estado */}
+                    <div className="p-4 rounded-2xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                                    <MapIcon className="w-4 h-4" />
+                                </div>
+                                <span className="font-black text-slate-900 text-xs">Banner Regional</span>
+                            </div>
+                            {isGlobalFreePromo || bannerPricing.state?.availability === 'free' ? (
+                                <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
+                                    🎁 Gratis por tiempo limitado
+                                </span>
+                            ) : (
+                                <span className="font-black text-slate-800 text-xs">
+                                    ${bannerPricing.state?.price || 15}/mes
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight">
+                            Visible para los clientes ubicados en tu estado.
+                        </p>
+                        <div className="pt-1 text-[10px] font-bold text-slate-400">
+                            {isGlobalFreePromo || bannerPricing.state?.availability === 'free' ? '🎁 Postulación gratuita (Lanzamiento)' : bannerPricing.state?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                        </div>
+                    </div>
+
+                    {/* Local / Ciudad */}
+                    <div className="p-4 rounded-2xl border bg-slate-50/70 border-slate-200/80 flex flex-col justify-between space-y-2">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center">
+                                    <PinIcon className="w-4 h-4" />
+                                </div>
+                                <span className="font-black text-slate-900 text-xs">Banner Local</span>
+                            </div>
+                            {isGlobalFreePromo || bannerPricing.city?.availability === 'free' ? (
+                                <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
+                                    🎁 Gratis por tiempo limitado
+                                </span>
+                            ) : (
+                                <span className="font-black text-slate-800 text-xs">
+                                    ${bannerPricing.city?.price || 5}/mes
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium leading-tight">
+                            Visible para clientes de tu misma ciudad.
+                        </p>
+                        <div className="pt-1 text-[10px] font-bold text-slate-400">
+                            {isGlobalFreePromo || bannerPricing.city?.availability === 'free' ? '🎁 Postulación gratuita (Lanzamiento)' : bannerPricing.city?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                        </div>
                     </div>
                 </div>
-            )}
+
+                <div className="p-3 bg-amber-50/80 rounded-xl border border-amber-200/60 text-xs text-amber-900 font-medium flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Todo banner solicitado pasará a revisión del Superadministrador antes de hacerse visible para los clientes.</span>
+                </div>
+            </div>
 
             <AnimatePresence mode="wait">
                 {isAdding && (
@@ -321,21 +412,6 @@ export default function Banners() {
                                             onChange={e => setNewBanner({ ...newBanner, linkUrl: e.target.value })}
                                             className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                             placeholder="https://wa.me/..."
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Duración en Pantalla (Segundos)</label>
-                                    <div className="relative">
-                                        <Timer className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                                        <input
-                                            type="number"
-                                            min="3"
-                                            max="15"
-                                            value={newBanner.duration}
-                                            onChange={e => setNewBanner({ ...newBanner, duration: parseInt(e.target.value) })}
-                                            className="w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 pl-12 rounded-2xl outline-none transition-all font-bold text-slate-700"
                                         />
                                     </div>
                                 </div>

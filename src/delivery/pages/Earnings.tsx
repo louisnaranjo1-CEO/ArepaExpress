@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle, Ticket, Gift, Sparkles, Clock, Copy, Check, UploadCloud, X, ShieldAlert, CheckCircle2, Sliders, Info, Shield, CreditCard, Sun, Moon, Navigation, Percent, MapPin } from 'lucide-react';
+import { DollarSign, Activity, Calendar, ArrowUpRight, Star, ExternalLink, PackageCheck, AlertCircle, Ticket, Gift, Sparkles, Clock, Copy, Check, UploadCloud, X, ShieldAlert, CheckCircle2, Sliders, Info, Shield, CreditCard, Sun, Moon, Navigation, Percent, MapPin, Award } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useCurrency } from '../../context/CurrencyContext';
 import { toast } from 'react-hot-toast';
 import DriverFareSimulatorModal from '../components/DriverFareSimulatorModal';
+import { compressImage } from '../../utils/mediaCompressor';
 
 interface EarningsItem {
     id: string;
@@ -224,13 +225,15 @@ export default function Earnings() {
 
         const fetchEarnings = async () => {
             try {
-                // Delivery Orders
+                // Delivery Orders (capped to 50 recent completed for fast performance)
                 const driverUid = user.uid || user.id;
                 const { data: ordersData } = await supabase
                     .from('orders')
                     .select('*')
                     .or(`delivery_driver_id.eq.${driverUid},driver_id.eq.${driverUid}`)
-                    .in('status', ['completed', 'delivered']);
+                    .in('status', ['completed', 'delivered'])
+                    .order('created_at', { ascending: false })
+                    .limit(50);
 
                 const deliveryItems: EarningsItem[] = (ordersData || []).map((data: any) => {
                     const cDate = data.created_at ? new Date(data.created_at) : new Date();
@@ -255,12 +258,14 @@ export default function Earnings() {
                     };
                 });
 
-                // Transport Requests
+                // Transport Requests (capped to 50 recent completed)
                 const { data: transportData } = await supabase
                     .from('transport_requests')
                     .select('*')
                     .eq('driver_id', driverUid)
-                    .eq('status', 'completed');
+                    .eq('status', 'completed')
+                    .order('created_at', { ascending: false })
+                    .limit(50);
 
                 const transportItems: EarningsItem[] = (transportData || []).map((data: any) => {
                     const cDate = data.created_at ? new Date(data.created_at) : new Date();
@@ -394,7 +399,7 @@ export default function Earnings() {
             return;
         }
 
-        const confirmTrade = window.confirm(`Deseas cambiar ${raffle.pointsCost} pts por un ticket de "${raffle.title}"?`);
+        const confirmTrade = window.confirm(`¿Deseas canjear ${raffle.pointsCost} pts para desbloquear el incentivo "${raffle.title}"?`);
         if (!confirmTrade) return;
 
         setProcessingRaffle(raffle.id);
@@ -405,7 +410,7 @@ export default function Earnings() {
                 .eq('raffle_id', raffle.id);
 
             const nextTicketNumber = (count || 0) + 1;
-            const ticketStr = `Ticket #${String(nextTicketNumber).padStart(3, '0')}`;
+            const ticketStr = `Incentivo #${String(nextTicketNumber).padStart(3, '0')}`;
 
             await supabase.from('driver_raffle_tickets').insert({
                 raffle_id: raffle.id,
@@ -423,7 +428,7 @@ export default function Earnings() {
             }).eq('id', user.uid);
 
             setDriverPoints(newPoints);
-            toast.success(`¡Ticket adquirido! Tu número es ${ticketStr}`);
+            toast.success(`¡Incentivo desbloqueado con éxito! Registro: ${ticketStr}`);
         } catch (error) {
             console.error('Error canjeando puntos:', error);
             toast.error('Hubo un error procesando el canje.');
@@ -508,9 +513,10 @@ export default function Earnings() {
 
             let receiptUrl = '';
             if (proofFile) {
-                const ext = proofFile.name.split('.').pop() || 'jpg';
+                const compressedProof = await compressImage(proofFile);
+                const ext = (compressedProof instanceof File ? compressedProof.name : proofFile.name).split('.').pop() || 'jpg';
                 const filePath = `commission_receipts/${driverId}_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, proofFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedProof, { upsert: true });
                 if (!upErr) {
                     const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
                     receiptUrl = urlData.publicUrl;
@@ -702,13 +708,13 @@ export default function Earnings() {
                             </span>
                         </div>
                         <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
-                            commissionStatus === 'suspended'
+                            commissionDebt <= 0
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : commissionStatus === 'suspended'
                                 ? 'bg-red-100 text-red-700'
-                                : commissionDebt > 0
-                                ? 'bg-amber-100 text-amber-800'
-                                : 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
                         }`}>
-                            {commissionStatus === 'suspended' ? 'Suspendido' : commissionDebt > 0 ? 'Pendiente' : 'Al Día'}
+                            {commissionDebt <= 0 ? 'Al Día' : (commissionStatus === 'suspended' ? 'Suspendido' : 'Pendiente')}
                         </span>
                     </div>
 
@@ -1240,13 +1246,13 @@ export default function Earnings() {
                         )}
 
                         {/* Dual Fare Setup for Confort */}
-                        {(driverRow?.is_comfort_eligible || (driverRow?.vehicle_type !== 'moto' && driverRow?.has_ac && Number(driverRow?.vehicle_year) >= 2009)) && (
+                        {(driverRow?.vehicle_type !== 'moto' && Number(driverRow?.vehicle_year) >= 2016) && (
                             <div className="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl space-y-3">
                                 <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <Sparkles className="w-4 h-4 text-amber-600" />
                                         <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">
-                                            Tarifas Taxi Confort (Climatizado 2009+)
+                                            Tarifas Taxi Confort (Año 2016+)
                                         </h4>
                                     </div>
                                     <span className="text-[9px] font-black bg-amber-400 text-slate-950 px-2 py-0.5 rounded-full">
@@ -1316,19 +1322,19 @@ export default function Earnings() {
                     onClose={() => setShowSimulatorModal(false)}
                     driverFares={fares}
                     vehicleType={driverRow?.vehicle_type || 'moto'}
-                    isComfortEligible={Boolean(driverRow?.is_comfort_eligible || (driverRow?.vehicle_type !== 'moto' && driverRow?.has_ac && Number(driverRow?.vehicle_year) >= 2009))}
+                    isComfortEligible={Boolean(driverRow?.vehicle_type !== 'moto' && Number(driverRow?.vehicle_year) >= 2016)}
                     adminSettings={adminSettings}
                     bcvRate={bcvRate}
                 />
             )}
 
-            {/* Sorteos / Premios para Pilotos */}
+            {/* Metas e Incentivos para Pilotos */}
             {activeRaffles.length > 0 && (
                 <div className="px-4 space-y-3">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <Sparkles className="w-4 h-4 text-amber-500" />
-                            <h3 className="font-black text-slate-800 text-sm uppercase tracking-wider">Sorteos de Pilotos</h3>
+                            <h3 className="font-black text-slate-800 text-sm uppercase tracking-wider">Incentivos y Bonos para Pilotos</h3>
                         </div>
                         <span className="text-xs font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
                             {driverPoints} Puntos
@@ -1340,13 +1346,13 @@ export default function Earnings() {
                             <div key={raffle.id} className="bg-white rounded-3xl p-4 border border-slate-100 shadow-sm flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center shrink-0">
-                                        <Ticket className="w-6 h-6" />
+                                        <Award className="w-6 h-6" />
                                     </div>
                                     <div>
                                         <h4 className="font-bold text-slate-800 text-sm">{raffle.title}</h4>
                                         <p className="text-xs text-slate-400 line-clamp-1">{raffle.description}</p>
                                         <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider mt-1 block">
-                                            {raffle.pointsCost} pts por ticket
+                                            {raffle.pointsCost} pts para desbloquear
                                         </span>
                                     </div>
                                 </div>
@@ -1354,9 +1360,9 @@ export default function Earnings() {
                                 <button
                                     onClick={() => handleExchangePoints(raffle)}
                                     disabled={processingRaffle === raffle.id || driverPoints < raffle.pointsCost}
-                                    className="px-4 py-2 bg-slate-900 text-white text-xs font-black rounded-xl hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900 transition-all shrink-0"
+                                    className="px-4 py-2 bg-slate-900 text-white text-xs font-black rounded-xl hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-slate-900 transition-all shrink-0 cursor-pointer"
                                 >
-                                    {processingRaffle === raffle.id ? 'Canjeando...' : 'Canjear'}
+                                    {processingRaffle === raffle.id ? 'Desbloqueando...' : 'Reclamar Bono'}
                                 </button>
                             </div>
                         ))}

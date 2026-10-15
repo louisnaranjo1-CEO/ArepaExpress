@@ -100,22 +100,41 @@ export default function DesignManager() {
         try {
             const updatedUrls: Partial<BrandingData> = {};
 
-            // Subir los archivos nuevos a Supabase Storage
+            // Subir los archivos nuevos a Supabase Storage con respaldo inteligente
             for (const [key, file] of Object.entries(filesToUpload)) {
-                const ext = file.name.split('.').pop() || 'png';
-                const path = `logos/${key}_${Date.now()}.${ext}`;
+                const ext = file.name.split('.').pop()?.toLowerCase() || 'png';
+                const safeKey = key.replace(/[^a-zA-Z0-9_]/g, '_');
+                const path = `logos/${safeKey}_${Date.now()}.${ext}`;
 
-                const { error: uploadErr } = await supabase.storage
+                // 1. Intentar en bucket 'branding'
+                let uploadResult = await supabase.storage
                     .from('branding')
-                    .upload(path, file, { upsert: true });
+                    .upload(path, file, { 
+                        upsert: true,
+                        contentType: file.type || undefined
+                    });
 
-                if (uploadErr) {
-                    console.error(`Error subiendo ${key}:`, uploadErr);
-                    throw new Error(`Error al subir imagen para ${key}`);
+                let bucketUsed = 'branding';
+
+                // 2. Si falla en 'branding', usar 'store_assets' como respaldo infalible
+                if (uploadResult.error) {
+                    console.warn(`Aviso: subida a bucket 'branding' falló para ${key}. Reintentando en 'store_assets'...`, uploadResult.error);
+                    const fallbackResult = await supabase.storage
+                        .from('store_assets')
+                        .upload(path, file, { 
+                            upsert: true,
+                            contentType: file.type || undefined
+                        });
+
+                    if (fallbackResult.error) {
+                        console.error(`Error definitivo subiendo ${key} en store_assets:`, fallbackResult.error);
+                        throw new Error(`Error al subir imagen para ${key}: ${fallbackResult.error.message || uploadResult.error.message}`);
+                    }
+                    bucketUsed = 'store_assets';
                 }
 
                 const { data: { publicUrl } } = supabase.storage
-                    .from('branding')
+                    .from(bucketUsed)
                     .getPublicUrl(path);
 
                 (updatedUrls as any)[key] = publicUrl;
