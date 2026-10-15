@@ -136,23 +136,45 @@ export default function Subscriptions() {
     const planId = (restaurantData?.plan_id || 'emprendedor') as 'emprendedor' | 'corporativo';
     const isGlobalFreePromo = Boolean(plansConfig?.freeTrialEnabled);
     const globalTransitionDate = plansConfig?.transitionDate ? new Date(plansConfig.transitionDate) : null;
-    const defaultTransitionPlan = plansConfig?.defaultTransitionPlanId || 'emprendedor';
 
-    const emprendedorConfig = plansConfig?.plans?.emprendedor || {
-        name: 'Plan Aliado Emprendedor',
-        price: 4.99,
-        description: 'Ideal para negocios con delivery propio o retiro en tienda que desean recibir pedidos y gestionar su caja.',
-        features: { orders: true, cash_internal: true, products: true, notifications: true, clients: true, loyalty: true }
+    const getPlanConfig = (id: string, defaultName: string, defaultPrice: number, defaultDesc: string) => {
+        let p: any = null;
+        if (Array.isArray(plansConfig?.plans)) {
+            p = plansConfig.plans.find((item: any) => item.id === id);
+        } else if (plansConfig?.plans && typeof plansConfig.plans === 'object') {
+            p = plansConfig.plans[id];
+        }
+        return {
+            id,
+            name: p?.name || defaultName,
+            price: p?.price !== undefined ? Number(p.price) : defaultPrice,
+            description: p?.description || defaultDesc,
+            features: p?.features || {}
+        };
     };
 
-    const corporativoConfig = plansConfig?.plans?.corporativo || {
-        name: 'Plan Aliado Corporativo',
-        price: 14.99,
-        description: 'Todo incluido: Meseros, Cajeras, Mesas QR y Estaciones de impresión térmica.',
-        features: { orders: true, cash_internal: true, products: true, notifications: true, clients: true, loyalty: true, waiters: true, cashiers: true, tables: true, printer_stations: true }
-    };
+    const emprendedorConfig = getPlanConfig(
+        'emprendedor',
+        'Plan Aliado Emprendedor',
+        15,
+        'Ideal para negocios con delivery propio o retiro en tienda que desean recibir pedidos y gestionar su caja.'
+    );
+
+    const corporativoConfig = getPlanConfig(
+        'corporativo',
+        'Plan Aliado Corporativo',
+        30,
+        'Todo incluido: Meseros, Cajeras, Mesas QR y Estaciones de impresión térmica.'
+    );
 
     const activePlanConfig = planId === 'corporativo' ? corporativoConfig : emprendedorConfig;
+
+    const isFreeMode = isGlobalFreePromo || billingMode === 'free_custom';
+    const freeDeadlineDate = restaurantData?.free_until
+        ? new Date(restaurantData.free_until)
+        : globalTransitionDate;
+    const defaultTransitionPlan = restaurantData?.plan_id || plansConfig?.defaultTransitionPlanId || 'emprendedor';
+    const transitionPlanObj = defaultTransitionPlan === 'corporativo' ? corporativoConfig : emprendedorConfig;
 
     const isModuleActive = (moduleKey: string) => {
         if (billingMode === 'commission' || billingMode === 'free_custom') {
@@ -180,8 +202,8 @@ export default function Subscriptions() {
             </header>
 
             {/* SECCIÓN 1: ESTADO COMERCIAL ACTUAL */}
-            {isGlobalFreePromo ? (
-                /* CASO A: LANZAMIENTO GLOBAL GRATUITO */
+            {isFreeMode ? (
+                /* CASO A: GRATIS POR TIEMPO LIMITADO (LANZAMIENTO O CORTESÍA) */
                 <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-emerald-500 via-teal-600 to-emerald-700 text-white shadow-xl shadow-emerald-500/20 relative overflow-hidden">
                     <div className="absolute right-0 top-0 translate-x-8 -translate-y-8 w-64 h-64 bg-white/10 rounded-full blur-2xl pointer-events-none" />
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
@@ -196,15 +218,15 @@ export default function Subscriptions() {
                                     </span>
                                 </div>
                                 <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-                                    Gratis por tiempo limitado
+                                    🎉 Gratis por Tiempo Limitado (Lanzamiento)
                                 </h2>
                                 <p className="text-sm text-emerald-50/90 font-medium max-w-xl leading-relaxed">
-                                    Tu comercio cuenta con acceso 100% gratuito sin pagos mensuales hasta el{' '}
+                                    Tu comercio cuenta con acceso 100% gratuito sin pagos mensuales ni comisiones fijas hasta el{' '}
                                     <strong className="text-white underline font-black">
-                                        {globalTransitionDate ? format(globalTransitionDate, "dd 'de' MMMM, yyyy", { locale: es }) : 'próximo aviso'}
+                                        {freeDeadlineDate ? format(freeDeadlineDate, "dd 'de' MMMM, yyyy", { locale: es }) : 'próximo aviso'}
                                     </strong>
-                                    . Al finalizar esta etapa, pasarás al{' '}
-                                    <strong>{defaultTransitionPlan === 'corporativo' ? corporativoConfig.name : emprendedorConfig.name}</strong> (${defaultTransitionPlan === 'corporativo' ? corporativoConfig.price : emprendedorConfig.price} USD/mes).
+                                    . Al finalizar esta etapa, tu cuenta pasará automáticamente al{' '}
+                                    <strong className="text-white underline font-black">{transitionPlanObj.name}</strong> (${transitionPlanObj.price} USD/mes).
                                 </p>
                             </div>
                         </div>
@@ -231,14 +253,14 @@ export default function Subscriptions() {
                                     </span>
                                 </div>
                                 <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-                                    Tarifa por Pedido Vendido
+                                    🤝 Modalidad Aliado por Comisión por Venta
                                 </h2>
                                 <p className="text-sm text-amber-50/90 font-medium max-w-xl leading-relaxed">
                                     No pagas mensualidad fija. Tu negocio abona{' '}
                                     <strong className="text-white font-black underline">
                                         {restaurantData.commission_type === 'fixed'
-                                            ? `$${Number(restaurantData.commission_rate || 0.50).toFixed(2)} USD fijos`
-                                            : `${restaurantData.commission_rate || 10}% del total`}
+                                            ? `$${Number(restaurantData.commission_rate || 0.50).toFixed(2)} USD fijos por pedido`
+                                            : `${restaurantData.commission_rate || 10}% por venta completada`}
                                     </strong>{' '}
                                     por cada pedido entregado con éxito a través de la plataforma.
                                 </p>
@@ -254,50 +276,8 @@ export default function Subscriptions() {
                         </div>
                     </div>
                 </div>
-            ) : billingMode === 'free_custom' ? (
-                /* CASO C: GRATIS / CORTESÍA ESPECIAL */
-                <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-indigo-600 via-purple-600 to-indigo-800 text-white shadow-xl shadow-indigo-600/20 relative overflow-hidden">
-                    <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-                        <div className="flex items-start gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 border border-white/30 shadow-inner">
-                                <Gift className="w-8 h-8 text-amber-300" />
-                            </div>
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                    <span className="px-3 py-1 bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-widest rounded-full shadow-sm">
-                                        Acuerdo Especial
-                                    </span>
-                                </div>
-                                <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-                                    Desbloqueo Especial por Superadmin
-                                </h2>
-                                <p className="text-sm text-indigo-100/90 font-medium max-w-xl leading-relaxed">
-                                    {restaurantData.free_until ? (
-                                        <>
-                                            Tu comercio disfruta de gratuidad y funciones activadas a la medida hasta el{' '}
-                                            <strong className="text-white font-black underline">
-                                                {format(new Date(restaurantData.free_until), "dd 'de' MMMM, yyyy", { locale: es })}
-                                            </strong>
-                                            . Posterior a esta fecha pasarás al <strong>{planId === 'corporativo' ? corporativoConfig.name : emprendedorConfig.name}</strong>.
-                                        </>
-                                    ) : (
-                                        <>
-                                            Tu comercio cuenta con acceso de cortesía especial indefinido con módulos desbloqueados directamente por la directiva de Un 2x3.
-                                        </>
-                                    )}
-                                </p>
-                            </div>
-                        </div>
-
-                        <div className="bg-white/15 backdrop-blur-md border border-white/20 p-5 rounded-3xl text-center shrink-0 min-w-[200px]">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-indigo-200">Condición</p>
-                            <p className="text-3xl font-black text-white">Cortesía</p>
-                            <p className="text-[11px] font-bold text-indigo-200 mt-1">Sin cobro fijo mensual</p>
-                        </div>
-                    </div>
-                </div>
             ) : (
-                /* CASO D: SUSCRIPCIÓN MENSUAL ESTÁNDAR */
+                /* CASO C: SUSCRIPCIÓN MENSUAL ESTÁNDAR */
                 <div className="p-8 rounded-[2.5rem] bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-950 text-white shadow-xl shadow-slate-950/20 relative overflow-hidden">
                     <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
                         <div className="flex items-start gap-4">
@@ -327,6 +307,100 @@ export default function Subscriptions() {
                     </div>
                 </div>
             )}
+
+            {/* SECCIÓN 1.5: COMPARATIVA DE PLANES DE SUSCRIPCIÓN */}
+            <div className="space-y-4">
+                <div>
+                    <h3 className="text-xl font-black text-slate-900">Planes de Suscripción Disponibles</h3>
+                    <p className="text-sm text-slate-500 font-medium">Compara las ventajas de cada plan oficial de la plataforma:</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Plan Emprendedor */}
+                    <div className={`p-6 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-6 ${
+                        planId === 'emprendedor' && billingMode === 'subscription'
+                            ? 'bg-amber-50/40 border-amber-400 shadow-md ring-2 ring-amber-400/20'
+                            : 'bg-white border-slate-200'
+                    }`}>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-1">
+                                    <h4 className="text-lg font-black text-slate-900">{emprendedorConfig.name}</h4>
+                                    <p className="text-xs text-slate-500 font-medium">{emprendedorConfig.description}</p>
+                                </div>
+                                {planId === 'emprendedor' && billingMode === 'subscription' && (
+                                    <span className="px-3 py-1 bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-wider rounded-full shrink-0">
+                                        Tu Plan Actual
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="text-3xl font-black text-slate-900">
+                                ${emprendedorConfig.price} <span className="text-sm font-bold text-slate-400">USD / mes</span>
+                            </div>
+
+                            <div className="border-t border-slate-100 pt-4 space-y-2 text-xs">
+                                <p className="font-black text-slate-700 uppercase tracking-wider text-[10px]">Módulos incluidos:</p>
+                                <div className="grid grid-cols-1 gap-1.5 text-slate-700 font-medium">
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Recibir Pedidos en Línea</div>
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Caja Interna y Finanzas</div>
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Catálogo de Productos y Menú</div>
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Avisos y Notificaciones Push</div>
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Gestión de Clientes</div>
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Fidelización y Puntos</div>
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Campañas Pop-Up y Banners</div>
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Reseñas de Clientes</div>
+                                    <div className="flex items-center gap-2 text-slate-400 opacity-60"><Lock className="w-3.5 h-3.5 shrink-0" /> Meseros (App móvil)</div>
+                                    <div className="flex items-center gap-2 text-slate-400 opacity-60"><Lock className="w-3.5 h-3.5 shrink-0" /> Cajeras (App móvil)</div>
+                                    <div className="flex items-center gap-2 text-slate-400 opacity-60"><Lock className="w-3.5 h-3.5 shrink-0" /> Control de Mesas QR</div>
+                                    <div className="flex items-center gap-2 text-slate-400 opacity-60"><Lock className="w-3.5 h-3.5 shrink-0" /> Estaciones de Impresión Térmica</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Plan Corporativo */}
+                    <div className={`p-6 rounded-3xl border-2 transition-all flex flex-col justify-between space-y-6 ${
+                        planId === 'corporativo' && billingMode === 'subscription'
+                            ? 'bg-indigo-50/40 border-indigo-500 shadow-md ring-2 ring-indigo-500/20'
+                            : 'bg-white border-slate-200'
+                    }`}>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <h4 className="text-lg font-black text-slate-900">{corporativoConfig.name}</h4>
+                                        <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 font-black text-[9px] uppercase tracking-wider rounded-md">
+                                            ⭐ Completo
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 font-medium">{corporativoConfig.description}</p>
+                                </div>
+                                {planId === 'corporativo' && billingMode === 'subscription' && (
+                                    <span className="px-3 py-1 bg-indigo-600 text-white font-black text-[10px] uppercase tracking-wider rounded-full shrink-0">
+                                        Tu Plan Actual
+                                    </span>
+                                )}
+                            </div>
+
+                            <div className="text-3xl font-black text-slate-900">
+                                ${corporativoConfig.price} <span className="text-sm font-bold text-slate-400">USD / mes</span>
+                            </div>
+
+                            <div className="border-t border-slate-100 pt-4 space-y-2 text-xs">
+                                <p className="font-black text-slate-700 uppercase tracking-wider text-[10px]">Módulos incluidos (¡TODO INCLUIDO!):</p>
+                                <div className="grid grid-cols-1 gap-1.5 text-slate-700 font-medium">
+                                    <div className="flex items-center gap-2"><Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" /> Todos los beneficios del Plan Emprendedor</div>
+                                    <div className="flex items-center gap-2 font-bold text-indigo-900"><Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" /> Módulo Meseros (App móvil)</div>
+                                    <div className="flex items-center gap-2 font-bold text-indigo-900"><Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" /> Módulo Cajeras (App móvil)</div>
+                                    <div className="flex items-center gap-2 font-bold text-indigo-900"><Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" /> Control de Mesas con Código QR</div>
+                                    <div className="flex items-center gap-2 font-bold text-indigo-900"><Check className="w-3.5 h-3.5 text-indigo-600 shrink-0" /> Estaciones de Impresión Térmica</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             {/* SECCIÓN 2: MÓDULOS DE LA PLATAFORMA (DESBLOQUEADOS Y BLOQUEADOS) */}
             <div className="bg-white rounded-[2.5rem] p-8 border-2 border-slate-100 shadow-xl shadow-slate-200/40 space-y-6">
@@ -433,9 +507,9 @@ export default function Subscriptions() {
                                     <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-700 flex items-center justify-center">
                                         <Globe className="w-4 h-4" />
                                     </div>
-                                    {bannerPricing.national?.availability === 'free' ? (
+                                    {isGlobalFreePromo || bannerPricing.national?.availability === 'free' ? (
                                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black rounded-full uppercase tracking-wider">
-                                            🎁 Gratis
+                                            🎁 Gratis por tiempo limitado
                                         </span>
                                     ) : (
                                         <span className="text-xs font-black text-slate-900">
@@ -451,7 +525,7 @@ export default function Subscriptions() {
                                 </div>
                             </div>
 
-                            {bannerPricing.national?.availability === 'free' ? (
+                            {isGlobalFreePromo || bannerPricing.national?.availability === 'free' ? (
                                 <button
                                     onClick={() => navigate('/banners')}
                                     className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-colors"
@@ -472,9 +546,9 @@ export default function Subscriptions() {
                                     <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
                                         <MapIcon className="w-4 h-4" />
                                     </div>
-                                    {bannerPricing.state?.availability === 'free' ? (
+                                    {isGlobalFreePromo || bannerPricing.state?.availability === 'free' ? (
                                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black rounded-full uppercase tracking-wider">
-                                            🎁 Gratis
+                                            🎁 Gratis por tiempo limitado
                                         </span>
                                     ) : (
                                         <span className="text-xs font-black text-slate-900">
@@ -490,7 +564,7 @@ export default function Subscriptions() {
                                 </div>
                             </div>
 
-                            {bannerPricing.state?.availability === 'free' ? (
+                            {isGlobalFreePromo || bannerPricing.state?.availability === 'free' ? (
                                 <button
                                     onClick={() => navigate('/banners')}
                                     className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-colors"
@@ -511,9 +585,9 @@ export default function Subscriptions() {
                                     <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center">
                                         <PinIcon className="w-4 h-4" />
                                     </div>
-                                    {bannerPricing.city?.availability === 'free' ? (
+                                    {isGlobalFreePromo || bannerPricing.city?.availability === 'free' ? (
                                         <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black rounded-full uppercase tracking-wider">
-                                            🎁 Gratis
+                                            🎁 Gratis por tiempo limitado
                                         </span>
                                     ) : (
                                         <span className="text-xs font-black text-slate-900">
@@ -529,7 +603,7 @@ export default function Subscriptions() {
                                 </div>
                             </div>
 
-                            {bannerPricing.city?.availability === 'free' ? (
+                            {isGlobalFreePromo || bannerPricing.city?.availability === 'free' ? (
                                 <button
                                     onClick={() => navigate('/banners')}
                                     className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-colors"

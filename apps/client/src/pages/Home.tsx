@@ -690,7 +690,12 @@ export default function Home() {
     }
 
     if (actType === 'restaurant' || restId) {
-      navigate(`/restaurant/${restId}`);
+      const promoId = banner.promo_product_id || banner.promoProductId;
+      if (promoId) {
+        navigate(`/restaurant/${restId}?promoProductId=${promoId}`);
+      } else {
+        navigate(`/restaurant/${restId}`);
+      }
       return;
     }
 

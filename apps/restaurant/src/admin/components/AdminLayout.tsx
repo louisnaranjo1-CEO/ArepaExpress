@@ -389,19 +389,34 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
 
     const isFeatureUnlocked = (featureKey?: string) => {
         if (!featureKey) return true;
+
+        // 1. Desbloqueo manual en custom_features por el SuperAdmin
+        if (commercialData.custom_features && commercialData.custom_features[featureKey] !== undefined) {
+            return Boolean(commercialData.custom_features[featureKey]);
+        }
+
         const mode = commercialData.billing_mode || 'subscription';
 
-        if (mode === 'commission' || mode === 'free_custom') {
-            if (commercialData.custom_features && commercialData.custom_features[featureKey] !== undefined) {
-                return Boolean(commercialData.custom_features[featureKey]);
-            }
+        // 2. Modalidad Comisión
+        if (mode === 'commission') {
+            return true;
+        }
+
+        // 3. Modalidad Cortesía / Free Custom
+        if (mode === 'free_custom') {
             const advanced = ['waiters', 'cashiers', 'tables', 'printer_stations'];
             return !advanced.includes(featureKey);
         }
 
-        // Modalidad Suscripción
+        // 4. Modalidad Suscripción
         const planId = commercialData.plan_id || 'emprendedor';
-        const configuredPlan = plansConfig?.plans?.[planId];
+        let configuredPlan: any = null;
+        if (Array.isArray(plansConfig?.plans)) {
+            configuredPlan = plansConfig.plans.find((p: any) => p.id === planId);
+        } else if (plansConfig?.plans && typeof plansConfig.plans === 'object') {
+            configuredPlan = plansConfig.plans[planId];
+        }
+
         if (configuredPlan?.features && configuredPlan.features[featureKey] !== undefined) {
             return Boolean(configuredPlan.features[featureKey]);
         }
@@ -740,13 +755,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 </header>
 
                 {/* Billing Banner */}
-                {billingInfo.type === 'danger' && (
+                {billingInfo.type === 'danger' && commercialData.billing_mode === 'subscription' && !plansConfig?.freeTrialEnabled && (
                     <div className="bg-red-500 text-white px-4 py-3 flex items-center justify-center gap-3 text-sm font-bold flex-shrink-0 animate-in slide-in-from-top duration-500 z-10 shadow-md">
                         <AlertTriangle className="w-5 h-5 flex-shrink-0" />
                         <span className="text-center">¡Aviso Importante! Su suscripción mensual de ${billingInfo.amount?.toFixed(2)} está vencida por {billingInfo.daysLate} {billingInfo.daysLate === 1 ? 'día' : 'días'}. Por favor, realice el pago para evitar suspensión del servicio.</span>
                     </div>
                 )}
-                {billingInfo.type === 'warning' && (
+                {billingInfo.type === 'warning' && commercialData.billing_mode === 'subscription' && !plansConfig?.freeTrialEnabled && (
                     <div className="bg-amber-400 text-amber-950 px-4 py-3 flex items-center justify-center gap-3 text-sm font-bold flex-shrink-0 animate-in slide-in-from-top duration-500 z-10 shadow-md">
                         <AlertTriangle className="w-5 h-5 flex-shrink-0" />
                         <span className="text-center">Recordatorio: Su suscripción mensual de ${billingInfo.amount?.toFixed(2)} vence en {billingInfo.daysLeft} {billingInfo.daysLeft === 1 ? 'día' : 'días'}.</span>

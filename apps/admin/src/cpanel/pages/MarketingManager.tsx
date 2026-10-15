@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Megaphone, Settings, CheckCircle, XCircle, Image as ImageIcon } from 'lucide-react';
+import { Megaphone, Settings, CheckCircle, XCircle, Image as ImageIcon, Tag, Calendar, MapPin, Store } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export default function MarketingManager() {
@@ -13,6 +13,20 @@ export default function MarketingManager() {
     const [priceNational, setPriceNational] = useState(20);
     const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+    const parseArray = (val: any): string[] => {
+        if (Array.isArray(val)) return val.map(v => typeof v === 'string' ? v : (v?.name || String(v)));
+        if (typeof val === 'string' && val.trim()) {
+            try {
+                const parsed = JSON.parse(val);
+                if (Array.isArray(parsed)) return parsed.map(v => typeof v === 'string' ? v : (v?.name || String(v)));
+                return [val];
+            } catch {
+                return val.includes(',') ? val.split(',').map(s => s.trim()).filter(Boolean) : [val];
+            }
+        }
+        return [];
+    };
+
     const fetchCampaigns = async () => {
         try {
             const { data, error } = await supabase
@@ -20,23 +34,39 @@ export default function MarketingManager() {
                 .select('*')
                 .order('created_at', { ascending: false });
 
-            if (!error && data) {
-                const mapped = data.map(d => ({
-                    ...d,
-                    restaurantId: d.restaurant_id || d.restaurantId,
-                    restaurantName: d.restaurant_name || d.restaurantName,
-                    locationLevel: d.location_level || d.locationLevel,
-                    selectedStates: d.selected_states || d.selectedStates || [],
-                    selectedCities: d.selected_cities || d.selectedCities || [],
-                    minAge: d.min_age !== undefined ? d.min_age : d.minAge,
-                    maxAge: d.max_age !== undefined ? d.max_age : d.maxAge,
-                    bannerUrl: d.banner_url || d.bannerUrl,
-                    paymentRef: d.payment_ref || d.paymentRef,
-                    paymentImageUrl: d.payment_image_url || d.paymentImageUrl,
-                    scheduledAt: d.scheduled_at || d.scheduledAt,
-                    createdAt: d.created_at || d.createdAt,
-                    activatedAt: d.activated_at || d.activatedAt
-                }));
+            if (!error && Array.isArray(data)) {
+                const mapped = data.map(d => {
+                    let promoSnapshot: any = null;
+                    if (d.promo_product_snapshot) {
+                        if (typeof d.promo_product_snapshot === 'object') {
+                            promoSnapshot = d.promo_product_snapshot;
+                        } else if (typeof d.promo_product_snapshot === 'string') {
+                            try {
+                                promoSnapshot = JSON.parse(d.promo_product_snapshot);
+                            } catch {
+                                promoSnapshot = null;
+                            }
+                        }
+                    }
+
+                    return {
+                        ...d,
+                        restaurantId: d.restaurant_id || d.restaurantId,
+                        restaurantName: d.restaurant_name || d.restaurantName || 'Negocio Aliado',
+                        locationLevel: d.location_level || d.locationLevel || d.location || 'national',
+                        selectedStates: parseArray(d.selected_states || d.selectedStates || d.states),
+                        selectedCities: parseArray(d.selected_cities || d.selectedCities || d.cities),
+                        minAge: d.min_age !== undefined ? d.min_age : d.minAge,
+                        maxAge: d.max_age !== undefined ? d.maxAge : d.maxAge,
+                        bannerUrl: d.banner_url || d.bannerUrl || d.image_url || d.imageUrl || '',
+                        paymentRef: d.payment_ref || d.paymentRef,
+                        paymentImageUrl: d.payment_image_url || d.paymentImageUrl || d.payment_image || d.paymentImage || '',
+                        scheduledAt: d.scheduled_at || d.scheduledAt,
+                        createdAt: d.created_at || d.createdAt,
+                        activatedAt: d.activated_at || d.activatedAt,
+                        promoProductSnapshot: promoSnapshot
+                    };
+                });
 
                 mapped.sort((a, b) => {
                     if (a.status === 'verifying_payment' && b.status !== 'verifying_payment') return -1;
@@ -44,9 +74,12 @@ export default function MarketingManager() {
                     return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
                 });
                 setCampaigns(mapped);
+            } else {
+                setCampaigns([]);
             }
         } catch (err) {
             console.error("Error fetching campaigns", err);
+            setCampaigns([]);
         }
     };
 
@@ -211,121 +244,181 @@ export default function MarketingManager() {
 
             {activeTab === 'campaigns' && (
                 <div className="space-y-4">
-                    {campaigns.length === 0 && <p className="text-slate-500">No hay campañas publicadas ni en revisión.</p>}
-                    
-                    {campaigns.map(camp => (
-                        <div key={camp.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6">
-                            {/* Creatividad */}
-                            <div className="md:w-1/3 bg-slate-50 rounded-xl p-4 flex flex-col items-center justify-center text-center">
-                                {camp.imageUrl ? (
-                                    <img src={camp.imageUrl} alt="Push Creativo" className="w-full h-32 object-cover rounded-lg mb-3" />
-                                ) : (
-                                    <div className="w-full h-32 bg-slate-200 rounded-lg mb-3 flex items-center justify-center"><ImageIcon className="w-8 h-8 text-slate-400" /></div>
-                                )}
-                                <h3 className="font-bold text-slate-900">{camp.title}</h3>
-                                <p className="text-xs text-slate-500">{camp.subtitle}</p>
-                            </div>
-
-                            {/* Info */}
-                            <div className="md:w-1/3 flex flex-col justify-center gap-2">
-                                <p className="font-bold text-slate-800">Restaurante: <span className="font-normal">{camp.restaurantName}</span></p>
-                                 <p className="font-bold text-slate-800">
-                                    Alcance: <span className="font-normal capitalize">
-                                        {camp.location} 
-                                        {camp.location === 'city' && ` (${camp.cities?.length || 0} ciudades)`}
-                                        {camp.location === 'state' && ` (${camp.states?.length || 0} estados)`}
-                                    </span>
-                                </p>
-                                
-                                {(camp.cities?.length > 0 || camp.states?.length > 0) && (
-                                    <div className="flex flex-wrap gap-1 mt-1 max-h-20 overflow-y-auto pr-2 custom-scrollbar">
-                                        {(camp.cities || []).map((c: string, idx: number) => (
-                                            <span key={idx} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200">
-                                                {c}
-                                            </span>
-                                        ))}
-                                        {(camp.states || []).map((s: string, idx: number) => (
-                                            <span key={idx} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-md border border-primary/20">
-                                                {s}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                                <p className="font-bold text-slate-800">Inversión: <span className="font-normal text-green-600">${camp.price}</span></p>
-                                
-                                {camp.scheduledAt && (
-                                    <p className="font-bold text-slate-800 flex items-center gap-1 bg-blue-50 text-blue-700 px-2 py-1 rounded-md self-start text-xs mt-1">
-                                        Programado: <span className="font-normal">{camp.scheduledAt.toDate().toLocaleString('es-VE')}</span>
-                                    </p>
-                                )}
-
-                                <p className="font-bold text-slate-800">Clics: <span className="font-normal px-2 bg-slate-100 rounded-md">{camp.clicks || 0}</span></p>
-                                
-                                {camp.status === 'verifying_payment' && (
-                                    <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Revisión de Pago Requerida</span>
-                                )}
-                                {camp.status === 'active' && (
-                                    <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Campaña Activa</span>
-                                )}
-                                {camp.status === 'inactive' && (
-                                    <span className="bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Campaña Desactivada / Pausada</span>
-                                )}
-                                {camp.status === 'rejected_payment' && (
-                                    <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Pago Rechazado</span>
-                                )}
-                            </div>
-
-                            {/* Acciones de Pago */}
-                            <div className="md:w-1/3 flex flex-col justify-center border-l pl-6 border-slate-100">
-                                <h4 className="font-bold text-slate-700 text-sm mb-3">Auditoría / Gestión Individual</h4>
-                                {camp.paymentRef ? (
-                                    <div className="space-y-3">
-                                        <div className="bg-slate-900 text-primary text-center py-2 px-4 rounded-xl font-mono text-sm shadow-md">
-                                            REF: {camp.paymentRef}
-                                        </div>
-                                        
-                                        {camp.paymentImage ? (
-                                            <a href={camp.paymentImage} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-colors">
-                                                <ImageIcon className="w-4 h-4"/> Ver Comprobante
-                                            </a>
-                                        ) : (
-                                            <p className="text-xs text-slate-400 text-center">Sin imagen adjunta</p>
-                                        )}
-                                        
-                                        {camp.status === 'verifying_payment' && (
-                                            <div className="flex gap-2 pt-2">
-                                                <button onClick={() => handleApproveCampaign(camp.id)} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-green-500/20 active:scale-95 transition-all">
-                                                    <CheckCircle className="w-4 h-4" /> Aprobar
-                                                </button>
-                                                <button onClick={() => handleRejectCampaign(camp.id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-red-500/20 active:scale-95 transition-all">
-                                                    <XCircle className="w-4 h-4" /> Rechazar
-                                                </button>
-                                            </div>
-                                        )}
-
-                                        {(camp.status === 'active' || camp.status === 'inactive') && (
-                                            <button 
-                                                onClick={() => handleToggleCampaignStatus(camp.id, camp.status)} 
-                                                className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all shadow-md active:scale-95 ${camp.status === 'active' ? 'bg-slate-100 text-red-600 border border-red-100 hover:bg-red-50' : 'bg-green-100 text-green-700 border border-green-200 hover:bg-green-200'}`}
-                                            >
-                                                {camp.status === 'active' ? (
-                                                    <>
-                                                        <XCircle className="w-4 h-4" /> Desactivar Alerta Pop-up
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <CheckCircle className="w-4 h-4" /> Reactivar Alerta Pop-up
-                                                    </>
-                                                )}
-                                            </button>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <p className="text-slate-400 text-sm italic">Sin detalles de pago provistos.</p>
-                                )}
-                            </div>
+                    {Array.isArray(campaigns) && campaigns.length === 0 && (
+                        <div className="bg-white p-8 rounded-2xl border border-slate-200 text-center text-slate-500">
+                            No hay campañas publicadas ni en revisión.
                         </div>
-                    ))}
+                    )}
+                    
+                    {Array.isArray(campaigns) && campaigns.map(camp => {
+                        const cities = Array.isArray(camp.selectedCities) ? camp.selectedCities : [];
+                        const states = Array.isArray(camp.selectedStates) ? camp.selectedStates : [];
+                        const hasLocations = cities.length > 0 || states.length > 0;
+                        const promo = camp.promoProductSnapshot;
+
+                        // Safe date formatting
+                        let formattedScheduledDate = '';
+                        if (camp.scheduledAt) {
+                            try {
+                                if (typeof camp.scheduledAt?.toDate === 'function') {
+                                    formattedScheduledDate = camp.scheduledAt.toDate().toLocaleString('es-VE');
+                                } else {
+                                    const parsed = new Date(camp.scheduledAt);
+                                    formattedScheduledDate = isNaN(parsed.getTime()) ? String(camp.scheduledAt) : parsed.toLocaleString('es-VE');
+                                }
+                            } catch {
+                                formattedScheduledDate = String(camp.scheduledAt);
+                            }
+                        }
+
+                        return (
+                            <div key={camp.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-6">
+                                {/* Creatividad */}
+                                <div className="md:w-1/3 bg-slate-50 rounded-xl p-4 flex flex-col items-center justify-center text-center">
+                                    {(camp.bannerUrl || camp.imageUrl) ? (
+                                        <img 
+                                            src={camp.bannerUrl || camp.imageUrl} 
+                                            alt="Push Creativo" 
+                                            className="w-full h-32 object-cover rounded-lg mb-3 shadow-xs" 
+                                        />
+                                    ) : (
+                                        <div className="w-full h-32 bg-slate-200 rounded-lg mb-3 flex items-center justify-center">
+                                            <ImageIcon className="w-8 h-8 text-slate-400" />
+                                        </div>
+                                    )}
+                                    <h3 className="font-bold text-slate-900">{camp.title || 'Sin Título'}</h3>
+                                    <p className="text-xs text-slate-500">{camp.subtitle || ''}</p>
+
+                                    {/* Producto en Promoción Vinculado */}
+                                    {promo && (
+                                        <div className="mt-3 w-full p-2.5 bg-amber-50/80 rounded-xl border border-amber-200 text-left flex items-center gap-2.5">
+                                            {promo.image_url ? (
+                                                <img src={promo.image_url} alt={promo.name} className="w-9 h-9 rounded-lg object-cover border border-amber-200/60 shrink-0" />
+                                            ) : (
+                                                <div className="w-9 h-9 rounded-lg bg-amber-200/50 flex items-center justify-center shrink-0">
+                                                    <Tag className="w-4 h-4 text-amber-800" />
+                                                </div>
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[10px] font-black uppercase text-amber-800 tracking-wider">Promo Vinculada</p>
+                                                <p className="text-xs font-bold text-slate-900 truncate">{promo.name || 'Producto'}</p>
+                                            </div>
+                                            {promo.promo_price !== undefined && promo.promo_price !== null && (
+                                                <span className="text-xs font-black text-amber-900 bg-amber-200/70 px-2 py-0.5 rounded-md">
+                                                    ${promo.promo_price}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Info */}
+                                <div className="md:w-1/3 flex flex-col justify-center gap-2">
+                                    <p className="font-bold text-slate-800 flex items-center gap-2">
+                                        <Store className="w-4 h-4 text-slate-400" />
+                                        <span>Negocio: <span className="font-normal">{camp.restaurantName}</span></span>
+                                    </p>
+                                    <p className="font-bold text-slate-800 flex items-center gap-2">
+                                        <MapPin className="w-4 h-4 text-slate-400" />
+                                        <span>Alcance: <span className="font-normal capitalize">
+                                            {camp.locationLevel || camp.location || 'Nacional'}
+                                            {(camp.locationLevel === 'city' || camp.location === 'city') && ` (${cities.length} ciudades)`}
+                                            {(camp.locationLevel === 'state' || camp.location === 'state') && ` (${states.length} estados)`}
+                                        </span></span>
+                                    </p>
+                                    
+                                    {hasLocations && (
+                                        <div className="flex flex-wrap gap-1 mt-1 max-h-20 overflow-y-auto pr-2 custom-scrollbar">
+                                            {cities.map((c: string, idx: number) => (
+                                                <span key={idx} className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200">
+                                                    {c}
+                                                </span>
+                                            ))}
+                                            {states.map((s: string, idx: number) => (
+                                                <span key={idx} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-md border border-primary/20">
+                                                    {s}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    <p className="font-bold text-slate-800">Inversión: <span className="font-normal text-green-600">${camp.price || 0}</span></p>
+                                    
+                                    {formattedScheduledDate && (
+                                        <p className="font-bold text-slate-800 flex items-center gap-1.5 bg-blue-50 text-blue-700 px-2.5 py-1 rounded-md self-start text-xs mt-1 border border-blue-200">
+                                            <Calendar className="w-3.5 h-3.5" />
+                                            <span>Programado: <span className="font-normal">{formattedScheduledDate}</span></span>
+                                        </p>
+                                    )}
+
+                                    <p className="font-bold text-slate-800">Clics: <span className="font-normal px-2 bg-slate-100 rounded-md">{camp.clicks || 0}</span></p>
+                                    
+                                    {camp.status === 'verifying_payment' && (
+                                        <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Revisión de Pago Requerida</span>
+                                    )}
+                                    {camp.status === 'active' && (
+                                        <span className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Campaña Activa</span>
+                                    )}
+                                    {camp.status === 'inactive' && (
+                                        <span className="bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Campaña Desactivada / Pausada</span>
+                                    )}
+                                    {camp.status === 'rejected_payment' && (
+                                        <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-bold self-start mt-2">Pago Rechazado</span>
+                                    )}
+                                </div>
+
+                                {/* Acciones de Pago */}
+                                <div className="md:w-1/3 flex flex-col justify-center border-l pl-6 border-slate-100">
+                                    <h4 className="font-bold text-slate-700 text-sm mb-3">Auditoría / Gestión Individual</h4>
+                                    {camp.paymentRef ? (
+                                        <div className="space-y-3">
+                                            <div className="bg-slate-900 text-primary text-center py-2 px-4 rounded-xl font-mono text-sm shadow-md">
+                                                REF: {camp.paymentRef}
+                                            </div>
+                                            
+                                            {(camp.paymentImageUrl || camp.paymentImage) ? (
+                                                <a href={camp.paymentImageUrl || camp.paymentImage} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 text-sm bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl transition-colors">
+                                                    <ImageIcon className="w-4 h-4"/> Ver Comprobante
+                                                </a>
+                                            ) : (
+                                                <p className="text-xs text-slate-400 text-center">Sin imagen adjunta</p>
+                                            )}
+                                            
+                                            {camp.status === 'verifying_payment' && (
+                                                <div className="flex gap-2 pt-2">
+                                                    <button onClick={() => handleApproveCampaign(camp.id)} className="flex-1 bg-green-500 hover:bg-green-600 text-white py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-green-500/20 active:scale-95 transition-all">
+                                                        <CheckCircle className="w-4 h-4" /> Aprobar
+                                                    </button>
+                                                    <button onClick={() => handleRejectCampaign(camp.id)} className="flex-1 bg-red-500 hover:bg-red-600 text-white py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-xs uppercase tracking-wider shadow-lg shadow-red-500/20 active:scale-95 transition-all">
+                                                        <XCircle className="w-4 h-4" /> Rechazar
+                                                    </button>
+                                                </div>
+                                            )}
+
+                                            {(camp.status === 'active' || camp.status === 'inactive') && (
+                                                <button 
+                                                    onClick={() => handleToggleCampaignStatus(camp.id, camp.status)} 
+                                                    className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 font-black text-xs uppercase tracking-widest transition-all shadow-md active:scale-95 ${camp.status === 'active' ? 'bg-slate-100 text-red-600 border border-red-100 hover:bg-red-50' : 'bg-green-100 text-green-700 border border-green-200 hover:bg-green-200'}`}
+                                                >
+                                                    {camp.status === 'active' ? (
+                                                        <>
+                                                            <XCircle className="w-4 h-4" /> Desactivar Alerta Pop-up
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <CheckCircle className="w-4 h-4" /> Reactivar Alerta Pop-up
+                                                        </>
+                                                    )}
+                                                </button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <p className="text-slate-400 text-sm italic">Sin detalles de pago provistos.</p>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             )}
         </div>

@@ -1481,8 +1481,8 @@ export default function RestaurantPage() {
                         
                         {/* Insignia Oferta Especial si viene de campaña o notificación */}
                         {isSpecialPromo && (
-                          <div className="absolute top-2 left-10 z-20 bg-gradient-to-r from-amber-500 to-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 animate-pulse">
-                            🔥 OFERTA ESPECIAL
+                          <div className="absolute top-2 left-10 z-20 bg-gradient-to-r from-amber-500 to-red-500 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full shadow-md flex items-center gap-1 animate-pulse">
+                            🔥 PROMOCIÓN DESTACADA
                           </div>
                         )}
 
@@ -1653,8 +1653,8 @@ export default function RestaurantPage() {
                           decoding="async"
                         />
                         {isSpecialPromo && (
-                          <div className="absolute top-1 left-1 z-10 bg-amber-500 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full shadow-xs">
-                            🔥 OFERTA
+                          <div className="absolute top-1 left-1 z-10 bg-gradient-to-r from-amber-500 to-red-500 text-white text-[7px] font-black px-1.5 py-0.5 rounded-full shadow-xs">
+                            🔥 PROMOCIÓN DESTACADA
                           </div>
                         )}
                         {product.isAvailable === false && (
@@ -1758,7 +1758,7 @@ export default function RestaurantPage() {
                       <div>
                         {isSpecialPromo && (
                           <span className="inline-flex items-center gap-1 mb-1.5 px-2.5 py-0.5 bg-gradient-to-r from-amber-500 to-red-500 text-white text-[9px] font-black rounded-full uppercase tracking-wider animate-pulse shadow-xs">
-                            🔥 OFERTA ESPECIAL
+                            🔥 PROMOCIÓN DESTACADA
                           </span>
                         )}
                         <div className="flex items-center gap-2 mb-1">

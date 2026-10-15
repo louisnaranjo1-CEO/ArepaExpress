@@ -224,7 +224,7 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                         Campañas de Notificaciones Pop-Ups
                     </h1>
                     <p className="text-slate-500 mt-1">
-                        Invierte en publicidad directa. Envía tu oferta/promoción que sonará en el teléfono de los usuarios de VenCome.
+                        Invierte en publicidad directa. Envía tu oferta/promoción que sonará en el teléfono de los usuarios de Un 2x3.
                     </p>
                 </div>
                 {!isCreating && (

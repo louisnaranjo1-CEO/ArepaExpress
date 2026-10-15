@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import {
@@ -7,7 +7,8 @@ import {
     ChevronRight, ExternalLink, Instagram, MessageSquare,
     DollarSign, Clock, CheckCircle, Truck, X, Save, Upload,
     Image as ImageIcon, Camera, Share2, Zap, Gift, ShieldCheck, FileText,
-    Check, AlertCircle, Sparkles, Percent, CalendarDays, Grid, Printer, Bell, Megaphone, UserCheck, Lock, Unlock, HelpCircle
+    Check, AlertCircle, Sparkles, Percent, CalendarDays, Grid, Printer, Bell, Megaphone, UserCheck, Lock, Unlock, HelpCircle,
+    CreditCard
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
@@ -16,6 +17,52 @@ import RestaurantProductsManager from '../components/RestaurantProductsManager';
 import DirectBusinessManagerModal from '../components/DirectBusinessManagerModal';
 import DualPrice from '../../components/DualPrice';
 import { motion, AnimatePresence } from 'motion/react';
+
+const DEFAULT_CUSTOM_FEATURES: Record<string, boolean> = {
+    orders: true,
+    cash_internal: true,
+    products: true,
+    notifications: true,
+    clients: true,
+    loyalty: true,
+    ads_and_push: true,
+    reviews: true,
+    waiters: false,
+    cashiers: false,
+    tables: false,
+    printer_stations: false
+};
+
+const DEFAULT_PLANS_CONFIG = {
+    freeTrialEnabled: true,
+    freeTrialLabel: "Gratis por tiempo limitado (Lanzamiento)",
+    transitionDate: "2026-12-31",
+    defaultTransitionPlanId: "emprendedor",
+    plans: [
+        {
+            id: "emprendedor",
+            name: "Plan Aliado Emprendedor",
+            price: 15,
+            description: "Recepción de pedidos, caja interna, fidelización, clientes y catálogo de productos.",
+            features: {
+                orders: true, cash_internal: true, products: true, notifications: true,
+                clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                waiters: false, cashiers: false, tables: false, printer_stations: false
+            }
+        },
+        {
+            id: "corporativo",
+            name: "Plan Aliado Corporativo",
+            price: 30,
+            description: "Ecosistema completo con apps para Meseros, Cajeras, Mesas QR y Estaciones de Impresión.",
+            features: {
+                orders: true, cash_internal: true, products: true, notifications: true,
+                clients: true, loyalty: true, ads_and_push: true, reviews: true,
+                waiters: true, cashiers: true, tables: true, printer_stations: true
+            }
+        }
+    ]
+};
 
 interface Category {
     id: string;
@@ -122,26 +169,13 @@ export default function RestaurantProfile() {
     const [isLoginChooserOpen, setIsLoginChooserOpen] = useState(false);
 
     // Commercial Modality & Modules State
-    const [globalPlansConfig, setGlobalPlansConfig] = useState<any>(null);
+    const [globalPlansConfig, setGlobalPlansConfig] = useState<any>(DEFAULT_PLANS_CONFIG);
     const [modalityMode, setModalityMode] = useState<'subscription' | 'commission' | 'free_custom'>('subscription');
     const [modalityPlanId, setModalityPlanId] = useState<'emprendedor' | 'corporativo'>('emprendedor');
     const [modalityCommissionType, setModalityCommissionType] = useState<'percentage' | 'fixed'>('percentage');
     const [modalityCommissionRate, setModalityCommissionRate] = useState<number>(10);
     const [modalityFreeUntil, setModalityFreeUntil] = useState<string>('');
-    const [modalityCustomFeatures, setModalityCustomFeatures] = useState<Record<string, boolean>>({
-        orders: true,
-        cash_internal: true,
-        products: true,
-        notifications: true,
-        clients: true,
-        loyalty: true,
-        ads_and_push: true,
-        reviews: true,
-        waiters: false,
-        cashiers: false,
-        tables: false,
-        printer_stations: false
-    });
+    const [modalityCustomFeatures, setModalityCustomFeatures] = useState<Record<string, boolean>>(DEFAULT_CUSTOM_FEATURES);
     const [isSavingModality, setIsSavingModality] = useState(false);
 
     const AVAILABLE_MODULES = [
@@ -167,161 +201,188 @@ export default function RestaurantProfile() {
         ? (CATEGORY_SECTORS as any)[editData.sector].map((s: string) => ({ id: s, name: s }))
         : allCategories.filter(c => c.parentId === editData.sector);
 
-    useEffect(() => {
+    const fetchData = useCallback(async () => {
         if (!id) return;
-        const fetchData = async () => {
-            setLoading(true);
+        setLoading(true);
+        try {
+            // Fetch Global Subscription Plans Config
             try {
-                // Fetch Global Subscription Plans Config
-                try {
-                    const { data: plansSetting } = await supabase
-                        .from('system_settings')
-                        .select('*')
-                        .eq('key', 'subscription_plans_config')
-                        .maybeSingle();
-
-                    if (plansSetting?.value) {
-                        setGlobalPlansConfig(plansSetting.value);
-                    }
-                } catch (e) {
-                    console.warn("Could not fetch global plans config:", e);
-                }
-
-                // Restaurant info
-                const { data: restData } = await supabase
-                    .from('comercios')
+                const { data: plansSetting } = await supabase
+                    .from('system_settings')
                     .select('*')
-                    .eq('id', id)
+                    .eq('key', 'subscription_plans_config')
                     .maybeSingle();
 
-                if (restData) {
-                    const initialFeatures = restData.custom_features || {
-                        orders: true,
-                        cash_internal: true,
-                        products: true,
-                        notifications: true,
-                        clients: true,
-                        loyalty: true,
-                        ads_and_push: true,
-                        reviews: true,
-                        waiters: false,
-                        cashiers: false,
-                        tables: false,
-                        printer_stations: false
-                    };
-
-                    const rData: RestaurantData = {
-                        id: restData.id,
-                        name: restData.name,
-                        category: restData.category,
-                        sector: restData.sector,
-                        rating: restData.rating || 5,
-                        reviews: restData.reviews || 0,
-                        deliveryTime: restData.delivery_time || restData.deliveryTime || '30-45 min',
-                        image: restData.image || restData.logo_url || restData.logoUrl || '',
-                        logoUrl: restData.logo_url || restData.logoUrl || '',
-                        coverUrl: restData.cover_url || restData.coverUrl || '',
-                        whatsapp: restData.whatsapp || '',
-                        isActive: restData.is_active !== undefined ? restData.is_active : restData.isActive,
-                        status: restData.status || 'active',
-                        billingDay: restData.billing_day || restData.billingDay,
-                        billingAmount: restData.billing_amount || restData.billingAmount,
-                        featured: restData.featured || false,
-                        hasCashea: restData.has_cashea !== undefined ? restData.has_cashea : restData.hasCashea,
-                        location: restData.location || {
-                            city: restData.city || '',
-                            state: restData.state || '',
-                            address: restData.address || '',
-                            reference: restData.reference || ''
-                        },
-                        subscriptionEnd: restData.subscription_end || restData.subscriptionEnd,
-                        paymentMethods: restData.payment_methods || restData.paymentMethods || [],
-                        rif: restData.rif || '',
-                        isVerified: restData.is_verified ?? restData.isVerified ?? false,
-                        verificationStatus: restData.verification_status || 'unverified',
-                        billingMode: restData.billing_mode || 'subscription',
-                        planId: restData.plan_id || 'emprendedor',
-                        commissionType: restData.commission_type || 'percentage',
-                        commissionRate: restData.commission_rate !== undefined && restData.commission_rate !== null ? Number(restData.commission_rate) : 10,
-                        freeUntil: restData.free_until || null,
-                        customFeatures: initialFeatures,
-                        deudaComisionesAcumulada: Number(restData.deuda_comisiones_acumulada || 0)
-                    };
-                    setRestaurant(rData);
-                    setPaymentMethods(rData.paymentMethods || []);
-
-                    // Populate form states
-                    setModalityMode(rData.billingMode || 'subscription');
-                    setModalityPlanId(rData.planId || 'emprendedor');
-                    setModalityCommissionType(rData.commissionType || 'percentage');
-                    setModalityCommissionRate(rData.commissionRate !== undefined ? rData.commissionRate : 10);
-                    setModalityFreeUntil(rData.freeUntil ? rData.freeUntil.split('T')[0] : '');
-                    setModalityCustomFeatures(initialFeatures);
+                if (plansSetting?.value) {
+                    setGlobalPlansConfig(plansSetting.value);
+                } else if (plansSetting?.data) {
+                    setGlobalPlansConfig(plansSetting.data);
                 }
-
-                // Stats: Products
-                const { data: productsData } = await supabase
-                    .from('products')
-                    .select('*')
-                    .eq('restaurant_id', id);
-
-                const products = productsData || [];
-                const pCount = products.length;
-
-                // Stats: Orders
-                const { data: ordersData } = await supabase
-                    .from('orders')
-                    .select('*')
-                    .eq('restaurant_id', id);
-
-                const orders = ordersData || [];
-                const oCount = orders.length;
-
-                const totalSales = orders.reduce((acc: number, curr: any) => acc + (parseFloat(curr.total) || 0), 0);
-                const avgOrder = oCount > 0 ? totalSales / oCount : 0;
-
-                setStats({
-                    totalOrders: oCount,
-                    totalSales,
-                    productsCount: pCount,
-                    followersCount: 0,
-                    averageOrderValue: avgOrder
-                });
-
-                setRecentOrders(
-                    orders.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).slice(0, 5)
-                );
-                setPopularProducts(products.slice(0, 4));
-
-                // Banners pending for approval
-                const { data: bannersData } = await supabase
-                    .from('banners')
-                    .select('*')
-                    .eq('restaurant_id', id)
-                    .eq('status', 'pending_approval');
-                setPendingBannerCount((bannersData || []).length);
-
-                // Categories & Icons
-                const { data: catData } = await supabase.from('global_categories').select('*');
-                setAllCategories((catData || []) as Category[]);
-
-                const { data: iconData } = await supabase.from('global_icons').select('*');
-                const cashea = (iconData || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
-                if (cashea) {
-                    setCasheaIcon(cashea.image_url || cashea.url || cashea.imageUrl);
-                } else {
-                    setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp");
-                }
-
-            } catch (error) {
-                console.error("Error fetching restaurant profile data:", error);
-            } finally {
-                setLoading(false);
+            } catch (e) {
+                console.warn("Could not fetch global plans config:", e);
             }
-        };
 
-        fetchData();
+            // Restaurant info
+            const { data: restData } = await supabase
+                .from('comercios')
+                .select('*')
+                .eq('id', id)
+                .maybeSingle();
+
+            if (restData) {
+                let parsedFeatures: Record<string, boolean> = {};
+                if (restData.custom_features) {
+                    if (typeof restData.custom_features === 'object') {
+                        parsedFeatures = restData.custom_features;
+                    } else if (typeof restData.custom_features === 'string') {
+                        try {
+                            parsedFeatures = JSON.parse(restData.custom_features);
+                        } catch {
+                            parsedFeatures = {};
+                        }
+                    }
+                }
+                const initialFeatures: Record<string, boolean> = {
+                    ...DEFAULT_CUSTOM_FEATURES,
+                    ...parsedFeatures
+                };
+
+                let parsedLocation = {
+                    city: restData.city || '',
+                    state: restData.state || '',
+                    address: restData.address || '',
+                    reference: restData.reference || ''
+                };
+                if (restData.location) {
+                    if (typeof restData.location === 'object') {
+                        parsedLocation = { ...parsedLocation, ...restData.location };
+                    } else if (typeof restData.location === 'string') {
+                        try {
+                            const l = JSON.parse(restData.location);
+                            if (typeof l === 'object' && l) parsedLocation = { ...parsedLocation, ...l };
+                        } catch {}
+                    }
+                }
+
+                let parsedMethods: any[] = [];
+                const rawMethods = restData.payment_methods || restData.paymentMethods;
+                if (Array.isArray(rawMethods)) {
+                    parsedMethods = rawMethods;
+                } else if (typeof rawMethods === 'string') {
+                    try {
+                        const pm = JSON.parse(rawMethods);
+                        if (Array.isArray(pm)) parsedMethods = pm;
+                    } catch {}
+                }
+
+                const rData: RestaurantData = {
+                    id: restData.id,
+                    name: restData.name || 'Sin Nombre',
+                    category: restData.category || 'Varios',
+                    sector: restData.sector || '',
+                    rating: restData.rating || 5,
+                    reviews: restData.reviews || 0,
+                    deliveryTime: restData.delivery_time || restData.deliveryTime || '30-45 min',
+                    image: restData.image || restData.logo_url || restData.logoUrl || '',
+                    logoUrl: restData.logo_url || restData.logoUrl || '',
+                    coverUrl: restData.cover_url || restData.coverUrl || '',
+                    whatsapp: restData.whatsapp || '',
+                    isActive: restData.is_active !== undefined ? restData.is_active : restData.isActive,
+                    status: restData.status || 'active',
+                    billingDay: restData.billing_day || restData.billingDay,
+                    billingAmount: restData.billing_amount || restData.billingAmount,
+                    featured: restData.featured || false,
+                    hasCashea: restData.has_cashea !== undefined ? restData.has_cashea : restData.hasCashea,
+                    location: parsedLocation,
+                    subscriptionEnd: restData.subscription_end || restData.subscriptionEnd,
+                    paymentMethods: parsedMethods,
+                    rif: restData.rif || '',
+                    isVerified: restData.is_verified ?? restData.isVerified ?? false,
+                    verificationStatus: restData.verification_status || 'unverified',
+                    billingMode: restData.billing_mode || 'subscription',
+                    planId: restData.plan_id || 'emprendedor',
+                    commissionType: restData.commission_type || 'percentage',
+                    commissionRate: restData.commission_rate !== undefined && restData.commission_rate !== null ? Number(restData.commission_rate) : 10,
+                    freeUntil: restData.free_until || null,
+                    customFeatures: initialFeatures,
+                    deudaComisionesAcumulada: Number(restData.deuda_comisiones_acumulada || 0)
+                };
+                setRestaurant(rData);
+                setPaymentMethods(rData.paymentMethods || []);
+
+                // Populate form states
+                setModalityMode(rData.billingMode || 'subscription');
+                setModalityPlanId(rData.planId || 'emprendedor');
+                setModalityCommissionType(rData.commissionType || 'percentage');
+                setModalityCommissionRate(rData.commissionRate !== undefined ? rData.commissionRate : 10);
+                setModalityFreeUntil(rData.freeUntil ? rData.freeUntil.split('T')[0] : '');
+                setModalityCustomFeatures(initialFeatures);
+            }
+
+            // Stats: Products
+            const { data: productsData } = await supabase
+                .from('products')
+                .select('*')
+                .eq('restaurant_id', id);
+
+            const products = productsData || [];
+            const pCount = products.length;
+
+            // Stats: Orders
+            const { data: ordersData } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', id);
+
+            const orders = ordersData || [];
+            const oCount = orders.length;
+
+            const totalSales = orders.reduce((acc: number, curr: any) => acc + (parseFloat(curr.total) || 0), 0);
+            const avgOrder = oCount > 0 ? totalSales / oCount : 0;
+
+            setStats({
+                totalOrders: oCount,
+                totalSales,
+                productsCount: pCount,
+                followersCount: 0,
+                averageOrderValue: avgOrder
+            });
+
+            setRecentOrders(
+                orders.sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()).slice(0, 5)
+            );
+            setPopularProducts(products.slice(0, 4));
+
+            // Banners pending for approval
+            const { data: bannersData } = await supabase
+                .from('banners')
+                .select('*')
+                .eq('restaurant_id', id)
+                .eq('status', 'pending_approval');
+            setPendingBannerCount((bannersData || []).length);
+
+            // Categories & Icons
+            const { data: catData } = await supabase.from('global_categories').select('*');
+            setAllCategories((catData || []) as Category[]);
+
+            const { data: iconData } = await supabase.from('global_icons').select('*');
+            const cashea = (iconData || []).find((icon: any) => icon.name?.toLowerCase() === 'cashea');
+            if (cashea) {
+                setCasheaIcon(cashea.image_url || cashea.url || cashea.imageUrl);
+            } else {
+                setCasheaIcon("https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/branding/logos/OIP%20(4).webp");
+            }
+
+        } catch (error) {
+            console.error("Error fetching restaurant profile data:", error);
+        } finally {
+            setLoading(false);
+        }
     }, [id]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
 
     const handleUpdateProfile = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -1678,10 +1739,10 @@ export default function RestaurantProfile() {
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Ciudad</label>
                                                 <input
                                                     type="text"
-                                                    value={editData.location?.city}
+                                                    value={editData.location?.city || ''}
                                                     onChange={(e) => setEditData({
                                                         ...editData,
-                                                        location: { ...editData.location!, city: e.target.value }
+                                                        location: { ...(editData.location || {}), city: e.target.value }
                                                     })}
                                                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
                                                 />
@@ -1690,10 +1751,10 @@ export default function RestaurantProfile() {
                                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Estado</label>
                                                 <input
                                                     type="text"
-                                                    value={editData.location?.state}
+                                                    value={editData.location?.state || ''}
                                                     onChange={(e) => setEditData({
                                                         ...editData,
-                                                        location: { ...editData.location!, state: e.target.value }
+                                                        location: { ...(editData.location || {}), state: e.target.value }
                                                     })}
                                                     className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none"
                                                 />
@@ -1703,10 +1764,10 @@ export default function RestaurantProfile() {
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-4">Dirección Exacta</label>
                                             <textarea
-                                                value={editData.location?.address}
+                                                value={editData.location?.address || ''}
                                                 onChange={(e) => setEditData({
                                                     ...editData,
-                                                    location: { ...editData.location!, address: e.target.value }
+                                                    location: { ...(editData.location || {}), address: e.target.value }
                                                 })}
                                                 className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 font-bold text-slate-700 focus:bg-white focus:border-primary transition-all outline-none min-h-[100px] resize-none"
                                             />

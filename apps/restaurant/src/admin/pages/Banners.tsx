@@ -32,6 +32,7 @@ export default function Banners() {
         state: { price: 15, updateLimit: 3, availability: 'available' },
         city: { price: 5, updateLimit: 3, availability: 'available' }
     });
+    const [isGlobalFreePromo, setIsGlobalFreePromo] = useState(false);
 
     const fetchBanners = useCallback(async () => {
         if (!rid) return;
@@ -71,9 +72,10 @@ export default function Banners() {
         // Fetch Business Data and Banner Pricing
         const fetchBusinessAndPricing = async () => {
             try {
-                const [bizRes, pricingRes] = await Promise.all([
+                const [bizRes, pricingRes, plansRes] = await Promise.all([
                     supabase.from('comercios').select('*').eq('id', rid).single(),
-                    supabase.from('system_settings').select('*').eq('key', 'banner_plans_config').maybeSingle()
+                    supabase.from('system_settings').select('*').eq('key', 'banner_plans_config').maybeSingle(),
+                    supabase.from('system_settings').select('*').eq('key', 'subscription_plans_config').maybeSingle()
                 ]);
 
                 if (bizRes.data) {
@@ -89,6 +91,11 @@ export default function Banners() {
                     if (appData?.banner_pricing) {
                         setBannerPricing(appData.banner_pricing);
                     }
+                }
+
+                const plansConf = plansRes.data?.value || plansRes.data?.data;
+                if (plansConf?.freeTrialEnabled) {
+                    setIsGlobalFreePromo(true);
                 }
             } catch (err) {
                 console.warn("Error fetching business / pricing:", err);
@@ -290,9 +297,9 @@ export default function Banners() {
                                 </div>
                                 <span className="font-black text-slate-900 text-xs">Banner Nacional</span>
                             </div>
-                            {bannerPricing.national?.availability === 'free' ? (
+                            {isGlobalFreePromo || bannerPricing.national?.availability === 'free' ? (
                                 <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
-                                    ¡Gratis!
+                                    🎁 Gratis por tiempo limitado
                                 </span>
                             ) : (
                                 <span className="font-black text-slate-800 text-xs">
@@ -304,7 +311,7 @@ export default function Banners() {
                             Visible para todos los clientes en toda Venezuela.
                         </p>
                         <div className="pt-1 text-[10px] font-bold text-slate-400">
-                            {bannerPricing.national?.availability === 'free' ? '🎁 Postulación gratuita' : bannerPricing.national?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                            {isGlobalFreePromo || bannerPricing.national?.availability === 'free' ? '🎁 Postulación gratuita (Lanzamiento)' : bannerPricing.national?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
                         </div>
                     </div>
 
@@ -317,9 +324,9 @@ export default function Banners() {
                                 </div>
                                 <span className="font-black text-slate-900 text-xs">Banner Regional</span>
                             </div>
-                            {bannerPricing.state?.availability === 'free' ? (
+                            {isGlobalFreePromo || bannerPricing.state?.availability === 'free' ? (
                                 <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
-                                    ¡Gratis!
+                                    🎁 Gratis por tiempo limitado
                                 </span>
                             ) : (
                                 <span className="font-black text-slate-800 text-xs">
@@ -331,7 +338,7 @@ export default function Banners() {
                             Visible para los clientes ubicados en tu estado.
                         </p>
                         <div className="pt-1 text-[10px] font-bold text-slate-400">
-                            {bannerPricing.state?.availability === 'free' ? '🎁 Postulación gratuita' : bannerPricing.state?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                            {isGlobalFreePromo || bannerPricing.state?.availability === 'free' ? '🎁 Postulación gratuita (Lanzamiento)' : bannerPricing.state?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
                         </div>
                     </div>
 
@@ -344,9 +351,9 @@ export default function Banners() {
                                 </div>
                                 <span className="font-black text-slate-900 text-xs">Banner Local</span>
                             </div>
-                            {bannerPricing.city?.availability === 'free' ? (
+                            {isGlobalFreePromo || bannerPricing.city?.availability === 'free' ? (
                                 <span className="px-2 py-0.5 bg-emerald-500 text-white font-black text-[9px] uppercase tracking-wider rounded-full shadow-xs">
-                                    ¡Gratis!
+                                    🎁 Gratis por tiempo limitado
                                 </span>
                             ) : (
                                 <span className="font-black text-slate-800 text-xs">
@@ -358,7 +365,7 @@ export default function Banners() {
                             Visible para clientes de tu misma ciudad.
                         </p>
                         <div className="pt-1 text-[10px] font-bold text-slate-400">
-                            {bannerPricing.city?.availability === 'free' ? '🎁 Postulación gratuita' : bannerPricing.city?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
+                            {isGlobalFreePromo || bannerPricing.city?.availability === 'free' ? '🎁 Postulación gratuita (Lanzamiento)' : bannerPricing.city?.availability === 'available' ? '✅ Disponible' : '⚠️ Cupos agotados'}
                         </div>
                     </div>
                 </div>

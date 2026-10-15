@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Megaphone, Plus, ImageIcon, Upload, X, MapPin, Flame, ShoppingBag, Sparkles, Tag, Check, AlertCircle } from 'lucide-react';
+import { Megaphone, Plus, ImageIcon, Upload, X, MapPin, Flame, ShoppingBag, Sparkles, Tag, Check, AlertCircle, Store } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import { useBranding } from '../../context/BrandingContext';
@@ -34,7 +34,8 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
     const [paymentImage, setPaymentImage] = useState<File | null>(null);
     const [paymentImagePreview, setPaymentImagePreview] = useState<string>('');
     
-    // Producto en Promoción Asociado
+    // Destino y Producto en Promoción
+    const [destinationType, setDestinationType] = useState<'promo_product' | 'general_profile'>('promo_product');
     const [restaurantProducts, setRestaurantProducts] = useState<any[]>([]);
     const [productMode, setProductMode] = useState<'catalog' | 'new' | 'none'>('catalog');
     const [selectedProductId, setSelectedProductId] = useState<string>('');
@@ -259,60 +260,63 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
             // Combinar fecha y hora para el scheduledAt
             const scheduledDatetime = new Date(`${scheduledDate}T${scheduledTime}`);
 
-            // Manejar producto en promoción
+            // Manejar producto en promoción según destino seleccionado
             let promoProdId: string | null = null;
-            let finalPromoPrice: number | null = promoPrice ? parseFloat(promoPrice) : null;
+            let finalPromoPrice: number | null = null;
             let promoSnapshot: any = null;
 
-            if (productMode === 'catalog' && selectedProductId) {
-                const existing = restaurantProducts.find(p => p.id === selectedProductId);
-                if (existing) {
-                    promoProdId = existing.id;
-                    if (finalPromoPrice !== null && finalPromoPrice > 0) {
-                        await supabase
-                            .from('products')
-                            .update({ promo_price: finalPromoPrice })
-                            .eq('id', existing.id);
+            if (destinationType === 'promo_product') {
+                finalPromoPrice = promoPrice ? parseFloat(promoPrice) : null;
+                if (productMode === 'catalog' && selectedProductId) {
+                    const existing = restaurantProducts.find(p => p.id === selectedProductId);
+                    if (existing) {
+                        promoProdId = existing.id;
+                        if (finalPromoPrice !== null && finalPromoPrice > 0) {
+                            await supabase
+                                .from('products')
+                                .update({ promo_price: finalPromoPrice })
+                                .eq('id', existing.id);
+                        }
+                        promoSnapshot = {
+                            id: existing.id,
+                            name: existing.name,
+                            price: Number(existing.price) || 0,
+                            promo_price: finalPromoPrice,
+                            image_url: existing.image_url || existing.image || (existing.images && existing.images[0]) || ''
+                        };
                     }
+                } else if (productMode === 'new' && newProdName.trim()) {
+                    const origPrice = parseFloat(newProdOriginalPrice) || (finalPromoPrice || 0);
+                    const newProductData = {
+                        restaurant_id: restaurantId,
+                        name: newProdName.trim(),
+                        price: origPrice,
+                        promo_price: finalPromoPrice || origPrice,
+                        category_name: newProdCategory || 'Promociones',
+                        description: newProdDescription.trim(),
+                        is_active: true,
+                        is_available: true,
+                        image_url: bannerUrl || restaurantData?.logo_url || '',
+                        images: bannerUrl ? [bannerUrl] : (restaurantData?.logo_url ? [restaurantData.logo_url] : []),
+                        created_at: new Date().toISOString()
+                    };
+
+                    const { data: createdProd, error: prodErr } = await supabase
+                        .from('products')
+                        .insert(newProductData)
+                        .select('*')
+                        .single();
+
+                    if (prodErr) throw prodErr;
+                    promoProdId = createdProd.id;
                     promoSnapshot = {
-                        id: existing.id,
-                        name: existing.name,
-                        price: Number(existing.price) || 0,
-                        promo_price: finalPromoPrice,
-                        image_url: existing.image_url || existing.image || (existing.images && existing.images[0]) || ''
+                        id: createdProd.id,
+                        name: createdProd.name,
+                        price: Number(createdProd.price) || 0,
+                        promo_price: createdProd.promo_price,
+                        image_url: createdProd.image_url
                     };
                 }
-            } else if (productMode === 'new' && newProdName.trim()) {
-                const origPrice = parseFloat(newProdOriginalPrice) || (finalPromoPrice || 0);
-                const newProductData = {
-                    restaurant_id: restaurantId,
-                    name: newProdName.trim(),
-                    price: origPrice,
-                    promo_price: finalPromoPrice || origPrice,
-                    category_name: newProdCategory || 'Promociones',
-                    description: newProdDescription.trim(),
-                    is_active: true,
-                    is_available: true,
-                    image_url: bannerUrl || restaurantData?.logo_url || '',
-                    images: bannerUrl ? [bannerUrl] : (restaurantData?.logo_url ? [restaurantData.logo_url] : []),
-                    created_at: new Date().toISOString()
-                };
-
-                const { data: createdProd, error: prodErr } = await supabase
-                    .from('products')
-                    .insert(newProductData)
-                    .select('*')
-                    .single();
-
-                if (prodErr) throw prodErr;
-                promoProdId = createdProd.id;
-                promoSnapshot = {
-                    id: createdProd.id,
-                    name: createdProd.name,
-                    price: Number(createdProd.price) || 0,
-                    promo_price: createdProd.promo_price,
-                    image_url: createdProd.image_url
-                };
             }
 
             const campaignData = {
@@ -366,7 +370,7 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                         Campañas de Notificaciones Pop-Ups
                     </h1>
                     <p className="text-slate-500 mt-1">
-                        Invierte en publicidad directa. Envía tu oferta/promoción que sonará en el teléfono de los usuarios de {branding.app_client_name || 'Un 2x3'}.
+                        Invierte en publicidad directa. Envía tu oferta/promoción que sonará en el teléfono de los usuarios de Un 2x3.
                     </p>
                 </div>
                 {!isCreating && (
@@ -415,192 +419,277 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                             </div>
                         </div>
 
-                        {/* Producto en Promoción Asociado */}
-                        <div className="border border-amber-200/80 bg-gradient-to-br from-amber-50/50 via-white to-amber-50/30 rounded-2xl p-6 shadow-sm">
-                            <div className="flex items-center justify-between mb-4 pb-3 border-b border-amber-100">
+                        {/* 🎯 Destino al Tocar el Banner y Producto en Promoción */}
+                        <div className="border border-amber-200/80 bg-gradient-to-br from-amber-50/50 via-white to-amber-50/30 rounded-2xl p-6 shadow-sm space-y-6">
+                            <div className="flex items-center justify-between pb-3 border-b border-amber-100">
                                 <div className="flex items-center gap-2">
                                     <span className="p-2 bg-amber-500 text-white rounded-xl shadow-sm">
                                         <Flame className="w-5 h-5" />
                                     </span>
                                     <div>
-                                        <h3 className="font-black text-lg text-slate-800">2. Producto en Promoción Asociado</h3>
+                                        <h3 className="font-black text-lg text-slate-800">2. 🎯 Producto o Promoción Destacada (Redirección al Tocar el Banner)</h3>
                                         <p className="text-xs text-slate-500">
-                                            Al tocar el Pop-Up, el usuario irá directo a tu negocio y este producto aparecerá de <strong>#1 arriba del todo</strong> con la insignia <strong>"🔥 OFERTA ESPECIAL"</strong>.
+                                            Define a dónde será redirigido el cliente de Un 2x3 cuando presione la notificación emergente.
                                         </p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Selector de modo */}
-                            <div className="grid grid-cols-2 gap-3 mb-5">
-                                <button
-                                    type="button"
-                                    onClick={() => setProductMode('catalog')}
-                                    className={`py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${productMode === 'catalog' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-                                >
-                                    <ShoppingBag className="w-4 h-4" />
-                                    Elegir de mi Catálogo
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setProductMode('new')}
-                                    className={`py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${productMode === 'new' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-                                >
-                                    <Plus className="w-4 h-4" />
-                                    Crear Producto Nuevo
-                                </button>
+                            {/* Selector de Destino Principal */}
+                            <div className="space-y-2">
+                                <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+                                    Destino al presionar el Pop-Up:
+                                </label>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => setDestinationType('promo_product')}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-3 ${
+                                            destinationType === 'promo_product'
+                                                ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:border-amber-300 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <Flame className={`w-5 h-5 shrink-0 mt-0.5 ${destinationType === 'promo_product' ? 'text-white' : 'text-amber-500'}`} />
+                                        <div>
+                                            <p className="font-black text-xs sm:text-sm leading-tight">
+                                                Ir a un Producto en Promoción de mi Catálogo (Se mostrará de #1)
+                                            </p>
+                                            <p className={`text-[11px] mt-1 font-medium ${destinationType === 'promo_product' ? 'text-amber-100' : 'text-slate-500'}`}>
+                                                Aparece de #1 en el menú con la insignia 🔥 PROMOCIÓN DESTACADA.
+                                            </p>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setDestinationType('general_profile')}
+                                        className={`p-4 rounded-2xl border-2 text-left transition-all cursor-pointer flex items-start gap-3 ${
+                                            destinationType === 'general_profile'
+                                                ? 'bg-slate-900 text-white border-slate-900 shadow-md shadow-slate-900/20'
+                                                : 'bg-white border-slate-200 text-slate-700 hover:border-slate-400 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <Store className={`w-5 h-5 shrink-0 mt-0.5 ${destinationType === 'general_profile' ? 'text-white' : 'text-slate-600'}`} />
+                                        <div>
+                                            <p className="font-black text-xs sm:text-sm leading-tight">
+                                                Ir al Perfil General de mi Negocio
+                                            </p>
+                                            <p className={`text-[11px] mt-1 font-medium ${destinationType === 'general_profile' ? 'text-slate-300' : 'text-slate-500'}`}>
+                                                Abre la vista principal de tu local y tu menú habitual sin destacar un producto específico.
+                                            </p>
+                                        </div>
+                                    </button>
+                                </div>
                             </div>
 
-                            {productMode === 'catalog' && (
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-sm font-bold text-slate-700 mb-2">Selecciona el Producto</label>
-                                        <select
-                                            value={selectedProductId}
-                                            onChange={(e) => {
-                                                const pid = e.target.value;
-                                                setSelectedProductId(pid);
-                                                const found = restaurantProducts.find(p => p.id === pid);
-                                                if (found) {
-                                                    if (found.promo_price || found.promoPrice) {
-                                                        setPromoPrice((found.promo_price || found.promoPrice).toString());
-                                                    } else if (found.price) {
-                                                        const disc = (found.price * 0.8).toFixed(2);
-                                                        setPromoPrice(disc);
-                                                    }
-                                                }
-                                            }}
-                                            className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-800 text-sm focus:ring-2 focus:ring-amber-400"
+                            {destinationType === 'promo_product' ? (
+                                <div className="space-y-5 pt-2 border-t border-amber-100">
+                                    {/* Selector de modo de producto */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setProductMode('catalog')}
+                                            className={`py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${productMode === 'catalog' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
                                         >
-                                            <option value="">-- Elige un producto de tu menú ({restaurantProducts.length} disponibles) --</option>
-                                            {restaurantProducts.map(p => (
-                                                <option key={p.id} value={p.id}>
-                                                    {p.name} (Precio regular: ${Number(p.price || 0).toFixed(2)})
-                                                </option>
-                                            ))}
-                                        </select>
+                                            <ShoppingBag className="w-4 h-4" />
+                                            Elegir de mi Catálogo
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setProductMode('new')}
+                                            className={`py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${productMode === 'new' ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20' : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+                                        >
+                                            <Plus className="w-4 h-4" />
+                                            + Crear Nuevo Producto en Promoción
+                                        </button>
                                     </div>
 
-                                    {selectedProductId && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-amber-200">
+                                    {productMode === 'catalog' && (
+                                        <div className="space-y-4">
                                             <div>
-                                                <label className="block text-xs font-black uppercase tracking-wider text-slate-500 mb-1">
-                                                    Precio de Promoción en Oferta ($ USD)
-                                                </label>
-                                                <div className="relative">
-                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span>
+                                                <label className="block text-sm font-bold text-slate-700 mb-2">Selecciona el Producto</label>
+                                                <select
+                                                    value={selectedProductId}
+                                                    onChange={(e) => {
+                                                        const pid = e.target.value;
+                                                        setSelectedProductId(pid);
+                                                        const found = restaurantProducts.find(p => p.id === pid);
+                                                        if (found) {
+                                                            if (found.promo_price || found.promoPrice) {
+                                                                setPromoPrice((found.promo_price || found.promoPrice).toString());
+                                                            } else if (found.price) {
+                                                                const disc = (found.price * 0.8).toFixed(2);
+                                                                setPromoPrice(disc);
+                                                            }
+                                                        }
+                                                    }}
+                                                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-800 text-sm focus:ring-2 focus:ring-amber-400"
+                                                >
+                                                    <option value="">-- Elige un producto de tu menú ({restaurantProducts.length} disponibles) --</option>
+                                                    {restaurantProducts.map(p => (
+                                                        <option key={p.id} value={p.id}>
+                                                            {p.name} (Precio regular: ${Number(p.price || 0).toFixed(2)})
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            </div>
+
+                                            {selectedProductId && (
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-5 rounded-xl border border-amber-200 shadow-xs">
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-1.5">
+                                                            <span className="text-xs font-bold text-slate-500">Precio Regular:</span>
+                                                            {(() => {
+                                                                const sel = restaurantProducts.find(p => p.id === selectedProductId);
+                                                                const orig = Number(sel?.price || 0);
+                                                                return (
+                                                                    <span className="line-through font-black text-slate-400 text-sm">
+                                                                        ~~${orig.toFixed(2)} USD~~
+                                                                    </span>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                        <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
+                                                            Precio de Promoción en Oferta ($ USD) *
+                                                        </label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                min="0"
+                                                                value={promoPrice}
+                                                                onChange={(e) => setPromoPrice(e.target.value)}
+                                                                placeholder="Ej: 4.50"
+                                                                className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-amber-700 text-sm focus:bg-white focus:border-amber-400 outline-none"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    {(() => {
+                                                        const sel = restaurantProducts.find(p => p.id === selectedProductId);
+                                                        const orig = Number(sel?.price || 0);
+                                                        const promo = parseFloat(promoPrice) || 0;
+                                                        const pct = orig > 0 && promo > 0 && promo < orig ? Math.round(((orig - promo) / orig) * 100) : 0;
+                                                        return (
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="p-4 bg-amber-50 rounded-xl flex-1 border border-amber-100">
+                                                                    <p className="text-[11px] font-bold text-slate-500">Descuento aplicado:</p>
+                                                                    <p className="text-sm font-black text-amber-700 mt-0.5">
+                                                                        {pct > 0 ? `🔥 ${pct}% de ahorro para el cliente` : 'Precio especial configurado'}
+                                                                    </p>
+                                                                    <p className="text-[10px] text-slate-400 mt-1">
+                                                                        Se mostrará como: <span className="line-through">~~${orig.toFixed(2)}~~</span> <strong className="text-slate-900">${promo.toFixed(2)} USD</strong>
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {productMode === 'new' && (
+                                        <div className="space-y-4 bg-white p-5 rounded-xl border border-amber-200 shadow-xs">
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
+                                                        Nombre del Producto Nuevo *
+                                                    </label>
                                                     <input
-                                                        type="number"
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={promoPrice}
-                                                        onChange={(e) => setPromoPrice(e.target.value)}
-                                                        placeholder="Ej: 4.50"
-                                                        className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-slate-900"
+                                                        type="text"
+                                                        value={newProdName}
+                                                        onChange={(e) => setNewProdName(e.target.value)}
+                                                        placeholder="Ej: Hamburguesa Titán Doble Carne"
+                                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:bg-white focus:border-amber-400 outline-none"
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
+                                                        Categoría
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={newProdCategory}
+                                                        onChange={(e) => setNewProdCategory(e.target.value)}
+                                                        placeholder="Promociones, Combos, etc."
+                                                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:bg-white focus:border-amber-400 outline-none"
                                                     />
                                                 </div>
                                             </div>
 
-                                            {(() => {
-                                                const sel = restaurantProducts.find(p => p.id === selectedProductId);
-                                                const orig = Number(sel?.price || 0);
-                                                const promo = parseFloat(promoPrice) || 0;
-                                                const pct = orig > 0 && promo > 0 && promo < orig ? Math.round(((orig - promo) / orig) * 100) : 0;
-                                                return (
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="p-3 bg-amber-50 rounded-xl flex-1 border border-amber-100">
-                                                            <p className="text-[11px] font-bold text-slate-500">Ahorro para el cliente:</p>
-                                                            <p className="text-sm font-black text-amber-700">
-                                                                {pct > 0 ? `🔥 ${pct}% de descuento` : 'Precio regular / Especial'}
-                                                            </p>
-                                                        </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
+                                                        Precio Regular ($ USD) *
+                                                    </label>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={newProdOriginalPrice}
+                                                            onChange={(e) => setNewProdOriginalPrice(e.target.value)}
+                                                            placeholder="Ej: 8.00"
+                                                            className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:bg-white focus:border-amber-400 outline-none"
+                                                        />
                                                     </div>
-                                                );
-                                            })()}
+                                                </div>
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <label className="block text-xs font-black uppercase tracking-wider text-slate-600">
+                                                            Precio de Promoción ($ USD) *
+                                                        </label>
+                                                        {newProdOriginalPrice && (
+                                                            <span className="line-through text-xs font-bold text-slate-400">
+                                                                ~~${parseFloat(newProdOriginalPrice || '0').toFixed(2)}~~
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <div className="relative">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-400">$</span>
+                                                        <input
+                                                            type="number"
+                                                            step="0.01"
+                                                            value={promoPrice}
+                                                            onChange={(e) => setPromoPrice(e.target.value)}
+                                                            placeholder="Ej: 5.50"
+                                                            className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-amber-700 text-sm focus:bg-white focus:border-amber-400 outline-none"
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
+                                                    Descripción Breve
+                                                </label>
+                                                <textarea
+                                                    value={newProdDescription}
+                                                    onChange={(e) => setNewProdDescription(e.target.value)}
+                                                    placeholder="Incluye papas y refresco grande..."
+                                                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 h-16 resize-none focus:bg-white focus:border-amber-400 outline-none"
+                                                />
+                                            </div>
+                                            <p className="text-[11px] text-slate-400 italic">
+                                                * Se agregará automáticamente a tu catálogo activo usando el banner de la campaña como imagen.
+                                            </p>
                                         </div>
                                     )}
                                 </div>
-                            )}
-
-                            {productMode === 'new' && (
-                                <div className="space-y-4 bg-white p-4 rounded-xl border border-amber-200">
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
-                                                Nombre del Producto Nuevo *
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={newProdName}
-                                                onChange={(e) => setNewProdName(e.target.value)}
-                                                placeholder="Ej: Hamburguesa Titán Doble Carne"
-                                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
-                                                Categoría
-                                            </label>
-                                            <input
-                                                type="text"
-                                                value={newProdCategory}
-                                                onChange={(e) => setNewProdCategory(e.target.value)}
-                                                placeholder="Promociones, Combos, etc."
-                                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-sm"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
-                                                Precio Regular ($)
-                                            </label>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={newProdOriginalPrice}
-                                                onChange={(e) => setNewProdOriginalPrice(e.target.value)}
-                                                placeholder="Ej: 8.00"
-                                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-sm"
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
-                                                Precio de Promoción ($) *
-                                            </label>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={promoPrice}
-                                                onChange={(e) => setPromoPrice(e.target.value)}
-                                                placeholder="Ej: 5.50"
-                                                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-amber-700 text-sm"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1">
-                                            Descripción Breve
-                                        </label>
-                                        <textarea
-                                            value={newProdDescription}
-                                            onChange={(e) => setNewProdDescription(e.target.value)}
-                                            placeholder="Incluye papas y refresco grande..."
-                                            className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 h-16 resize-none"
-                                        />
-                                    </div>
-                                    <p className="text-[11px] text-slate-400 italic">
-                                        * Se agregará automáticamente a tu catálogo activo usando el banner de la campaña como imagen.
-                                    </p>
+                            ) : (
+                                <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+                                    <p className="font-bold text-slate-800">🏪 Redirección al perfil general:</p>
+                                    <p>Cuando los usuarios toquen este Pop-Up, serán redirigidos a la página principal de tu negocio donde podrán ver tu catálogo completo.</p>
                                 </div>
                             )}
                         </div>
 
                         {/* Segmentación */}
                         <div>
-                            <h3 className="font-bold text-lg text-slate-800 mb-4 bg-slate-50 p-2 rounded-lg">2. Audiencia y Segmentación</h3>
+                            <h3 className="font-bold text-lg text-slate-800 mb-4 bg-slate-50 p-2 rounded-lg">3. Audiencia y Segmentación</h3>
                             
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                                 <div>
@@ -740,7 +829,7 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
 
                             <div className="mt-8 border-t border-slate-100 pt-6">
                                 <h4 className="font-bold text-slate-700 mb-3 flex items-center gap-2">
-                                    <span className="w-6 h-6 bg-primary/20 text-primary rounded-full flex items-center justify-center text-xs">3</span>
+                                    <span className="w-6 h-6 bg-primary/20 text-primary rounded-full flex items-center justify-center text-xs">4</span>
                                     Programación de la Alerta
                                 </h4>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -759,7 +848,7 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
 
                         {/* Presupuesto y Pago */}
                         <div>
-                            <h3 className="font-bold text-lg text-slate-800 mb-4 bg-slate-50 p-2 rounded-lg">4. Confirmación de Inversión</h3>
+                            <h3 className="font-bold text-lg text-slate-800 mb-4 bg-slate-50 p-2 rounded-lg">5. Confirmación de Inversión</h3>
                             <div className="bg-blue-50 border border-blue-100 rounded-xl p-6 flex flex-col md:flex-row items-center justify-between gap-6">
                                 <div className="flex-1 mb-6 md:mb-0">
                                     <p className="text-2xl font-black text-slate-800 mb-2">Total a Cancelar: <span className="text-green-600">${getCurrentPrice()}</span></p>
