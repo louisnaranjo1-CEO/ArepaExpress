@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert, Package } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert, Package, Award } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useBranding } from '../../context/BrandingContext';
@@ -94,7 +94,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
         { path: '/verifications', icon: ShieldCheck, label: 'Verificación de Negocios', badge: pendingVerifications },
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
-        { path: '/design', icon: Palette, label: 'Diseño' },
+        { path: '/design', icon: Palette, label: 'Branding Global' },
         { path: '/categories', icon: Tag, label: 'Categorías' },
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
         { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
@@ -102,6 +102,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
         { path: '/finances', icon: Wallet, label: 'Finanzas' },
         { path: '/liquidations', icon: Wallet, label: 'Liquidaciones', badge: pendingPayouts },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
+        { path: '/rewards-challenges', icon: Award, label: 'Premios y Retos' },
         { path: '/achievements', icon: Trophy, label: 'Logros de Pilotos' },
         { path: '/marketing', icon: Megaphone, label: 'Marketing & Push' },
         { path: '/icons', icon: Share2, label: 'Iconos' },
@@ -132,7 +133,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
                                 />
                             </div>
                             <div className="flex flex-col">
-                                <h1 className="font-black text-white leading-tight">Encontrado en un 2x3</h1>
+                                <h1 className="font-black text-white leading-tight">{branding.app_client_name || 'Un 2x3'}</h1>
                                 <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Cpanel Administrativo</p>
                             </div>
                         </div>

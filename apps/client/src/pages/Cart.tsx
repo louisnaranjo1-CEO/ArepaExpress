@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
+import { useBranding } from '../context/BrandingContext';
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { calculateDistance, formatDistance } from '../lib/geo';
@@ -21,6 +22,7 @@ interface CartProps {
 }
 
 export default function Cart({ hideHeader = false }: CartProps) {
+  const { branding } = useBranding();
   const { items, totalPrice, updateQuantity, removeItem, clearCart, clearStoreCart, storeIds, storeCarts, activeRestaurantId, setActiveRestaurantId } = useCart();
   const { user, userData } = useAuth();
   const navigate = useNavigate();
@@ -431,7 +433,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         client_dni: clientCedula,
         user_email: isWaiter ? (waiterData.email || 'N/A') : (user?.email || 'N/A'),
         restaurant_id: restaurantId,
-        restaurant_name: rData?.name || 'Deliexpress Restaurant',
+        restaurant_name: rData?.name || (branding.app_client_name ? `${branding.app_client_name} Restaurant` : 'Un 2x3 Restaurant'),
         restaurant_city: rData?.location?.city || '',
         source: isWaiter ? 'waiter' : 'client',
         waiter_id: isWaiter ? (waiterData.id || null) : null,
@@ -448,7 +450,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         commission_amount: storeCommission,
         delivery_method: deliveryMethod,
         order_type: deliveryMethod,
-        status: isWaiter ? 'preparing' : 'pendiente_pago', 
+        status: isWaiter ? 'preparing' : 'pending', 
         payment_status: isWaiter ? paymentStatus : 'pending',
         notified: false,
         delivery_address: addressStr, 
@@ -548,8 +550,8 @@ export default function Cart({ hideHeader = false }: CartProps) {
                   text: cartSummaryMessage,
                   sender_id: user?.id || 'system',
                   senderId: user?.id || 'system',
-                  sender_name: 'Sistema Deliexpress',
-                  senderName: 'Sistema Deliexpress',
+                  sender_name: `Sistema ${branding.app_client_name || 'Un 2x3'}`,
+                  senderName: `Sistema ${branding.app_client_name || 'Un 2x3'}`,
                   sender_role: 'system',
                   senderRole: 'system',
                   created_at: new Date().toISOString()

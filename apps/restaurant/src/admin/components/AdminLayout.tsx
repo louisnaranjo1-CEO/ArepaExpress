@@ -372,12 +372,12 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
                                     src={branding.app_restaurant_logo}
-                                    alt="Encontrado en un 2x3"
+                                    alt={`${branding.app_client_name || 'Un 2x3'} Negocios`}
                                     className="w-full h-full object-contain filter drop-shadow-sm brightness-110"
                                 />
                             </div>
                             <div className="flex flex-col">
-                                <h1 className="font-black text-white leading-tight">Encontrado en un 2x3</h1>
+                                <h1 className="font-black text-white leading-tight">{branding.app_client_name || 'Un 2x3'} Negocios</h1>
                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Business Hub</p>
                             </div>
                         </div>

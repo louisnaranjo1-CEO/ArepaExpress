@@ -164,11 +164,18 @@ export const getDriverProfile = async (idOrEmail: string): Promise<DeliveryDrive
 };
 
 /**
- * Actualizar ubicación del driver
+ * Actualizar ubicación del driver con Throttling Inteligente
  */
-export const updateDriverLocation = async (uid: string, lat: number, lng: number, heading?: number, speed?: number) => {
+export const updateDriverLocation = async (
+    uid: string, 
+    lat: number, 
+    lng: number, 
+    heading?: number, 
+    speed?: number, 
+    forceHeavyUpdate?: boolean
+) => {
     try {
-        await driversApi.updateLocation(uid, lat, lng, heading, speed);
+        await driversApi.updateLocation(uid, lat, lng, heading, speed, forceHeavyUpdate);
     } catch (apiErr) {
         console.error("Error updating driver location in Supabase:", apiErr);
     }

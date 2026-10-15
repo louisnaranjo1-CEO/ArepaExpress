@@ -291,7 +291,7 @@ export default function CashiersManager() {
 
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Email (Usuario)</label>
-                                <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:border-primary font-bold text-slate-700" placeholder="ana@deliexpress.app" />
+                                <input type="email" required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="w-full bg-slate-50 border border-slate-200 px-4 py-3 rounded-2xl outline-none focus:border-primary font-bold text-slate-700" placeholder="cajero@un2x3.app" />
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">

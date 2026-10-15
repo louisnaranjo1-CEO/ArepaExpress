@@ -18,9 +18,9 @@ export default defineConfig(({ mode }) => {
         injectRegister: 'auto',
         includeAssets: ['favicon.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          name: 'Deliexpress Mesero',
+          name: 'Un 2x3 Mesero',
           short_name: 'Mesero',
-          description: 'Punto de Venta y Comandas para Meseros Deliexpress',
+          description: 'Punto de Venta y Comandas para Meseros Un 2x3',
           theme_color: '#facc15',
           background_color: '#ffffff',
           display: 'standalone',

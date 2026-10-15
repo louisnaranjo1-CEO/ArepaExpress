@@ -3,9 +3,11 @@ import { ArrowLeft, Bell, BellOff, Clock, Trash2, Utensils } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useBranding } from '../context/BrandingContext';
 import toast from 'react-hot-toast';
 
 export default function Notifications() {
+    const { branding } = useBranding();
     const { user } = useAuth();
     const navigate = useNavigate();
     const [notifications, setNotifications] = useState<any[]>([]);
@@ -18,7 +20,8 @@ export default function Notifications() {
                 .from('notifications')
                 .select('*')
                 .eq('user_id', user.id)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(50);
 
             if (error) throw error;
 
@@ -28,7 +31,7 @@ export default function Notifications() {
                 body: d.body,
                 read: d.read ?? false,
                 restaurantId: d.restaurant_id || d.restaurantId,
-                restaurantName: d.restaurant_name || d.restaurantName || 'Deliexpress',
+                restaurantName: d.restaurant_name || d.restaurantName || (branding.app_client_name || 'Un 2x3'),
                 createdAt: d.created_at || d.createdAt
             }));
 

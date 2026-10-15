@@ -681,7 +681,7 @@ export default function WhatsAppPurchaseConfirmationModal() {
                             <span className="text-slate-500">
                               Has acumulado{' '}
                               <b className="text-emerald-600 font-bold">+{resultInfo?.pointsAwarded || Math.max(1, Math.round(parseFloat(amountUSD) || 1))} puntos</b>{' '}
-                              directamente en tu billetera.
+                              directamente en tu perfil.
                             </span>
                           </div>
                         </div>

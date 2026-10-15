@@ -18,9 +18,9 @@ export default defineConfig(({ mode }) => {
         injectRegister: 'auto',
         includeAssets: ['favicon.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          name: 'Deliexpress SuperAdmin',
+          name: 'Un 2x3 SuperAdmin',
           short_name: 'SuperAdmin',
-          description: 'Panel de Control Central Deliexpress',
+          description: 'Panel de Control Central Un 2x3',
           theme_color: '#0f172a',
           background_color: '#0f172a',
           display: 'standalone',

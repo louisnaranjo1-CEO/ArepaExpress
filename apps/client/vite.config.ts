@@ -19,9 +19,9 @@ export default defineConfig(({ mode }) => {
         injectRegister: 'auto',
         includeAssets: ['favicon.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          name: 'Deliexpress',
-          short_name: 'Deliexpress',
-          description: 'Pide comida, envíos y transporte en un 2x3 con Deliexpress',
+          name: 'Un 2x3',
+          short_name: 'Un 2x3',
+          description: 'Pide comida, envíos y transporte en un 2x3',
           theme_color: '#facc15',
           background_color: '#ffffff',
           display: 'standalone',

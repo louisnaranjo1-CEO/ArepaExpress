@@ -9,7 +9,7 @@ import { BrandingProvider } from './context/BrandingContext';
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <CurrencyProvider>
-      <BrandingProvider>
+      <BrandingProvider appType="admin">
         <App />
       </BrandingProvider>
     </CurrencyProvider>

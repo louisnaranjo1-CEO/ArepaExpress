@@ -14,11 +14,13 @@ import { UN2X3_LOGO } from '../lib/env';
 import { isNightTime, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
 import RainOverlay from '../components/RainOverlay';
 import { useCurrency } from '../context/CurrencyContext';
+import { useBranding } from '../context/BrandingContext';
 
 export default function TransportTracker() {
     const { requestId } = useParams();
     const navigate = useNavigate();
     const { bcvRate } = useCurrency();
+    const { branding } = useBranding();
     const [request, setRequest] = useState<any>(null);
     const [driver, setDriver] = useState<DeliveryDriver | null>(null);
     const [loading, setLoading] = useState(true);
@@ -129,7 +131,7 @@ export default function TransportTracker() {
             const { data } = await supabase
                 .from('transport_bids')
                 .select('*')
-                .eq('transport_request_id', requestId)
+                .or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`)
                 .eq('status', 'pending')
                 .order('created_at', { ascending: false });
             if (data) setMandadoBids(data);
@@ -141,10 +143,12 @@ export default function TransportTracker() {
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
-                table: 'transport_bids',
-                filter: `transport_request_id=eq.${requestId}`
-            }, () => {
-                fetchBids();
+                table: 'transport_bids'
+            }, (payload: any) => {
+                const b = payload.new || payload.old;
+                if (!b || b.transport_request_id === requestId || b.request_id === requestId) {
+                    fetchBids();
+                }
             })
             .subscribe();
 
@@ -171,7 +175,7 @@ export default function TransportTracker() {
             await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
             // 2. Reject others
             await supabase.from('transport_bids').update({ status: 'rejected' })
-                .eq('transport_request_id', requestId)
+                .or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`)
                 .neq('id', bid.id);
             // 3. Assign driver
             const { error: updErr } = await supabase.from('transport_requests').update({
@@ -796,7 +800,7 @@ export default function TransportTracker() {
 
             // If mandado, remove bids
             if (request.service_category === 'muchacho_mandado') {
-                await supabase.from('transport_bids').delete().eq('transport_request_id', requestId);
+                await supabase.from('transport_bids').delete().or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`);
             }
 
             localStorage.removeItem('active_transport_req_id');
@@ -822,7 +826,7 @@ export default function TransportTracker() {
             }).eq('id', requestId);
 
             if (request.service_category === 'muchacho_mandado') {
-                await supabase.from('transport_bids').delete().eq('transport_request_id', requestId);
+                await supabase.from('transport_bids').delete().or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`);
             }
             localStorage.removeItem('active_transport_req_id');
             toast.success("Reserva cancelada con éxito");
@@ -986,9 +990,9 @@ export default function TransportTracker() {
                     <div className="flex flex-col items-center justify-center gap-4 animate-fade-in px-6 w-full h-full pb-20">
                         <div className="w-32 h-32 bg-white rounded-3xl shadow-xl shadow-primary/20 p-5 flex items-center justify-center">
                             <img
-                                src={UN2X3_LOGO}
+                                src={branding.app_client_logo || UN2X3_LOGO}
                                 onError={(e: any) => { e.currentTarget.src = '/logo.png'; }}
-                                alt="Deliexpress Logo"
+                                alt={`${branding.app_client_name || 'Un 2x3'} Logo`}
                                 className="w-full h-full object-contain animate-bounce-subtle"
                             />
                         </div>
@@ -1359,7 +1363,7 @@ export default function TransportTracker() {
                                                         )
                                                     )}
                                                     <span className="text-[9px] font-black text-emerald-600 ml-0.5">
-                                                        ⏱️ Llega en ~{bid.eta_minutes || 15} min
+                                                        ⏱️ Llega en ~{bid.estimated_eta_minutes ?? bid.eta_minutes ?? 10} min
                                                     </span>
                                                 </div>
                                             </div>
@@ -1368,11 +1372,11 @@ export default function TransportTracker() {
                                         <div className="flex flex-col items-end shrink-0 gap-1.5">
                                             <div className="text-right">
                                                 <div className="text-base font-black text-slate-900 leading-tight">
-                                                    ${Number(bid.amount).toFixed(2)}
+                                                    ${Number(bid.offered_price ?? bid.amount ?? 0).toFixed(2)}
                                                 </div>
                                                 {bcvRate > 0 && (
                                                     <div className="text-[9px] font-bold text-slate-500">
-                                                        {(Number(bid.amount) * bcvRate).toFixed(0)} Bs
+                                                        {(Number(bid.offered_price ?? bid.amount ?? 0) * bcvRate).toFixed(0)} Bs
                                                     </div>
                                                 )}
                                             </div>
@@ -1396,7 +1400,7 @@ export default function TransportTracker() {
                 {request.scheduled && ['searching', 'accepted'].includes(request.status) && (
                     <div className="mb-4 p-2.5 bg-red-50 border border-red-100 rounded-xl flex flex-col items-center">
                         <p className="text-[10px] text-red-600 font-bold text-center mb-2 leading-tight">
-                            Puedes cancelar y el dinero será devuelto a tu billetera.
+                            Puedes cancelar la reserva sin penalización antes del inicio del viaje.
                         </p>
                         <button
                             onClick={handleCancelReservation}

@@ -43,11 +43,13 @@ import {
 } from 'lucide-react';
 import VerificationModal from '../components/VerificationModal';
 import { useAuth } from '../../context/AuthContext';
+import { useBranding } from '../../context/BrandingContext';
 import AddressPicker from '../../components/AddressPicker';
 import { VENEZUELA_DATA, VENEZUELA_STATES, VENEZUELAN_BANKS } from '../../lib/venezuelaData';
 import { supabase } from '../../lib/supabase';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS } from '../../lib/constants';
 import toast from 'react-hot-toast';
+import { compressImage } from '../../utils/mediaCompressor';
 
 const getCategoryEmoji = (name: string): string => {
     if (!name) return '🏪';
@@ -123,6 +125,7 @@ const DEFAULT_WORKING_HOURS: WorkingHour[] = [
 
 export default function RestaurantProfile() {
     const { user, userData } = useAuth();
+    const { branding } = useBranding();
     const navigate = useNavigate();
     const rid = userData?.managedRestaurantId || user?.uid;
     const [loading, setLoading] = useState(true);
@@ -446,9 +449,10 @@ export default function RestaurantProfile() {
             // Handle Logo Upload to Supabase Storage
             if (logoFile) {
                 setUploadingLogo(true);
-                const ext = logoFile.name.split('.').pop() || 'png';
+                const compressedLogo = await compressImage(logoFile);
+                const ext = (compressedLogo instanceof File ? compressedLogo.name : logoFile.name).split('.').pop() || 'png';
                 const path = `${rid}/logo_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, logoFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, compressedLogo, { upsert: true });
                 if (upErr) throw upErr;
                 const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(path);
                 currentLogoUrl = urlData.publicUrl;
@@ -461,9 +465,10 @@ export default function RestaurantProfile() {
             // Handle Cover Upload to Supabase Storage
             if (coverFile) {
                 setUploadingCover(true);
-                const ext = coverFile.name.split('.').pop() || 'png';
+                const compressedCover = await compressImage(coverFile);
+                const ext = (compressedCover instanceof File ? compressedCover.name : coverFile.name).split('.').pop() || 'png';
                 const path = `${rid}/cover_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, coverFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, compressedCover, { upsert: true });
                 if (upErr) throw upErr;
                 const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(path);
                 currentCoverUrl = urlData.publicUrl;
@@ -476,9 +481,10 @@ export default function RestaurantProfile() {
             let currentCasheaQrUrl = casheaQrUrl;
             if (casheaQrFile) {
                 setUploadingCasheaQr(true);
-                const ext = casheaQrFile.name.split('.').pop() || 'png';
+                const compressedCashea = await compressImage(casheaQrFile);
+                const ext = (compressedCashea instanceof File ? compressedCashea.name : casheaQrFile.name).split('.').pop() || 'png';
                 const path = `${rid}/cashea_qr_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, casheaQrFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, compressedCashea, { upsert: true });
                 if (upErr) throw upErr;
                 const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(path);
                 currentCasheaQrUrl = urlData.publicUrl;
@@ -831,7 +837,7 @@ export default function RestaurantProfile() {
                                 Comercio Verificado Oficialmente ✓
                             </h4>
                             <p className="text-xs text-emerald-800 font-medium">
-                                Tu negocio cuenta con la certificación oficial de Encontrado en un 2x3 / Deliexpress. Puedes alternar la visibilidad de tu tienda arriba cuando lo desees.
+                                Tu negocio cuenta con la certificación oficial de {branding.app_client_name || 'Un 2x3'}. Puedes alternar la visibilidad de tu tienda arriba cuando lo desees.
                             </p>
                         </div>
                     </div>
@@ -988,7 +994,7 @@ export default function RestaurantProfile() {
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
                                         className={`w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-800 ${isVerified ? 'opacity-75 bg-slate-100 cursor-not-allowed pr-10' : ''}`}
-                                        placeholder="Ej: Deliexpress Gourmet"
+                                        placeholder={`Ej: ${branding.app_client_name || 'Un 2x3'} Gourmet`}
                                     />
                                     {isVerified && (
                                         <Lock className="w-5 h-5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />

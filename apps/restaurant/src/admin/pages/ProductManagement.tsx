@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { GLOBAL_CATEGORIES, CATEGORY_SECTORS, DEVELOPER_WHATSAPP } from '../../lib/constants';
 import { ProductModifier, ModifierType } from '../../lib/seed';
 import CommonProductsPickerModal, { SelectedCommonProductPayload } from '../components/CommonProductsPickerModal';
+import { compressImage } from '../../utils/mediaCompressor';
 
 export interface ProductVariant {
     name: string;
@@ -214,13 +215,15 @@ export default function ProductManagement() {
         setSubmitting(true);
 
         try {
-            // 1. Upload new images if any to Supabase Storage
+            // 1. Upload new images if any to Supabase Storage (compressed for fast loading)
             const uploadedUrls: string[] = [];
             for (const file of newImageFiles) {
                 try {
-                    const sanitizedName = file.name.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
+                    const compressedFile = await compressImage(file);
+                    const originalName = compressedFile instanceof File ? compressedFile.name : file.name;
+                    const sanitizedName = originalName.replace(/[^a-z0-9.]/gi, '_').toLowerCase();
                     const filePath = `${rid}/products/${Date.now()}_${sanitizedName}`;
-                    const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+                    const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedFile, { upsert: true });
                     if (upErr) throw upErr;
                     const { data: urlData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
                     uploadedUrls.push(urlData.publicUrl);

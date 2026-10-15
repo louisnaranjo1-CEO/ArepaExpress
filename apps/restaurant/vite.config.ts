@@ -18,9 +18,9 @@ export default defineConfig(({ mode }) => {
         injectRegister: 'auto',
         includeAssets: ['favicon.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          name: 'Deliexpress Negocios',
+          name: 'Un 2x3 Negocios',
           short_name: 'Negocios',
-          description: 'Panel de Administración para Restaurantes y Comercios Deliexpress',
+          description: 'Panel de Administración para Restaurantes y Comercios Un 2x3',
           theme_color: '#facc15',
           background_color: '#ffffff',
           display: 'standalone',

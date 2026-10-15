@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { WifiOff } from 'lucide-react';
+import { useBranding } from '../context/BrandingContext';
 
 export const OfflineIndicator: React.FC = () => {
+  const { branding } = useBranding();
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
@@ -27,7 +29,7 @@ export const OfflineIndicator: React.FC = () => {
         </div>
         <h2 className="text-2xl font-bold text-gray-800 mb-3">¡Vaya! Te quedaste sin internet</h2>
         <p className="text-gray-600 mb-6">
-          Conéctate en un 2x3 para seguir disfrutando de Deliexpress. Verificaremos tu conexión automáticamente.
+          Conéctate en un 2x3 para seguir disfrutando de {branding.app_client_name || 'Un 2x3'}. Verificaremos tu conexión automáticamente.
         </p>
         <div className="animate-pulse flex space-x-2 items-center justify-center">
           <div className="w-3 h-3 bg-red-400 rounded-full"></div>

@@ -8,6 +8,7 @@ import {
   Scale, Trash2, Search
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { compressImage } from '../../utils/mediaCompressor';
 
 interface Message {
   id: string;
@@ -284,6 +285,8 @@ export default function OrderChatWindow({
 
   // Realtime messages & order sync
   useEffect(() => {
+    const linkedTransportId = liveOrder?.transport_request_id || orderInfo?.transport_request_id;
+
     const fetchMessages = async () => {
       try {
         let queryBuilder = supabase
@@ -293,11 +296,13 @@ export default function OrderChatWindow({
 
         if (customCollectionPath) {
           queryBuilder = queryBuilder.eq('chat_path', customCollectionPath);
+        } else if (linkedTransportId) {
+          queryBuilder = queryBuilder.or(`order_id.eq.${orderId},request_id.eq.${linkedTransportId}`);
         } else {
           queryBuilder = queryBuilder.eq('order_id', orderId);
         }
 
-        const { data, error } = await queryBuilder;
+        const { data, error } = await queryBuilder.limit(100);
         if (error) throw error;
         if (data) {
           setMessages(data.map((d: any) => ({
@@ -324,16 +329,15 @@ export default function OrderChatWindow({
     fetchMessages();
     playNotificationChime('enter');
 
-    const channelName = `chat_${orderId || customCollectionPath || 'default'}`;
-    const filterField = customCollectionPath ? 'chat_path' : 'order_id';
-    const filterVal = customCollectionPath || orderId;
+    const channelName = `chat_${orderId || customCollectionPath || 'default'}_${linkedTransportId || 'direct'}`;
+    const channel = supabase.channel(channelName);
 
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', {
+    if (customCollectionPath) {
+      channel.on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'messages',
-        filter: `${filterField}=eq.${filterVal}`
+        filter: `chat_path=eq.${customCollectionPath}`
       }, (payload) => {
         fetchMessages();
         if (payload?.new) {
@@ -342,8 +346,42 @@ export default function OrderChatWindow({
             playNotificationChime('message');
           }
         }
-      })
-      .subscribe();
+      });
+    } else {
+      channel.on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+        filter: `order_id=eq.${orderId}`
+      }, (payload) => {
+        fetchMessages();
+        if (payload?.new) {
+          const newMsg = payload.new as any;
+          if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
+            playNotificationChime('message');
+          }
+        }
+      });
+
+      if (linkedTransportId) {
+        channel.on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `request_id=eq.${linkedTransportId}`
+        }, (payload) => {
+          fetchMessages();
+          if (payload?.new) {
+            const newMsg = payload.new as any;
+            if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
+              playNotificationChime('message');
+            }
+          }
+        });
+      }
+    }
+
+    channel.subscribe();
 
     const orderSub = supabase.channel(`order_chat_sync_${orderId}`)
       .on('postgres_changes', {
@@ -382,7 +420,7 @@ export default function OrderChatWindow({
       supabase.removeChannel(orderSub);
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
-  }, [orderId, customCollectionPath]);
+  }, [orderId, customCollectionPath, liveOrder?.transport_request_id, orderInfo?.transport_request_id]);
 
   const handleSendMessage = async (
     text: string, 
@@ -393,8 +431,10 @@ export default function OrderChatWindow({
     setSending(true);
 
     try {
+      const linkedTransportId = liveOrder?.transport_request_id || orderInfo?.transport_request_id;
       await supabase.from('messages').insert({
         order_id: orderId,
+        request_id: linkedTransportId || null,
         chat_path: customCollectionPath || null,
         text: text.trim(),
         image_url: actionUrl || null,
@@ -418,14 +458,15 @@ export default function OrderChatWindow({
     if (!file) return;
     setSending(true);
     try {
-      const fileExt = file.name.split('.').pop() || 'jpg';
       const isVideo = file.type.startsWith('video/');
+      const uploadFile = isVideo ? file : await compressImage(file);
+      const fileExt = (uploadFile instanceof File ? uploadFile.name : file.name).split('.').pop() || 'jpg';
       const fileName = `${isVideo ? 'video' : 'media'}_${orderId}_${Date.now()}.${fileExt}`;
       const filePath = `order_chat/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(filePath, file);
+        .upload(filePath, uploadFile);
 
       if (uploadError) {
         const reader = new FileReader();
@@ -543,12 +584,13 @@ export default function OrderChatWindow({
     try {
       let proofUrl = '';
       if (payProofFile) {
-        const ext = payProofFile.name.split('.').pop() || 'jpg';
+        const compressedProof = await compressImage(payProofFile);
+        const ext = (compressedProof instanceof File ? compressedProof.name : payProofFile.name).split('.').pop() || 'jpg';
         const fileName = `payment_${orderId}_${Date.now()}.${ext}`;
         const filePath = `payment_proofs/${fileName}`;
-        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, payProofFile, { upsert: true });
+        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedProof, { upsert: true });
         if (upErr) {
-          const { error: upErr2 } = await supabase.storage.from('documents').upload(filePath, payProofFile, { upsert: true });
+          const { error: upErr2 } = await supabase.storage.from('documents').upload(filePath, compressedProof, { upsert: true });
           if (!upErr2) {
             const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
             proofUrl = data.publicUrl;
@@ -556,7 +598,7 @@ export default function OrderChatWindow({
             proofUrl = await new Promise<string>((resolve) => {
               const reader = new FileReader();
               reader.onload = () => resolve(reader.result as string);
-              reader.readAsDataURL(payProofFile);
+              reader.readAsDataURL(compressedProof);
             });
           }
         } else {

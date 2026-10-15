@@ -7,6 +7,7 @@ import {
   Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { compressImage } from '../../utils/mediaCompressor';
 
 interface Message {
   id: string;
@@ -307,14 +308,15 @@ export default function OrderChatWindow({
     if (!file) return;
     setSending(true);
     try {
-      const fileExt = file.name.split('.').pop() || 'jpg';
       const isVideo = file.type.startsWith('video/');
+      const uploadFile = isVideo ? file : await compressImage(file);
+      const fileExt = (uploadFile instanceof File ? uploadFile.name : file.name).split('.').pop() || 'jpg';
       const fileName = `${isVideo ? 'video' : 'media'}_${orderId}_${Date.now()}.${fileExt}`;
       const filePath = `order_chat/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(filePath, file);
+        .upload(filePath, uploadFile);
 
       if (uploadError) {
         const reader = new FileReader();
@@ -432,12 +434,13 @@ export default function OrderChatWindow({
     try {
       let proofUrl = '';
       if (payProofFile) {
-        const ext = payProofFile.name.split('.').pop() || 'jpg';
+        const compressedProof = await compressImage(payProofFile);
+        const ext = (compressedProof instanceof File ? compressedProof.name : payProofFile.name).split('.').pop() || 'jpg';
         const fileName = `payment_${orderId}_${Date.now()}.${ext}`;
         const filePath = `payment_proofs/${fileName}`;
-        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, payProofFile, { upsert: true });
+        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedProof, { upsert: true });
         if (upErr) {
-          const { error: upErr2 } = await supabase.storage.from('documents').upload(filePath, payProofFile, { upsert: true });
+          const { error: upErr2 } = await supabase.storage.from('documents').upload(filePath, compressedProof, { upsert: true });
           if (!upErr2) {
             const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
             proofUrl = data.publicUrl;
@@ -445,7 +448,7 @@ export default function OrderChatWindow({
             proofUrl = await new Promise<string>((resolve) => {
               const reader = new FileReader();
               reader.onload = () => resolve(reader.result as string);
-              reader.readAsDataURL(payProofFile);
+              reader.readAsDataURL(compressedProof);
             });
           }
         } else {

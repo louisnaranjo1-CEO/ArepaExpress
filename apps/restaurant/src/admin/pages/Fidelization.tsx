@@ -83,7 +83,7 @@ export default function Fidelization() {
             gender: 'all',
             minPurchase: '',
         },
-        whatsappMessage: '¡Hola {nombre}! 🎉 Nos complace informarte que has sido seleccionado como uno de los ganadores de nuestro sorteo especial en {restaurante}. Tu premio: {premio}. ¡Pasa por nuestro local para reclamarlo!'
+        whatsappMessage: '¡Hola {nombre}! 🎉 Nos complace informarte que has alcanzado la meta de fidelidad en {restaurante}. Tu premio: {premio}. ¡Pasa por nuestro local para disfrutarlo!'
     });
 
     // Public Raffle / Social Promotion State
@@ -240,15 +240,15 @@ export default function Fidelization() {
     }, [contestForm.winnersCount]);
 
     const handleDeleteContest = async (contestId: string) => {
-        if (!rid || !window.confirm('¿Estás seguro de que deseas eliminar este registro de sorteo?')) return;
+        if (!rid || !window.confirm('¿Estás seguro de que deseas eliminar este registro de recompensa?')) return;
         try {
             const { error } = await supabase.from('restaurant_contests').delete().eq('id', contestId);
             if (error) throw error;
             setContests(contests.filter(c => c.id !== contestId));
-            toast.success("Sorteo eliminado correctamente");
+            toast.success("Registro eliminado correctamente");
         } catch (error) {
             console.error("Error deleting contest:", error);
-            toast.error("Error al eliminar el sorteo");
+            toast.error("Error al eliminar el registro");
         }
     };
 
@@ -391,8 +391,8 @@ export default function Fidelization() {
                 await supabase.from('notifications').insert({
                     user_id: winner.userId,
                     restaurant_id: rid,
-                    title: `¡Ganaste en ${restaurantName}! 🎉`,
-                    body: `Has sido seleccionado como ganador del sorteo "${contestForm.title}". Premio: ${winner.prize}. ¡Felicidades!`,
+                    title: `¡Recompensa en ${restaurantName}! 🎉`,
+                    body: `Has alcanzado la meta de fidelidad "${contestForm.title}". Premio: ${winner.prize}. ¡Felicidades!`,
                     read: false,
                 });
             }
@@ -415,7 +415,7 @@ export default function Fidelization() {
 
         } catch (error) {
             console.error("Error executing contest:", error);
-            alert("Ocurrió un error al realizar el sorteo.");
+            alert("Ocurrió un error al premiar al cliente.");
         } finally {
             setRunningContest(false);
         }
@@ -439,7 +439,7 @@ export default function Fidelization() {
                 .eq('id', rid);
 
             if (error) throw error;
-            toast.success("Anuncio de sorteo actualizado correctamente");
+            toast.success("Anuncio de recompensa actualizado correctamente");
         } catch (error) {
             console.error("Error saving promotion:", error);
             toast.error("Error al guardar el anuncio");
@@ -521,13 +521,13 @@ export default function Fidelization() {
                             onClick={() => setActiveTab('contests')}
                             className={`px-6 py-4 rounded-[2rem] font-black transition-all shadow-xl flex items-center gap-2 ${activeTab === 'contests' ? 'bg-primary text-slate-900 shadow-primary/20 scale-105' : 'bg-white/5 text-slate-900/50 hover:bg-white/10'}`}
                         >
-                            <Gift className="w-5 h-5" /> Sorteos
+                            <Gift className="w-5 h-5" /> Premios y Retos
                         </button>
                         <button
                             onClick={() => setActiveTab('promotion')}
                             className={`px-6 py-4 rounded-[2rem] font-black transition-all shadow-xl flex items-center gap-2 ${activeTab === 'promotion' ? 'bg-orange-500 text-white shadow-orange-500/20 scale-105' : 'bg-white/5 text-white/50 hover:bg-white/10'}`}
                         >
-                            <Megaphone className="w-5 h-5" /> Anunciar Sorteo
+                            <Megaphone className="w-5 h-5" /> Anunciar Recompensa
                         </button>
                     </div>
                 </div>
@@ -563,7 +563,7 @@ export default function Fidelization() {
                             <Gift className="w-7 h-7" />
                         </div>
                         <div>
-                            <h3 className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Sorteos Realizados</h3>
+                            <h3 className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Premios Otorgados</h3>
                             <p className="text-2xl font-black text-slate-800">{contests.length}</p>
                             <p className="text-[10px] text-slate-400 font-bold italic">Propios del negocio</p>
                         </div>
@@ -669,14 +669,14 @@ export default function Fidelization() {
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
                     <div className="flex justify-between items-center bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100">
                         <div>
-                            <h2 className="text-2xl font-black text-slate-800">Sorteos de tu Local</h2>
-                            <p className="text-slate-500 font-medium text-sm">Premia aleatoriamente a clientes que cumplan tus requisitos.</p>
+                            <h2 className="text-2xl font-black text-slate-800">Premios y Retos de tu Local</h2>
+                            <p className="text-slate-500 font-medium text-sm">Premia por mérito y compras acumuladas a los clientes que cumplan tus metas.</p>
                         </div>
                         <button
                             onClick={() => setIsContestModalOpen(true)}
-                            className="bg-primary text-slate-900 px-6 py-4 rounded-2xl font-black shadow-lg shadow-primary/30 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                            className="bg-primary text-slate-900 px-6 py-4 rounded-2xl font-black shadow-lg shadow-primary/30 flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
                         >
-                            <Gift className="w-5 h-5" /> Iniciar Sorteo
+                            <Gift className="w-5 h-5" /> Premiar Cliente Fiel
                         </button>
                     </div>
 
@@ -684,9 +684,9 @@ export default function Fidelization() {
                     {recentWinners && (
                         <div className="bg-emerald-50 rounded-[3rem] p-8 md:p-12 border-2 border-emerald-100 animate-in zoom-in-95 duration-500">
                             <div className="text-center mb-8">
-                                <span className="bg-emerald-100 text-emerald-600 font-black px-4 py-2 rounded-full uppercase tracking-widest text-xs inline-block mb-4">¡Sorteo Finalizado Exitosamente!</span>
-                                <h3 className="text-4xl font-black text-slate-800 italic">Tenemos {recentWinners.length === 1 ? 'Un Ganador' : 'Ganadores'}</h3>
-                                <p className="text-emerald-700 font-medium mt-2">Los ganadores han recibido una notificación en su aplicación.</p>
+                                <span className="bg-emerald-100 text-emerald-600 font-black px-4 py-2 rounded-full uppercase tracking-widest text-xs inline-block mb-4">¡Recompensa Otorgada Exitosamente!</span>
+                                <h3 className="text-4xl font-black text-slate-800 italic">Tenemos {recentWinners.length === 1 ? 'Un Cliente Premiado' : 'Clientes Premiados'}</h3>
+                                <p className="text-emerald-700 font-medium mt-2">Los clientes han recibido una notificación en su aplicación.</p>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
@@ -723,7 +723,7 @@ export default function Fidelization() {
                             {contests.length === 0 ? (
                                 <div className="p-12 text-center bg-white border border-slate-100 rounded-[3rem]">
                                     <Gift className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                                    <p className="text-slate-400 font-bold italic">No has realizado sorteos recientemente.</p>
+                                    <p className="text-slate-400 font-bold italic">No has otorgado recompensas recientemente.</p>
                                 </div>
                             ) : (
                                 contests.map(c => (
@@ -787,18 +787,18 @@ export default function Fidelization() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-4">
                     <div className="bg-white p-8 rounded-[3rem] shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col gap-6">
                         <div>
-                            <h2 className="text-2xl font-black text-slate-800">Crea un Anuncio de Sorteo</h2>
-                            <p className="text-slate-500 font-medium text-sm italic">Promociona tus concursos en el perfil público de tu local.</p>
+                            <h2 className="text-2xl font-black text-slate-800">Crea un Anuncio de Recompensa</h2>
+                            <p className="text-slate-500 font-medium text-sm italic">Promociona tus platos de cortesía y metas de fidelidad en el perfil público de tu local.</p>
                         </div>
 
                         <form onSubmit={handleSavePromotion} className="space-y-6">
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                    <TrendingUp className="w-3 h-3 text-orange-500" /> Título del Sorteo
+                                    <TrendingUp className="w-3 h-3 text-orange-500" /> Título de la Recompensa / Meta
                                 </label>
                                 <input
                                     type="text"
-                                    placeholder="Ej: ¡Gánate un iPhone 15 Pro!"
+                                    placeholder="Ej: ¡Postre de Cortesía en tu 5ta Visita!"
                                     value={publicRaffle.title}
                                     onChange={e => setPublicRaffle({ ...publicRaffle, title: e.target.value })}
                                     className="w-full bg-slate-50 border-2 border-transparent focus:border-orange-500 p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all"
@@ -807,11 +807,11 @@ export default function Fidelization() {
 
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-slate-400 uppercase ml-2 flex items-center gap-1">
-                                    <ShoppingBag className="w-3 h-3 text-orange-500" /> Descripción de la Rifa
+                                    <ShoppingBag className="w-3 h-3 text-orange-500" /> Descripción de la Recompensa
                                 </label>
                                 <textarea
                                     rows={4}
-                                    placeholder="Explica qué deben hacer tus clientes para ganar..."
+                                    placeholder="Explica qué deben hacer tus clientes para disfrutar de este premio directo..."
                                     value={publicRaffle.description}
                                     onChange={e => setPublicRaffle({ ...publicRaffle, description: e.target.value })}
                                     className="w-full bg-slate-50 border-2 border-transparent focus:border-orange-500 p-4 rounded-2xl outline-none font-bold text-slate-700 transition-all resize-none"
@@ -928,9 +928,9 @@ export default function Fidelization() {
                                     </div>
                                 </div>
                                 <div className="p-6">
-                                    <h4 className="text-xl font-black text-slate-900 mb-2">{publicRaffle.title || 'Título del Sorteo'}</h4>
+                                    <h4 className="text-xl font-black text-slate-900 mb-2">{publicRaffle.title || 'Título de la Recompensa'}</h4>
                                     <p className="text-slate-500 text-xs font-medium leading-relaxed italic line-clamp-3">
-                                        {publicRaffle.description || 'Aquí aparecerá la descripción de tu sorteo para que tus clientes sepan cómo participar.'}
+                                        {publicRaffle.description || 'Aquí aparecerá la descripción de tu recompensa para que tus clientes sepan cómo obtenerla.'}
                                     </p>
                                     <div className="mt-6 flex items-center justify-between">
                                         <div className="flex gap-2">
@@ -953,8 +953,8 @@ export default function Fidelization() {
                     <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl relative z-10 overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-indigo-50/50">
                             <div>
-                                <h2 className="text-2xl font-black text-indigo-900">Crear Sorteo</h2>
-                                <p className="text-slate-900/70 text-sm font-bold">Selecciona aleatoriamente entre los clientes que cumplen los filtros.</p>
+                                <h2 className="text-2xl font-black text-indigo-900">Premiar Cliente Fiel</h2>
+                                <p className="text-slate-900/70 text-sm font-bold">Premia por mérito y compras a los clientes que cumplen los requisitos de tu local.</p>
                             </div>
                             <button onClick={() => !runningContest && setIsContestModalOpen(false)} className="p-2 text-primary hover:bg-white rounded-full transition-colors">
                                 <X className="w-6 h-6" />
@@ -965,10 +965,10 @@ export default function Fidelization() {
 
                             <div className="space-y-4 bg-indigo-50/30 p-6 rounded-[2rem] border border-indigo-100">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Título del Sorteo</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase ml-2">Título de la Meta o Premio</label>
                                     <input
                                         type="text" required
-                                        placeholder="Ej: Sorteo de San Valentín"
+                                        placeholder="Ej: Recompensa al Cliente Fiel del Mes"
                                         value={contestForm.title} onChange={e => setContestForm({ ...contestForm, title: e.target.value })}
                                         className="w-full bg-white border border-slate-200 focus:border-primary p-4 rounded-2xl outline-none font-bold text-slate-700 shadow-sm"
                                     />
@@ -1087,9 +1087,9 @@ export default function Fidelization() {
                                 <div className="absolute inset-0 bg-gradient-to-r from-primary to-primary opacity-0 group-hover:opacity-100 transition-opacity"></div>
                                 <span className="relative z-10 flex items-center gap-2">
                                     {runningContest ? (
-                                        <><Loader2 className="w-6 h-6 animate-spin" /> Buscando Ganadores...</>
+                                        <><Loader2 className="w-6 h-6 animate-spin" /> Buscando Clientes Fieles...</>
                                     ) : (
-                                        <><Gift className="w-6 h-6 animate-bounce" /> Realizar Sorteo Aleatorio Ahora</>
+                                        <><Gift className="w-6 h-6 animate-bounce" /> Premiar por Cumplimiento de Meta / Top Ranking del Período</>
                                     )}
                                 </span>
                             </button>

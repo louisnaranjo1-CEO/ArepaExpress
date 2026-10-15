@@ -7,6 +7,17 @@ import { Capacitor } from '@capacitor/core';
  * - Plataforma Web / Móvil PWA (iOS Safari / Chrome Android): Usa WebAuthn (PublicKeyCredential)
  */
 
+const getAppName = (): string => {
+  try {
+    const cached = localStorage.getItem('un2x3_app_branding_cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed?.app_client_name) return parsed.app_client_name;
+    }
+  } catch (e) {}
+  return 'Un 2x3';
+};
+
 export function bufferToBase64Url(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -128,13 +139,13 @@ export const registerBiometric = async (userId: string, userEmail: string): Prom
     const creationOptions: PublicKeyCredentialCreationOptions = {
       challenge,
       rp: {
-        name: 'Arepa Express',
+        name: getAppName(),
         ...(rpId ? { id: rpId } : {})
       },
       user: {
         id: userIdBuffer,
-        name: userEmail || 'usuario@deliexpress.app',
-        displayName: userEmail ? userEmail.split('@')[0] : 'Usuario Arepa Express'
+        name: userEmail || 'usuario@un2x3.app',
+        displayName: userEmail ? userEmail.split('@')[0] : `Usuario ${getAppName()}`
       },
       pubKeyCredParams: [
         { alg: -7, type: 'public-key' },  // ES256 (P-256) Apple FaceID/TouchID standard
@@ -188,7 +199,7 @@ export const verifyBiometric = async (storedCredentialId?: string): Promise<bool
     // Caso 1: Nativo Capacitor
     if (support.type === 'native' && Capacitor.isNativePlatform()) {
       await NativeBiometric.verifyIdentity({
-        reason: "Ingresar a Arepa Express",
+        reason: `Ingresar a ${getAppName()}`,
         title: "Autenticación Biométrica",
         subtitle: "Usa tu huella o rostro para ingresar",
         description: "Por favor, verifica tu identidad",

@@ -297,11 +297,11 @@ export default function Achievements() {
     const handleExchangeTicket = async () => {
         if (!user) return;
         if (!activeRaffle) {
-            alert("No hay ningún sorteo activo en este momento.");
+            alert("No hay incentivos activos disponibles en este momento.");
             return;
         }
         if (points < 10) {
-            alert("Necesitas al menos 10 puntos para canjear un boleto. Completa más viajes para ganar puntos (1 pt por cada $1).");
+            alert("Necesitas al menos 10 puntos para desbloquear esta recompensa. Completa más viajes para ganar puntos (1 pt por cada $1).");
             return;
         }
 
@@ -315,7 +315,7 @@ export default function Achievements() {
             if (error) throw error;
 
             if (data && data.success) {
-                alert(`🎉 ¡Felicidades! Has canjeado tu boleto: ${data.ticket_number}`);
+                alert(`🎉 ¡Felicidades! Has desbloqueado tu recompensa por desempeño: ${data.ticket_number}`);
                 if (typeof data.remaining_points === 'number') {
                     setPoints(data.remaining_points);
                 } else {
@@ -328,11 +328,11 @@ export default function Achievements() {
                     .order('created_at', { ascending: false });
                 if (ticketsData) setRaffleTickets(ticketsData);
             } else {
-                alert(data?.error || "No se pudo canjear el boleto");
+                alert(data?.error || "No se pudo canjear la recompensa");
             }
         } catch (err: any) {
-            console.error("Error exchanging ticket:", err);
-            alert("Error al canjear boleto: " + (err.message || 'Error inesperado'));
+            console.error("Error exchanging incentive:", err);
+            alert("Error al canjear la recompensa: " + (err.message || 'Error inesperado'));
         } finally {
             setExchangingTicket(false);
         }
@@ -393,10 +393,10 @@ export default function Achievements() {
                 <div className="relative z-10">
                     <div className="flex items-center gap-3 mb-2">
                         <Trophy className="w-8 h-8 text-amber-400" />
-                        <h2 className="text-3xl font-black text-white tracking-tight">Tus Logros y Reputación</h2>
+                        <h2 className="text-3xl font-black text-white tracking-tight">Metas e Incentivos para Conductores</h2>
                     </div>
                     <p className="text-amber-200/80 font-medium text-xs sm:text-sm">
-                        Monitorea tu calificación oficial, las opiniones de tus clientes y desbloquea bonos.
+                        Monitorea tu calificación oficial, opiniones de clientes y desbloquea bonos por mérito y rendimiento.
                     </p>
 
                     {/* Stats Summary Cards */}
@@ -482,8 +482,8 @@ export default function Achievements() {
                                 : 'text-slate-400 hover:text-white'
                         }`}
                     >
-                        <Ticket className="w-4 h-4" />
-                        <span>Sorteos ({raffleTickets.length})</span>
+                        <Gift className="w-4 h-4" />
+                        <span>Incentivos ({raffleTickets.length})</span>
                     </button>
                 </div>
             </div>
@@ -715,13 +715,8 @@ export default function Achievements() {
                             <div className="relative z-10 space-y-3">
                                 <div className="flex items-center justify-between gap-2 flex-wrap">
                                     <span className="px-3 py-1 bg-slate-950/20 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                        🎁 Gran Sorteo Oficial Activo
+                                        🎯 Meta e Incentivo por Desempeño
                                     </span>
-                                    {activeRaffle.sundde_permit && (
-                                        <span className="px-2.5 py-0.5 bg-slate-950 text-yellow-400 rounded-lg text-[9px] font-mono font-black uppercase">
-                                            SUNDDE: {activeRaffle.sundde_permit}
-                                        </span>
-                                    )}
                                 </div>
 
                                 <div>
@@ -736,19 +731,19 @@ export default function Achievements() {
                                 <div className="flex items-center gap-4 text-xs font-bold pt-2 border-t border-slate-950/15 flex-wrap">
                                     {activeRaffle.draw_date && (
                                         <div>
-                                            <span className="opacity-75 block text-[10px] uppercase">Fecha</span>
+                                            <span className="opacity-75 block text-[10px] uppercase">Válido hasta</span>
                                             <span>{new Date(activeRaffle.draw_date).toLocaleDateString()}</span>
                                         </div>
                                     )}
                                     {activeRaffle.event_time && (
                                         <div>
-                                            <span className="opacity-75 block text-[10px] uppercase">Hora</span>
+                                            <span className="opacity-75 block text-[10px] uppercase">Cierre</span>
                                             <span>{activeRaffle.event_time}</span>
                                         </div>
                                     )}
                                     {activeRaffle.event_location && (
                                         <div>
-                                            <span className="opacity-75 block text-[10px] uppercase">Lugar</span>
+                                            <span className="opacity-75 block text-[10px] uppercase">Zona</span>
                                             <span>{activeRaffle.event_location}</span>
                                         </div>
                                     )}
@@ -758,8 +753,8 @@ export default function Achievements() {
                     ) : (
                         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center">
                             <Gift className="w-10 h-10 text-amber-400/60 mx-auto mb-2" />
-                            <h4 className="font-bold text-white text-sm">Próximamente nuevo Gran Sorteo</h4>
-                            <p className="text-xs text-slate-400 mt-1">Sigue acumulando puntos con cada servicio completado.</p>
+                            <h4 className="font-bold text-white text-sm">Próximas Metas e Incentivos</h4>
+                            <p className="text-xs text-slate-400 mt-1">Completa 50 viajes este mes con calificación mayor a 4.8 y desbloquea Bono de $20 o descuento en comisión.</p>
                         </div>
                     )}
 
@@ -768,7 +763,7 @@ export default function Achievements() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
-                                    Billetera de Puntos
+                                    Billetera de Puntos de Conductor
                                 </span>
                                 <div className="flex items-baseline gap-1.5 mt-0.5">
                                     <span className="text-3xl font-black text-white">{points}</span>
@@ -778,15 +773,15 @@ export default function Achievements() {
 
                             <div className="text-right">
                                 <span className="px-2.5 py-1 bg-yellow-400/10 border border-yellow-400/30 text-yellow-300 rounded-xl text-[10px] font-black uppercase">
-                                    10 Pts = 1 Boleto
+                                    10 Pts = 1 Recompensa
                                 </span>
                             </div>
                         </div>
 
-                        {/* Progress to next ticket */}
+                        {/* Progress to next incentive */}
                         <div className="space-y-1.5">
                             <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-                                <span>Progreso hacia tu próximo boleto</span>
+                                <span>Progreso hacia tu próximo incentivo</span>
                                 <span>{points % 10} / 10 pts</span>
                             </div>
                             <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
@@ -801,23 +796,23 @@ export default function Achievements() {
                             type="button"
                             onClick={handleExchangeTicket}
                             disabled={points < 10 || exchangingTicket || !activeRaffle}
-                            className="w-full py-4 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black rounded-2xl shadow-lg shadow-amber-400/20 text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all"
+                            className="w-full py-4 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 active:scale-98 disabled:opacity-50 disabled:cursor-not-allowed text-slate-950 font-black rounded-2xl shadow-lg shadow-amber-400/20 text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer"
                         >
                             {exchangingTicket ? (
                                 <>
                                     <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Canjeando Boleto...</span>
+                                    <span>Desbloqueando Recompensa...</span>
                                 </>
                             ) : (
                                 <>
-                                    <Ticket className="w-4 h-4" />
-                                    <span>Canjear por Boleto de Sorteo (10 pts = 1 boleto)</span>
+                                    <Gift className="w-4 h-4" />
+                                    <span>Canjear por Recompensa / Bono por Desempeño (10 pts)</span>
                                 </>
                             )}
                         </button>
                         {points < 10 && (
                             <p className="text-[11px] text-center text-slate-400 font-medium">
-                                Te faltan {10 - (points % 10)} puntos para canjear tu próximo número de la suerte. Acumulas 1 punto por cada $1.00 USD cobrado.
+                                Te faltan {10 - (points % 10)} puntos para desbloquear tu próxima recompensa. Completa 50 viajes este mes con calificación mayor a 4.8 y desbloquea Bono de $20 o descuento en comisión.
                             </p>
                         )}
                     </div>
@@ -825,16 +820,16 @@ export default function Achievements() {
                     {/* User Tickets Wallet */}
                     <div className="space-y-3">
                         <h3 className="text-sm font-black text-slate-300 px-1 flex items-center gap-2">
-                            <Ticket className="w-4 h-4 text-amber-400" />
-                            Tus Boletos Registrados ({raffleTickets.length})
+                            <Gift className="w-4 h-4 text-amber-400" />
+                            Tus Recompensas e Incentivos Desbloqueados ({raffleTickets.length})
                         </h3>
 
                         {raffleTickets.length === 0 ? (
                             <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center space-y-2">
-                                <Ticket className="w-10 h-10 text-amber-400/40 mx-auto" />
-                                <h4 className="font-bold text-white text-sm">No tienes boletos canjeados todavía</h4>
+                                <Award className="w-10 h-10 text-amber-400/40 mx-auto" />
+                                <h4 className="font-bold text-white text-sm">No tienes incentivos desbloqueados todavía</h4>
                                 <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
-                                    Cada viaje o mandado completado suma puntos. Cuando alcances 10 puntos, pulsa el botón superior para canjear tu boleto numerado.
+                                    Cada viaje o mandado completado suma puntos. Cuando alcances 10 puntos, pulsa el botón superior para canjear tu bono por desempeño.
                                 </p>
                             </div>
                         ) : (
@@ -846,18 +841,18 @@ export default function Achievements() {
                                     >
                                         <div className="relative z-10">
                                             <span className="text-[9px] font-black uppercase text-amber-400/80 tracking-wider">
-                                                Boleto Oficial de Sorteo
+                                                Incentivo Oficial por Rendimiento
                                             </span>
                                             <p className="font-mono text-2xl font-black text-amber-300 tracking-wider mt-0.5">
                                                 {t.ticket_number}
                                             </p>
                                             <p className="text-[10px] text-slate-400 font-medium mt-1">
-                                                {t.raffles?.title || 'Gran Sorteo Un 2x3'} • {new Date(t.created_at).toLocaleDateString()}
+                                                {t.raffles?.title || 'Meta e Incentivo Un 2x3'} • {new Date(t.created_at).toLocaleDateString()}
                                             </p>
                                         </div>
                                         <div className="shrink-0 relative z-10">
                                             <span className="px-2.5 py-1 bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 rounded-xl text-[10px] font-black uppercase">
-                                                Activo
+                                                Desbloqueado
                                             </span>
                                         </div>
                                         <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-amber-400/10 rounded-full blur-lg pointer-events-none" />

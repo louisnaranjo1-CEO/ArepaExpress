@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'deliexpress.app',
-  appName: 'Un 2x3app',
+  appName: 'Un 2x3',
   webDir: 'dist',
   server: {
     androidScheme: 'https',

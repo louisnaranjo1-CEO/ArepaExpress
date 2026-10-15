@@ -9,6 +9,7 @@ import {
     Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink, Trash2, ShoppingBag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { compressImage } from '../utils/mediaCompressor';
 import { useCurrency } from '../context/CurrencyContext';
 import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
@@ -668,11 +669,12 @@ export default function TrackOrder() {
         try {
             let uploadedProofUrl: string | null = order.payment_proof_url || null;
 
-            // Subir comprobante a storage si se adjuntó archivo
+            // Subir comprobante a storage si se adjuntó archivo (comprimido en cliente)
             if (paymentProofFile) {
-                const ext = paymentProofFile.name.split('.').pop() || 'jpg';
+                const compressedProof = await compressImage(paymentProofFile);
+                const ext = (compressedProof instanceof File ? compressedProof.name : paymentProofFile.name).split('.').pop() || 'jpg';
                 const filePath = `payment_proofs/order_${orderId}_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, paymentProofFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedProof, { upsert: true });
                 if (!upErr) {
                     const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(filePath);
                     uploadedProofUrl = publicUrl;

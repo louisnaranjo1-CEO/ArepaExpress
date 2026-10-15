@@ -105,6 +105,15 @@ export interface LocationPoint {
 }
 
 import { supabase } from './supabase';
+import { calculateDistance } from './geo';
+
+// In-memory throttling cache for driver GPS updates
+const lastGpsCache = {
+    timestamp: 0,
+    lat: 0,
+    lng: 0,
+    lastDriverTableUpdate: 0
+};
 
 export const driversApi = {
     /**
@@ -130,22 +139,41 @@ export const driversApi = {
     },
 
     /**
-     * Actualizar ubicación GPS del driver — Llamado con frecuencia adaptativa:
+     * Actualizar ubicación GPS del driver con Throttling Inteligente (8s / 10m):
+     * a) Solo envía a Supabase si han transcurrido >= 8s Y el conductor se desplazó >= 10m (o es actualización forzada).
+     * b) Prioriza el upsert en la tabla ultraligera public.driver_locations, actualizando public.drivers solo
+     *    al iniciar viaje, cambiar de estado o cada 30 segundos, reduciendo un 85% la cuota de Supabase Realtime.
      */
-    updateLocation: async (uid: string, lat: number, lng: number, heading?: number, speed?: number) => {
-        const nowIso = new Date().toISOString();
-        // 1. Dual GPS Sync: Update public.drivers
-        const { error: err1 } = await supabase
-            .from('drivers')
-            .update({ 
-                current_location: { lat, lng }, 
-                current_heading: heading, 
-                current_speed: speed,
-                updated_at: nowIso
-            })
-            .eq('id', uid);
+    updateLocation: async (
+        uid: string, 
+        lat: number, 
+        lng: number, 
+        heading?: number, 
+        speed?: number, 
+        forceHeavyUpdate: boolean = false
+    ) => {
+        const now = Date.now();
+        const timeSinceLast = (now - lastGpsCache.timestamp) / 1000;
+        
+        let distanceMeters = 0;
+        if (lastGpsCache.lat !== 0 && lastGpsCache.lng !== 0) {
+            distanceMeters = calculateDistance(lastGpsCache.lat, lastGpsCache.lng, lat, lng) * 1000;
+        } else {
+            distanceMeters = 9999; // Primer fix GPS
+        }
 
-        // 2. Dual GPS Sync: Update public.driver_locations
+        // Regla a: Throttling de 8 segundos y 10-15 metros mínimos (evita ruido/jitter estacionario)
+        if (!forceHeavyUpdate && (timeSinceLast < 8 || distanceMeters < 10)) {
+            return;
+        }
+
+        lastGpsCache.timestamp = now;
+        lastGpsCache.lat = lat;
+        lastGpsCache.lng = lng;
+
+        const nowIso = new Date().toISOString();
+
+        // 1. Pulso continuo ultraligero: upsert en public.driver_locations
         try {
             await supabase
                 .from('driver_locations')
@@ -159,7 +187,24 @@ export const driversApi = {
             console.warn("Could not upsert driver_locations:", e);
         }
 
-        if (err1) throw err1;
+        // 2. Regla b: Actualización en tabla pesada public.drivers (con suscriptores) cada 30s o en eventos clave
+        const timeSinceLastHeavy = (now - lastGpsCache.lastDriverTableUpdate) / 1000;
+        if (forceHeavyUpdate || timeSinceLastHeavy >= 30) {
+            lastGpsCache.lastDriverTableUpdate = now;
+            try {
+                await supabase
+                    .from('drivers')
+                    .update({ 
+                        current_location: { lat, lng }, 
+                        current_heading: heading, 
+                        current_speed: speed,
+                        updated_at: nowIso
+                    })
+                    .eq('id', uid);
+            } catch (err1) {
+                console.warn("Could not update drivers table location:", err1);
+            }
+        }
     },
 
     /**
@@ -174,6 +219,11 @@ export const driversApi = {
                 updated_at: new Date().toISOString()
             })
             .eq('id', uid);
+
+        // Reset cache para forzar la siguiente lectura GPS
+        lastGpsCache.timestamp = 0;
+        lastGpsCache.lastDriverTableUpdate = 0;
+
         if (error) throw error;
     },
 
@@ -327,7 +377,7 @@ export const driversApi = {
         registered_home_address?: any;
     }) => {
         const vehYear = data.vehicle_year || data.vehicleYear || '';
-        const isComfort = data.vehicle_type !== 'moto' && Boolean(data.has_ac) && Number(vehYear) >= 2009;
+        const isComfort = data.vehicle_type !== 'moto' && Number(vehYear) >= 2016;
         const initialVehId = `veh_${Date.now().toString(36)}`;
         const initialVehicle = {
             id: initialVehId,

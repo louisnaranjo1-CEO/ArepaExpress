@@ -18,9 +18,9 @@ export default defineConfig(({ mode }) => {
         injectRegister: 'auto',
         includeAssets: ['favicon.png', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
         manifest: {
-          name: 'Deliexpress Caja',
+          name: 'Un 2x3 Caja',
           short_name: 'Caja',
-          description: 'Módulo de Facturación y Caja Deliexpress',
+          description: 'Módulo de Facturación y Caja Un 2x3',
           theme_color: '#0f172a',
           background_color: '#0f172a',
           display: 'standalone',

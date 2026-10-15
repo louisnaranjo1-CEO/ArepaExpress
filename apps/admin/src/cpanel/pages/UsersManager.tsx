@@ -323,22 +323,10 @@ export default function UsersManager() {
                 <div className="bg-white p-1 rounded-2xl border border-slate-200 shadow-sm flex items-center self-start overflow-x-auto w-full md:w-auto">
                     <button
                         onClick={() => setActiveTab('users')}
-                        className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'users' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+                        className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap bg-slate-900 text-white shadow-md`}
                     >
                         <User className="w-4 h-4" />
                         Lista de Usuarios
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('funds')}
-                        className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'funds' ? 'bg-slate-900 text-white shadow-md' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
-                    >
-                        <Wallet className="w-4 h-4" />
-                        Recargas
-                        {recharges.filter(r => r.status === 'pending').length > 0 && (
-                            <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-black">
-                                {recharges.filter(r => r.status === 'pending').length}
-                            </span>
-                        )}
                     </button>
                 </div>
 
@@ -686,21 +674,21 @@ export default function UsersManager() {
                                 </button>
                             </div>
 
-                            {/* Wallet and Stats Container */}
+                            {/* Stats Container */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                                 <div className="bg-slate-900 rounded-[32px] p-6 text-white shadow-xl">
                                     <div className="flex items-center gap-3 mb-4">
                                         <div className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-md border border-white/20">
-                                            <Wallet className="w-5 h-5 text-emerald-400" />
+                                            <ShoppingBag className="w-5 h-5 text-amber-400" />
                                         </div>
                                         <div>
-                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Balance Billetera</p>
-                                            <DualPrice usdAmount={selectedUser.walletBalance || 0} usdClassName="text-2xl font-black" showDivider={false} className="flex flex-col" />
+                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-400">Total Pedidos</p>
+                                            <p className="text-2xl font-black text-white">{selectedUser.ordersCount || 0}</p>
                                         </div>
                                     </div>
-                                    <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-bold text-slate-500">
-                                        <span>Solo para transporte</span>
-                                        <span className="text-emerald-400">Activa</span>
+                                    <div className="pt-4 border-t border-white/10 flex justify-between items-center text-[10px] font-bold text-slate-400">
+                                        <span>Estado de cuenta</span>
+                                        <span className="text-emerald-400 font-black">Activa</span>
                                     </div>
                                 </div>
                                 <div className="bg-slate-50 rounded-[32px] p-6 border border-slate-100">

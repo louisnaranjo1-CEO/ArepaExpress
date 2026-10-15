@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, User, Plus, Edit, ClipboardList, MapPin, Instagram, Youtube, Music2, ExternalLink, Star, MessageSquare, Bike, Bell, Truck, Search, Utensils, ShoppingCart, Trash2, Minus, ChevronDown, Check, History, AlertCircle, Receipt, Image as ImageIcon, Lock, Package } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { useBranding } from '../../context/BrandingContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import ProductTicker from '../components/ProductTicker';
 import ReviewsModal from '../components/ReviewsModal';
@@ -41,6 +42,7 @@ interface Order {
 
 export default function CashierDashboard() {
     const navigate = useNavigate();
+    const { branding } = useBranding();
     const [orders, setOrders] = useState<Order[]>([]);
     const [cashierData, setCashierData] = useState<any>(null);
     const [restaurantId, setRestaurantId] = useState<string | null>(null);
@@ -3000,7 +3002,7 @@ ESTADO: ${order.status.toUpperCase()}
             {selectedOrderForComanda && (
                 <ComandaPreview
                     order={selectedOrderForComanda as any}
-                    restaurantName={restaurant?.name || 'Deliexpress'}
+                    restaurantName={restaurant?.name || (branding.app_client_name || 'Un 2x3')}
                     onClose={() => setSelectedOrderForComanda(null)}
                     onPrint={async (orderToPrint) => {
                         await handlePrintOrder(orderToPrint.id, orderToPrint as any);

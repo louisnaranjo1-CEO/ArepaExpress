@@ -99,16 +99,16 @@ export default function Login() {
                     >
                         <img
                             src={branding.app_driver_logo || UN2X3_LOGO}
-                            alt="Logo Repartidor"
+                            alt={`${branding.app_client_name || 'Un 2x3'} Conductor`}
                             className="h-full object-contain drop-shadow-2xl"
                         />
                     </motion.div>
 
                     <h1 className="text-2xl font-black text-white text-center mb-2 tracking-tighter leading-tight px-4">
-                        ¿Llegas tan rapido como en un 2x3?
+                        ¿Llegas tan rápido como {branding.app_client_name ? `con ${branding.app_client_name}` : 'en un 2x3'}?
                     </h1>
                     <p className="text-slate-400 text-center text-sm font-medium px-4">
-                        Toma el control de tu tiempo y gana dinero entregando con Deliexpress.
+                        Toma el control de tu tiempo y gana dinero entregando con {branding.app_client_name || 'Un 2x3'}.
                     </p>
                 </div>
 
@@ -257,7 +257,7 @@ export default function Login() {
                 </button>
 
                 <p className="text-[10px] text-slate-600 font-bold text-center max-w-[280px] leading-relaxed">
-                    Al usar Deliexpress, confirmas que has leído y aceptas nuestros
+                    Al usar {branding.app_client_name || 'Un 2x3'}, confirmas que has leído y aceptas nuestros
                     <a href="#" className="underline text-slate-500 px-1">Términos de Servicio</a> y
                     <a href="#" className="underline text-slate-500 pl-1">Política de Privacidad</a>.
                 </p>

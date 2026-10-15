@@ -20,3 +20,6 @@ export { default as SplashScreen } from './components/SplashScreen';
 export { default as LiveTripMap } from './components/LiveTripMap';
 export { default as AddressPicker } from './components/AddressPicker';
 export { default as LockScreen } from './components/LockScreen';
+
+// Utilities
+export * from './utils/mediaCompressor';

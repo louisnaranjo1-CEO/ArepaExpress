@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { UN2X3_LOGO } from '../lib/env';
+import { useBranding } from '../context/BrandingContext';
 
 interface SplashScreenProps {
   onComplete: () => void;
@@ -7,6 +8,7 @@ interface SplashScreenProps {
 }
 
 export default function SplashScreen({ onComplete, isAuthLoading }: SplashScreenProps) {
+  const { branding } = useBranding();
   const [timerDone, setTimerDone] = useState(false);
   const [isFadingOut, setIsFadingOut] = useState(false);
 
@@ -30,6 +32,8 @@ export default function SplashScreen({ onComplete, isAuthLoading }: SplashScreen
     }
   }, [timerDone, isAuthLoading, onComplete]);
 
+  const splashLogo = branding.splash_screen_logo || branding.app_driver_logo || branding.app_client_logo || UN2X3_LOGO;
+
   return (
     <div 
       className={`fixed inset-0 z-[9999] flex items-center justify-center bg-white transition-opacity duration-500 ${isFadingOut ? 'opacity-0' : 'opacity-100'}`}
@@ -41,8 +45,8 @@ export default function SplashScreen({ onComplete, isAuthLoading }: SplashScreen
         {/* Logo Container with CSS animation from index.css */}
         <div className="relative w-64 h-64 flex items-center justify-center p-6 animate-scale-in">
           <img 
-            src={UN2X3_LOGO} 
-            alt="Arepa Express Official Logo" 
+            src={splashLogo} 
+            alt={branding.app_client_name || "Un 2x3"} 
             className="w-full h-full object-contain filter drop-shadow-xl"
           />
         </div>

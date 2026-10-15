@@ -19,6 +19,7 @@ import toast from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
 import { registerBiometric } from '../utils/security';
 import { useCurrency } from '../context/CurrencyContext';
+import { useBranding } from '../context/BrandingContext';
 import RideChat from '../components/RideChat';
 
 interface SupportTicket {
@@ -36,9 +37,9 @@ interface SupportTicket {
 
 interface ActivityItem {
     id: string;
-    type: 'order' | 'transport' | 'wallet_recharge';
+    type: 'order' | 'transport';
     total?: number;
-    amount?: number; // for recharges
+    amount?: number;
     status: string;
     createdAt: any;
     // Order specific
@@ -81,6 +82,7 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
 
 export default function Profile() {
     const { user, userData, setUserData, isProfileComplete, refreshUserData, setIsUnlocked } = useAuth();
+    const { branding } = useBranding();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [isSigningIn, setIsSigningIn] = useState(false);
@@ -147,9 +149,6 @@ export default function Profile() {
                 return { label: 'Taxi Confort VIP', emoji: '🚘', color: 'bg-indigo-100 text-indigo-900 border-indigo-300', tag: 'confort' };
             }
             return { label: 'Taxi Tradicional', emoji: '🚕', color: 'bg-yellow-100 text-yellow-900 border-yellow-300', tag: 'taxi' };
-        }
-        if (activity.type === 'wallet_recharge') {
-            return { label: 'Recarga de Saldo', emoji: '💳', color: 'bg-emerald-100 text-emerald-900 border-emerald-300', tag: 'wallet' };
         }
         return { label: activity.restaurantName || activity.restaurant_name ? `Pedido: ${activity.restaurantName || activity.restaurant_name}` : 'Pedido Comida / Tienda', emoji: '🛍️', color: 'bg-rose-100 text-rose-900 border-rose-300', tag: 'order' };
     };
@@ -319,12 +318,13 @@ export default function Profile() {
             setLoadingActivities(true);
             try {
                 const uid = user.id || user.uid;
-                // Fetch Orders
+                // Fetch Orders (capped to 50 most recent for fast profile load)
                 const { data: orderData } = await supabase
                     .from('orders')
                     .select('*')
                     .eq('user_id', uid)
-                    .order('created_at', { ascending: false });
+                    .order('created_at', { ascending: false })
+                    .limit(50);
 
                 const fetchedOrders = (orderData || []).map((data: any) => {
                     const restId = data.restaurant_id || data.restaurantId || (data.items && data.items.length > 0 ? (data.items[0].restaurant_id || data.items[0].restaurantId) : null);
@@ -336,12 +336,13 @@ export default function Profile() {
                     } as ActivityItem;
                 });
 
-                // Fetch Transports
+                // Fetch Transports (capped to 50 most recent)
                 const { data: transportData } = await supabase
                     .from('transport_requests')
                     .select('*')
                     .eq('user_id', uid)
-                    .order('created_at', { ascending: false });
+                    .order('created_at', { ascending: false })
+                    .limit(50);
 
                 const fetchedTransports = (transportData || []).map((data: any) => {
                     return {
@@ -351,23 +352,8 @@ export default function Profile() {
                     } as ActivityItem;
                 });
 
-                // Fetch Wallet Recharges
-                const { data: rechargeData } = await supabase
-                    .from('wallet_recharges')
-                    .select('*')
-                    .eq('user_id', uid)
-                    .order('created_at', { ascending: false });
-
-                const fetchedRecharges = (rechargeData || []).map((data: any) => {
-                    return {
-                        id: data.id,
-                        type: 'wallet_recharge',
-                        ...data
-                    } as ActivityItem;
-                });
-
                 // Combine and sort
-                const combined = [...fetchedOrders, ...fetchedTransports, ...fetchedRecharges].sort((a, b) => {
+                const combined = [...fetchedOrders, ...fetchedTransports].sort((a, b) => {
                     const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt instanceof Date ? a.createdAt.getTime() : 0));
                     const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt instanceof Date ? b.createdAt.getTime() : 0));
                     return timeB - timeA;
@@ -921,8 +907,8 @@ export default function Profile() {
                     className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
                 >
                     <img 
-                        src={UN2X3_LOGO} 
-                        alt="Deliexpress Logo"
+                        src={branding.app_client_logo || UN2X3_LOGO} 
+                        alt={`${branding.app_client_name || 'Un 2x3'} Logo`}
                         className="w-auto h-full object-contain filter drop-shadow-xl"
                     />
                 </div>
@@ -1254,7 +1240,7 @@ export default function Profile() {
                                     ¡Gana 200 puntos! 🎉
                                 </h3>
                                 <p className="text-slate-500 text-sm text-center mb-6 font-medium">
-                                    ¿Alguien te invitó a Deliexpress? Ingresa su código ahora y ambos recibirán puntos gratis.
+                                    ¿Alguien te invitó a {branding.app_client_name || 'Un 2x3'}? Ingresa su código ahora y ambos recibirán puntos gratis.
                                 </p>
 
                                 <div className="space-y-4">
@@ -1821,8 +1807,7 @@ export default function Profile() {
                                                 const actDate = activity.created_at ? new Date(activity.created_at) : (activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null));
                                                 const isTransport = activity.type === 'transport';
                                                 const isOrder = activity.type === 'order';
-                                                const isRecharge = activity.type === 'wallet_recharge';
-                                                const amountUsd = isRecharge ? (activity.amount || 0) : isTransport ? (parseFloat((activity as any).price || activity.fare || 0)) : (parseFloat(activity.total || 0) + parseFloat((activity as any).deliveryFee || (activity as any).delivery_fee || 0));
+                                                const amountUsd = isTransport ? (parseFloat((activity as any).price || activity.fare || 0)) : (parseFloat(activity.total || 0) + parseFloat((activity as any).deliveryFee || (activity as any).delivery_fee || 0));
                                                 const amountBs = bcvRate > 0 ? (amountUsd * bcvRate).toFixed(2) : null;
 
                                                 return (
@@ -2251,8 +2236,8 @@ export default function Profile() {
                     className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
-                    <img src={UN2X3_LOGO} alt="Deliexpress" className="h-12 mx-auto mb-2" />
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{clientFooterText}</p>
+                    <img src={branding.app_client_logo || UN2X3_LOGO} alt={branding.app_client_name || 'Un 2x3'} className="h-12 mx-auto mb-2" />
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{branding.client_footer_text || clientFooterText}</p>
                 </div>
             </div>
 
@@ -2723,7 +2708,7 @@ export default function Profile() {
                             <div>
                                 <h3 className="text-xl font-black text-slate-900">¿Eliminar tu cuenta?</h3>
                                 <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">
-                                    Esta acción es <span className="font-bold text-rose-600">permanente e irreversible</span>. Tu información de perfil, billetera, historial de pedidos y servicios de taxi se borrarán completamente de la base de datos.
+                                    Esta acción es <span className="font-bold text-rose-600">permanente e irreversible</span>. Tu información de perfil, historial de pedidos y servicios de taxi se borrarán completamente de la base de datos.
                                 </p>
                             </div>
 
@@ -2949,9 +2934,7 @@ export default function Profile() {
                             <div className="flex justify-between items-baseline">
                                 <span className="text-xs font-bold text-slate-600">Total en Divisa ($):</span>
                                 <span className="text-lg font-black text-slate-900">
-                                    ${(selectedDetailActivity.type === 'wallet_recharge'
-                                        ? (selectedDetailActivity.amount || 0)
-                                        : selectedDetailActivity.type === 'transport'
+                                    ${(selectedDetailActivity.type === 'transport'
                                         ? (parseFloat((selectedDetailActivity as any).price || selectedDetailActivity.fare || 0))
                                         : (parseFloat(selectedDetailActivity.total || 0) + parseFloat((selectedDetailActivity as any).deliveryFee || (selectedDetailActivity as any).delivery_fee || 0))
                                     ).toFixed(2)} USD
@@ -2962,9 +2945,7 @@ export default function Profile() {
                                     <span className="text-xs font-bold text-slate-600">Total en Bolívares (Bs):</span>
                                     <span className="text-base font-black text-amber-900">
                                         {(
-                                            (selectedDetailActivity.type === 'wallet_recharge'
-                                                ? (selectedDetailActivity.amount || 0)
-                                                : selectedDetailActivity.type === 'transport'
+                                            (selectedDetailActivity.type === 'transport'
                                                 ? (parseFloat((selectedDetailActivity as any).price || selectedDetailActivity.fare || 0))
                                                 : (parseFloat(selectedDetailActivity.total || 0) + parseFloat((selectedDetailActivity as any).deliveryFee || (selectedDetailActivity as any).delivery_fee || 0))
                                             ) * bcvRate

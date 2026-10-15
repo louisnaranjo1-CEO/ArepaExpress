@@ -3,9 +3,11 @@ import { Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
+import { useBranding } from '../../context/BrandingContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function WaiterLogin() {
+    const { branding } = useBranding();
     const [waiterEmail, setWaiterEmail] = useState('');
     const [waiterPassword, setWaiterPassword] = useState('');
     const [isWaiterSigningIn, setIsWaiterSigningIn] = useState(false);
@@ -71,15 +73,16 @@ export default function WaiterLogin() {
 
             <div className="w-full max-w-sm mx-auto z-10">
                 <div className="text-center mb-10 mt-safe">
-                    <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-slate-200/50 rotate-3 mb-6 overflow-hidden">
-                        <img src={UN2X3_LOGO} alt="Deliexpress" className="w-16 h-16 object-contain" onError={(e: any) => { e.target.src = '/icon-192.png'; }} />
-                        {/* Fallback pattern if logo fails */}
-                        <div className="absolute inset-0 flex items-center justify-center -rotate-3 -z-10 bg-slate-100 rounded-3xl overflow-hidden">
-                            <span className="font-black text-2xl text-slate-300">DE</span>
-                        </div>
+                    <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-slate-200/50 rotate-3 mb-6 overflow-hidden p-2">
+                        <img 
+                            src={branding.app_restaurant_logo || branding.app_client_logo || UN2X3_LOGO} 
+                            alt={branding.app_client_name || "Un 2x3"} 
+                            className="w-full h-full object-contain" 
+                            onError={(e: any) => { e.target.src = '/icon-192.png'; }} 
+                        />
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Acceso Personal</h1>
-                    <p className="font-bold text-slate-500 mt-2">Gestión de Pedidos Deliexpress</p>
+                    <p className="font-bold text-slate-500 mt-2">Gestión de Pedidos {branding.app_client_name || 'Un 2x3'}</p>
                 </div>
 
                 <motion.div
@@ -115,7 +118,7 @@ export default function WaiterLogin() {
                                 required
                                 value={waiterEmail}
                                 onChange={(e) => setWaiterEmail(e.target.value)}
-                                placeholder="mesero@deliexpress.app"
+                                placeholder="mesero@un2x3.app"
                                 className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all focus:bg-white"
                             />
                         </div>

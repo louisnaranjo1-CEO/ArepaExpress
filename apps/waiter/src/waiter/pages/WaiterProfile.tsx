@@ -4,8 +4,10 @@ import { supabase } from '../../lib/supabase';
 import WaiterLayout from '../components/WaiterLayout';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { useBranding } from '../../context/BrandingContext';
 
 export default function WaiterProfile() {
+    const { branding } = useBranding();
     const navigate = useNavigate();
     const [stats, setStats] = useState({
         day: { count: 0 },
@@ -162,7 +164,7 @@ export default function WaiterProfile() {
                 </div>
 
                 <p className="text-center text-[10px] font-black text-slate-300 uppercase tracking-[0.3em] pt-4">
-                    Deliexpress v1.0.4
+                    {branding.app_client_name || 'Un 2x3'} v1.0.4
                 </p>
             </main>
         </WaiterLayout>

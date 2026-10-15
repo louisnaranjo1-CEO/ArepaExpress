@@ -49,8 +49,20 @@ export default function LiquidationsManager() {
     const fetchDriversAndEarnings = async () => {
         try {
             const { data: driversData } = await supabase.from('drivers').select('*');
-            const { data: ordersData } = await supabase.from('orders').select('*').in('status', ['completed', 'delivered']);
-            const { data: transportData } = await supabase.from('transport_requests').select('*').eq('status', 'completed');
+            const { data: ordersData } = await supabase
+                .from('orders')
+                .select('*')
+                .in('status', ['completed', 'delivered'])
+                .or('delivery_paid.is.null,delivery_paid.eq.false')
+                .order('created_at', { ascending: false })
+                .limit(200);
+            const { data: transportData } = await supabase
+                .from('transport_requests')
+                .select('*')
+                .eq('status', 'completed')
+                .or('driver_paid.is.null,driver_paid.eq.false')
+                .order('created_at', { ascending: false })
+                .limit(200);
 
             const processedDrivers = (driversData || []).map((driver: any) => {
                 const driverOrders = (ordersData || []).filter((o: any) => 

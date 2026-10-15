@@ -3,9 +3,11 @@ import { useAuth } from '../context/AuthContext';
 import { verifyBiometric } from '../utils/security';
 import { supabase } from '../lib/supabase';
 import { UN2X3_LOGO } from '../lib/env';
+import { useBranding } from '../context/BrandingContext';
 import { Shield, Fingerprint, Lock, ChevronRight, AlertCircle, LogOut } from 'lucide-react';
 
 export default function LockScreen() {
+    const { branding } = useBranding();
     const { userData, setIsUnlocked } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -61,8 +63,8 @@ export default function LockScreen() {
                     <div className="absolute inset-0 bg-white/40 rounded-full blur-2xl group-hover:blur-3xl transition-all duration-500" />
                     <div className="relative w-48 h-48 flex items-center justify-center p-6 animate-scale-in">
                         <img 
-                            src={UN2X3_LOGO} 
-                            alt="Arepa Express Official Logo" 
+                            src={branding.app_restaurant_logo || branding.app_client_logo || UN2X3_LOGO} 
+                            alt={branding.app_client_name || "Un 2x3"} 
                             className="w-full h-full object-contain filter drop-shadow-xl"
                         />
                     </div>
@@ -101,7 +103,7 @@ export default function LockScreen() {
                 </button>
 
                 <div className="flex flex-col items-center gap-4 w-full">
-                    <p className="text-[10px] uppercase tracking-[0.3em] font-black text-slate-800/60">Powered by Deliexpress Biometrics</p>
+                    <p className="text-[10px] uppercase tracking-[0.3em] font-black text-slate-800/60">Powered by {branding.app_client_name || 'Un 2x3'} Biometrics</p>
                     
                     <button 
                         onClick={async () => {

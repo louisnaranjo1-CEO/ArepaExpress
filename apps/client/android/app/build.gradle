@@ -4,7 +4,7 @@ android {
     namespace = "com.arepaexpress.admin"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.arepaexpress.admin"
+        applicationId "deliexpress.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -247,7 +247,7 @@ export default function StoreCartDrawer({ isOpen, onClose, restaurant }: StoreCa
                 commission_amount: storeCommission,
                 delivery_method: deliveryMethod,
                 order_type: deliveryMethod,
-                status: 'pendiente_pago',
+                status: 'pending',
                 payment_status: 'pending',
                 notified: false,
                 delivery_address: addressStr,

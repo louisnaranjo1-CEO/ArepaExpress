@@ -89,11 +89,11 @@ export default function AdminAuth() {
                     >
                         <img 
                             src={branding.app_restaurant_logo} 
-                            alt="Logo Negocio" 
+                            alt={`${branding.app_client_name || 'Un 2x3'} Negocios`} 
                             className="h-full object-contain"
                         />
                     </div>
-                    <h1 className="text-3xl font-black text-black tracking-tight">Administra tu cuenta <span className="text-black">en un 2x3</span></h1>
+                    <h1 className="text-3xl font-black text-black tracking-tight">Administra tu negocio <span className="text-black">con {branding.app_client_name || 'Un 2x3'}</span></h1>
                     <p className="text-black/80 mt-2 font-bold">
                         {isLogin ? 'Ingresa para gestionar tu negocio' : 'Registra tu negocio y empieza a vender'}
                     </p>

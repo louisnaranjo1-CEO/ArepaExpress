@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Star, Gift, Store, Tag, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useBranding } from '../context/BrandingContext';
 
 interface RestaurantData {
     id: string;
@@ -18,6 +19,15 @@ interface RedeemableProduct {
     image?: string;
 }
 
+interface GlobalPrize {
+    id: string;
+    title: string;
+    description: string;
+    pointsRequired: number;
+    imageUrl: string;
+    isActive: boolean;
+}
+
 interface PointsModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -25,6 +35,8 @@ interface PointsModalProps {
 
 export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
     const { userData } = useAuth();
+    const [globalPrizes, setGlobalPrizes] = useState<GlobalPrize[]>([]);
+    const [loadingPrizes, setLoadingPrizes] = useState(false);
     
     // Using a record to map restaurant ID to its data and redeemable products
     const [restaurantInfo, setRestaurantInfo] = useState<Record<string, { data: RestaurantData, products: RedeemableProduct[] }>>({});
@@ -32,6 +44,33 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
 
     useEffect(() => {
         if (!isOpen) return;
+
+        const fetchPrizes = async () => {
+            setLoadingPrizes(true);
+            try {
+                const { data, error } = await supabase
+                    .from('global_prizes')
+                    .select('*')
+                    .eq('is_active', true);
+
+                if (!error && data) {
+                    const prizes: GlobalPrize[] = data.map((p: any) => ({
+                        id: p.id,
+                        title: p.title,
+                        description: p.description,
+                        pointsRequired: Number(p.points_required ?? p.pointsRequired ?? 0),
+                        imageUrl: p.image_url || p.imageUrl,
+                        isActive: p.is_active ?? p.isActive ?? true
+                    }));
+                    prizes.sort((a, b) => a.pointsRequired - b.pointsRequired);
+                    setGlobalPrizes(prizes);
+                }
+            } catch (error) {
+                console.error("Error fetching global prizes:", error);
+            } finally {
+                setLoadingPrizes(false);
+            }
+        };
 
         const fetchRestaurantData = async () => {
             if (!(userData as any)?.restaurantPoints) return;
@@ -89,9 +128,11 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
             }
         };
 
+        fetchPrizes();
         fetchRestaurantData();
     }, [isOpen, userData]);
 
+    const { branding } = useBranding();
     if (!isOpen) return null;
 
     const globalPoints = userData?.points || 0;
@@ -115,7 +156,7 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
                             </div>
                             <div>
                                 <h3 className="text-xl font-black text-slate-900 leading-tight">Centro de Recompensas</h3>
-                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Deliexpress Rewards</p>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">{branding.app_client_name || 'Un 2x3'} Rewards</p>
                             </div>
                         </div>
                         <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
@@ -131,15 +172,83 @@ export default function PointsModal({ isOpen, onClose }: PointsModalProps) {
                             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -translate-y-12 translate-x-12 blur-2xl"></div>
                             
                             <div className="relative z-10 flex flex-col items-center text-center">
-                                <span className="text-xs font-black uppercase tracking-widest text-white/80 mb-1">Tus DeliPuntos Globales</span>
+                                <span className="text-xs font-black uppercase tracking-widest text-white/80 mb-1">Tus Puntos {branding.app_client_name || 'Un 2x3'}</span>
                                 <div className="flex items-center gap-2">
                                     <Star className="w-8 h-8 fill-white text-white drop-shadow-sm" />
                                     <span className="text-5xl font-black">{globalPoints}</span>
                                 </div>
                                 <p className="text-sm font-medium text-white/90 mt-2">
-                                    Acumula puntos con tus compras y viajes en cualquier lugar y canjéalos en Sorteos Oficiales y comercios aliados.
+                                    Acumula puntos automáticamente con cada compra en comercios y cada viaje en Movilidad. Canjéalos directamente por premios y productos en comercios aliados.
                                 </p>
                             </div>
+                        </div>
+
+                        {/* Global Prizes Catalog */}
+                        <div className="space-y-3">
+                            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2 px-2">
+                                <Gift className="w-4 h-4 text-slate-900" />
+                                Catálogo de Premios y Canje Directo
+                            </h4>
+                            
+                            {loadingPrizes ? (
+                                <div className="flex justify-center py-6">
+                                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                </div>
+                            ) : globalPrizes.length > 0 ? (
+                                <div className="flex overflow-x-auto gap-4 pb-4 px-2 snap-x -mx-2 hide-scrollbar">
+                                    {globalPrizes.map((prize) => {
+                                        const canRedeem = globalPoints >= prize.pointsRequired;
+                                        const progressPercent = Math.min(100, Math.round((globalPoints / (prize.pointsRequired || 1)) * 100));
+                                        const missingPoints = Math.max(0, prize.pointsRequired - globalPoints);
+                                        return (
+                                            <div key={prize.id} className="min-w-[180px] max-w-[180px] bg-white border border-slate-100 rounded-2xl p-3 shrink-0 snap-center shadow-sm relative overflow-hidden flex flex-col justify-between">
+                                                <div>
+                                                    <div className="h-24 bg-slate-100 rounded-xl mb-3 overflow-hidden">
+                                                        {prize.imageUrl ? (
+                                                            <img src={prize.imageUrl} alt={prize.title} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                                                <Gift className="w-8 h-8" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    <h5 className="font-bold text-slate-800 text-sm leading-tight mb-1 line-clamp-2">{prize.title}</h5>
+                                                    
+                                                    <div className="flex items-center gap-1 mt-2">
+                                                        <Star className={`w-3.5 h-3.5 ${canRedeem ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}`} />
+                                                        <span className={`text-sm font-black ${canRedeem ? 'text-amber-600' : 'text-slate-600'}`}>
+                                                            {prize.pointsRequired} pts
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Progress bar */}
+                                                    <div className="mt-2 space-y-1">
+                                                        <div className="flex justify-between text-[10px] font-bold text-slate-400">
+                                                            <span>Progreso</span>
+                                                            <span>{progressPercent}%</span>
+                                                        </div>
+                                                        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                                            <div
+                                                                className={`h-full rounded-full transition-all duration-500 ${canRedeem ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                                                                style={{ width: `${progressPercent}%` }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <button 
+                                                    disabled={!canRedeem}
+                                                    className={`w-full mt-3 py-2 rounded-xl text-xs font-bold transition-colors ${
+                                                        canRedeem ? 'bg-emerald-500 text-white hover:bg-emerald-600 active:scale-95' : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                                                    }`}
+                                                >
+                                                    {canRedeem ? 'Canjear Premio' : `Faltan ${missingPoints} pts`}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : null}
                         </div>
 
                         {/* Restaurant Points */}

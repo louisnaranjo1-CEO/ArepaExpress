@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
+import { useBranding } from '../context/BrandingContext';
 import { supabase } from '../lib/supabase';
 import {
     Car,
@@ -49,6 +50,7 @@ import {
 } from '../lib/mapboxConfig';
 import { UN2X3_LOGO } from '../lib/env';
 import toast from 'react-hot-toast';
+import { compressImage } from '../utils/mediaCompressor';
 import { calculateDistance } from '../lib/geo';
 import { vibrate } from '../utils/haptics';
 import { isDemoMode } from '../lib/env';
@@ -154,6 +156,7 @@ const safeUUID = (): string => {
 
 export default function Taxi() {
     const { user, userData } = useAuth();
+    const { branding } = useBranding();
     const { bcvRate } = useCurrency();
     const navigate = useNavigate();
 
@@ -451,7 +454,7 @@ export default function Taxi() {
             const { data } = await supabase
                 .from('transport_bids')
                 .select('*')
-                .eq('transport_request_id', activeMandadoReqId)
+                .or(`transport_request_id.eq.${activeMandadoReqId},request_id.eq.${activeMandadoReqId}`)
                 .eq('status', 'pending')
                 .order('created_at', { ascending: false });
             if (data) setMandadoBids(data);
@@ -463,10 +466,12 @@ export default function Taxi() {
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
-                table: 'transport_bids',
-                filter: `transport_request_id=eq.${activeMandadoReqId}`
-            }, () => {
-                fetchBids();
+                table: 'transport_bids'
+            }, (payload: any) => {
+                const b = payload.new || payload.old;
+                if (!b || b.transport_request_id === activeMandadoReqId || b.request_id === activeMandadoReqId) {
+                    fetchBids();
+                }
             })
             .subscribe();
 
@@ -504,7 +509,7 @@ export default function Taxi() {
                     const methods = financeSnap.data?.paymentMethods || financeSnap.paymentMethods;
                     setPaymentMethods(methods || {
                         cash: { active: true },
-                        wallet: { active: true }
+                        pago_movil: { active: true }
                     });
                 }
             } catch (err) {
@@ -552,7 +557,7 @@ export default function Taxi() {
 
                     const rawType = (d.vehicle_type || 'carro').toLowerCase();
                     const activeVType: 'moto' | 'carro' = rawType.includes('moto') ? 'moto' : 'carro';
-                    const isActiveComfort = Boolean(d.is_comfort_eligible) || (activeVType === 'carro' && Boolean(d.has_ac) && Number(d.vehicle_year) >= 2009);
+                    const isActiveComfort = activeVType === 'carro' && Number(d.vehicle_year) >= 2016;
                     const eta = Math.max(2, Math.ceil(distKm * 3));
                     const photo = d.documents?.selfieUrl || d.photo_url || null;
                     const vehiclePhoto = d.vehicle_image_url || d.documents?.vehicleUrl || null;
@@ -606,7 +611,7 @@ export default function Taxi() {
                         if (!isThisActive) {
                             const rawVehType = (veh.type || 'carro').toLowerCase();
                             const vType: 'moto' | 'carro' = rawVehType.includes('moto') ? 'moto' : 'carro';
-                            const isComfort = (vType === 'carro' && Boolean(veh.has_ac) && Number(veh.year) >= 2009);
+                            const isComfort = (vType === 'carro' && Number(veh.year) >= 2016);
                             const vBrand = veh.brand || '';
                             const vModel = veh.model || (vType === 'moto' ? 'Motocicleta' : 'Automóvil');
                             const fullVModel = [vBrand, vModel].filter(Boolean).join(' ');
@@ -1218,7 +1223,7 @@ export default function Taxi() {
     const calculateDriverTripPrice = useCallback((driver: NearbyDriver, tripDistanceKm?: number, isComfortCategory = false): number => {
         const dist = tripDistanceKm !== undefined ? tripDistanceKm : (routeInfo ? routeInfo.distance : 1);
         const fares = driver.driverFares;
-        const isComfort = isComfortCategory || Boolean(driver.isComfortEligible) || (driver.hasAc && Number(driver.vehicleYear) >= 2009);
+        const isComfort = isComfortCategory || (driver.vehicleType === 'carro' && (Boolean(driver.isComfortEligible) || Number(driver.vehicleYear) >= 2016));
         const isNight = isNightTime();
 
         if (fares) {
@@ -1266,7 +1271,7 @@ export default function Taxi() {
             const isAvailable = (d as any).availability === 'active' || (d as any).availability === 'available' || (d as any).availability === undefined;
             if (!isAvailable) return false;
             if (cat === 'moto') return d.vehicleType === 'moto';
-            if (cat === 'ejecutivo') return d.vehicleType === 'carro' && (d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009));
+            if (cat === 'ejecutivo') return d.vehicleType === 'carro' && (Boolean(d.isComfortEligible) || Number(d.vehicleYear) >= 2016);
             return d.vehicleType === 'carro';
         });
 
@@ -1326,7 +1331,7 @@ export default function Taxi() {
             await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
             // 2. Rechazar otras pujas de esta solicitud
             await supabase.from('transport_bids').update({ status: 'rejected' })
-                .eq('transport_request_id', reqId)
+                .or(`transport_request_id.eq.${reqId},request_id.eq.${reqId}`)
                 .neq('id', bid.id);
             // 3. Asignar conductor al viaje
             const { error: updErr } = await supabase.from('transport_requests').update({
@@ -1395,10 +1400,11 @@ export default function Taxi() {
             // 2. Subir imagen de referencia si existe (con timeout preventivo de 3s)
             if (data.referenceFile) {
                 try {
-                    const ext = data.referenceFile.name.split('.').pop() || 'jpg';
+                    const compressedRef = await compressImage(data.referenceFile);
+                    const ext = (compressedRef instanceof File ? compressedRef.name : data.referenceFile.name).split('.').pop() || 'jpg';
                     const refPath = `mandados/references/${validUserId || 'guest'}_${Date.now()}.${ext}`;
-                    const uploadPromise = supabase.storage.from('store_assets').upload(refPath, data.referenceFile, {
-                        contentType: data.referenceFile.type || 'image/jpeg',
+                    const uploadPromise = supabase.storage.from('store_assets').upload(refPath, compressedRef, {
+                        contentType: (compressedRef instanceof File ? compressedRef.type : data.referenceFile.type) || 'image/jpeg',
                         upsert: true
                     });
                     const timeoutPromise = new Promise<any>((res) => setTimeout(() => res({ error: 'timeout' }), 3000));
@@ -1587,9 +1593,10 @@ export default function Taxi() {
 
             let proofUrl = '';
             if (paymentProof && selectedPaymentMethod === 'pago_movil') {
-                const ext = paymentProof.name.split('.').pop() || 'jpg';
+                const compressedProof = await compressImage(paymentProof);
+                const ext = (compressedProof instanceof File ? compressedProof.name : paymentProof.name).split('.').pop() || 'jpg';
                 const path = `taxi_proofs/${validUserId || 'guest'}/${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, paymentProof, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(path, compressedProof, { upsert: true });
                 if (!upErr) {
                     const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(path);
                     proofUrl = publicUrl;
@@ -1945,7 +1952,7 @@ export default function Taxi() {
                                                         </span>
                                                     )}
                                                     <span className="text-[10px] font-black text-emerald-400">
-                                                        Llega en ~{bid.eta_minutes || 15} min
+                                                        Llega en ~{bid.estimated_eta_minutes ?? bid.eta_minutes ?? 10} min
                                                     </span>
                                                 </div>
                                             </div>
@@ -1954,11 +1961,11 @@ export default function Taxi() {
                                         <div className="flex flex-col items-end shrink-0 gap-1.5">
                                             <div className="text-right">
                                                 <div className="text-xl font-black text-amber-400 leading-none">
-                                                    ${Number(bid.amount).toFixed(2)}
+                                                    ${Number(bid.offered_price ?? bid.amount ?? 0).toFixed(2)}
                                                 </div>
                                                 {bcvRate > 0 && (
                                                     <div className="text-[10px] font-bold text-slate-400">
-                                                        {(Number(bid.amount) * bcvRate).toFixed(0)} Bs
+                                                        {(Number(bid.offered_price ?? bid.amount ?? 0) * bcvRate).toFixed(0)} Bs
                                                     </div>
                                                 )}
                                             </div>
@@ -2033,7 +2040,7 @@ export default function Taxi() {
 
                     <h2 className="text-2xl font-black tracking-tight mb-2">Buscando conductor...</h2>
                     <p className="text-sm text-slate-400 max-w-xs font-medium leading-relaxed">
-                        Conectando con los conductores más cercanos a tu ubicación en Deliexpress Taxi.
+                        Conectando con los conductores más cercanos a tu ubicación en {branding.app_client_name || 'Un 2x3'} Taxi.
                     </p>
 
                     {routeInfo && (
@@ -2967,8 +2974,8 @@ export default function Taxi() {
                                                 <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center mb-1 shadow-xs">
                                                     <Sparkles className="w-4 h-4 text-amber-500" />
                                                 </div>
-                                                <span className={`text-[11px] font-black truncate max-w-full ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>Confort A/A</span>
-                                                <span className="text-[9px] text-amber-400 font-bold">Premium</span>
+                                                <span className={`text-[11px] font-black truncate max-w-full ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>Carro Confort</span>
+                                                <span className="text-[9px] text-amber-400 font-bold">≥ 2016</span>
                                                 <span className={`text-xs font-black mt-0.5 leading-tight ${selectedCategory === 'carro_confort' ? 'text-white' : 'text-slate-900'}`}>
                                                     {selectedDriver && selectedDriver.vehicleType === 'ejecutivo'
                                                         ? `$${calculateDriverTripPrice(selectedDriver).toFixed(2)}`
@@ -3766,7 +3773,7 @@ export default function Taxi() {
                                                 return d.vehicleType === 'moto';
                                             }
                                             if (isComfortCategory) {
-                                                return d.vehicleType === 'carro' && (d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009));
+                                                return d.vehicleType === 'carro' && (d.isComfortEligible || Number(d.vehicleYear) >= 2016);
                                             }
                                             if (selectedCategory === 'taxi_driver') {
                                                 return d.vehicleType === 'carro';
@@ -3859,11 +3866,15 @@ export default function Taxi() {
                                                                         ❄️ A/A
                                                                     </span>
                                                                 )}
-                                                                {(d.isComfortEligible || (d.hasAc && Number(d.vehicleYear) >= 2009)) && (
+                                                                {(d.vehicleType === 'carro' && (d.isComfortEligible || Number(d.vehicleYear) >= 2016)) ? (
                                                                     <span className="text-[9px] font-black bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded border border-amber-300">
-                                                                        ✨ Confort
+                                                                        ✨ Confort (≥ 2016)
                                                                     </span>
-                                                                )}
+                                                                ) : d.vehicleType === 'carro' ? (
+                                                                    <span className="text-[9px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded border border-slate-300">
+                                                                        🚕 Taxi Eco (&lt; 2016)
+                                                                    </span>
+                                                                ) : null}
                                                                 {d.hasThermalBag && (
                                                                     <span className="text-[9px] font-bold bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded border border-emerald-200">
                                                                         🎒 Bolso
@@ -4013,7 +4024,7 @@ export default function Taxi() {
                                             </div>
                                             <p className="text-xs font-black text-slate-800">Conductor 5★ Verificado</p>
                                             <p className="text-[11px] text-slate-500 font-medium">
-                                                Perfil activo y verificado por Deliexpress sin reportes negativos.
+                                                Perfil activo y verificado por {branding.app_client_name || 'Un 2x3'} sin reportes negativos.
                                             </p>
                                         </div>
                                     ) : (

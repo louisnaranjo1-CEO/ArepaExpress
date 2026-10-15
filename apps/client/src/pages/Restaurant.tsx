@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase';
 import { Restaurant, Product } from '../lib/seed';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useBranding } from '../context/BrandingContext';
 import { recommendationsService } from '../lib/recommendations';
 import toast from 'react-hot-toast';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
@@ -124,6 +125,7 @@ export default function RestaurantPage() {
   const [showHoursModal, setShowHoursModal] = useState(false);
   const [casheaIcon, setCasheaIcon] = useState<string | null>(null);
   const { user, userData } = useAuth();
+  const { branding } = useBranding();
 
   const handleShare = () => {
     const referralCode = localStorage.getItem('referralCode') || user?.uid?.slice(0, 6).toUpperCase() || 'INVITE';
@@ -131,8 +133,8 @@ export default function RestaurantPage() {
 
     if (navigator.share) {
       navigator.share({
-        title: `Mira este sitio en Deliexpress`,
-        text: `Te recomiendo ${restaurant?.name}. Regístrate con mi código y participa en sorteos.`,
+        title: `Mira este sitio en ${branding.app_client_name || 'Un 2x3'}`,
+        text: `Te recomiendo ${restaurant?.name}. Regístrate con mi código y gana recompensas y puntos.`,
         url: shareUrl,
       }).catch(console.error);
     } else {
@@ -1305,13 +1307,13 @@ export default function RestaurantPage() {
                       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
                       className="bg-orange-500 text-white px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.3em] shadow-[0_10px_20px_-5px_rgba(249,115,22,0.5)] flex items-center gap-2"
                     >
-                      <Sparkles className="w-3.5 h-3.5" /> Sorteo en curso
+                      <Sparkles className="w-3.5 h-3.5" /> Recompensa de Fidelización
                     </motion.div>
                   </div>
 
                   {restaurant.activeRaffle.image && (
                     <div className="w-full aspect-[16/9] md:aspect-[21/9] rounded-[2.5rem] overflow-hidden mb-8 shadow-2xl border-2 border-white/10 group-hover:scale-[1.02] transition-transform duration-700 ease-out">
-                      <img src={restaurant.activeRaffle.image} loading="lazy" decoding="async" className="w-full h-full object-cover transform scale-105 group-hover:scale-110 transition-transform duration-[2s]" alt="Sorteo" />
+                      <img src={restaurant.activeRaffle.image} loading="lazy" decoding="async" className="w-full h-full object-cover transform scale-105 group-hover:scale-110 transition-transform duration-[2s]" alt="Premio y Recompensa" />
                     </div>
                   )}
 

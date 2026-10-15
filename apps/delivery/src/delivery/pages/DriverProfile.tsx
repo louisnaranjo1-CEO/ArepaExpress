@@ -10,10 +10,13 @@ import AddressPicker from '../../components/AddressPicker';
 import { registerBiometric } from '../../utils/security';
 import { driversApi } from '../../lib/api';
 import { supabase } from '../../lib/supabase';
+import { useBranding } from '../../context/BrandingContext';
 import { sendAppNotification, playDriverAlertSound } from '../../services/nativeNotificationService';
+import { compressImage } from '../../utils/mediaCompressor';
 
 export default function DriverProfile() {
     const { user, userData } = useAuth();
+    const { branding } = useBranding();
     const navigate = useNavigate();
     const isIOS = Capacitor.getPlatform() === 'ios' || (typeof navigator !== 'undefined' && /iPhone|iPad|iPod/i.test(navigator.userAgent));
     const [activeView, setActiveView] = useState<'profile' | 'settings' | 'update_data' | 'location' | 'payment_method' | 'guidelines' | 'payout_frequency' | 'comfort_features' | 'my_vehicles'>('profile');
@@ -22,7 +25,7 @@ export default function DriverProfile() {
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
     const [updatingLocation, setUpdatingLocation] = useState(false);
     const [activeRaffle, setActiveRaffle] = useState<any>(null);
-    const [footerText, setFooterText] = useState('Deliexpress Driver v2.0 · Estilo Yango');
+    const [footerText, setFooterText] = useState(() => branding.driver_footer_text || `${branding.app_client_name || 'Un 2x3'} Driver v2.0`);
     const [warningModalConfig, setWarningModalConfig] = useState<{
         title: string;
         description: string;
@@ -68,9 +71,10 @@ export default function DriverProfile() {
         if (!user || !file) return;
         setUploadingDirectPhoto(true);
         try {
-            const ext = file.name.split('.').pop() || 'jpg';
+            const compressedFile = await compressImage(file);
+            const ext = (compressedFile instanceof File ? compressedFile.name : file.name).split('.').pop() || 'jpg';
             const filePath = `delivery_docs/${user.uid}/selfie_${Date.now()}.${ext}`;
-            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedFile, { upsert: true });
             if (upErr) throw upErr;
 
             const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
@@ -352,9 +356,10 @@ export default function DriverProfile() {
 
         setUploadingVehicle(true);
         try {
-            const ext = file.name.split('.').pop() || 'jpg';
+            const compressedFile = await compressImage(file);
+            const ext = (compressedFile instanceof File ? compressedFile.name : file.name).split('.').pop() || 'jpg';
             const filePath = `delivery_docs/${user.uid}/vehicle_${Date.now()}.${ext}`;
-            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedFile, { upsert: true });
             if (upErr) throw upErr;
 
             const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
@@ -458,7 +463,7 @@ export default function DriverProfile() {
         if (!user) return;
         setLoading(true);
         try {
-            const isComfort = veh.type !== 'moto' && Boolean(veh.has_ac) && Number(veh.year) >= 2009;
+            const isComfort = veh.type !== 'moto' && Number(veh.year) >= 2016;
             const currentList = registeredVehicles.length > 0 ? registeredVehicles : (driverProfile?.registered_vehicles || []);
             const updatedList = currentList.map((v: any) => ({
                 ...v,
@@ -548,9 +553,10 @@ export default function DriverProfile() {
         if (!file || !user) return;
         setUploadingNewVehPhoto(true);
         try {
-            const ext = file.name.split('.').pop() || 'jpg';
+            const compressedFile = await compressImage(file);
+            const ext = (compressedFile instanceof File ? compressedFile.name : file.name).split('.').pop() || 'jpg';
             const filePath = `delivery_docs/${user.uid}/new_vehicle_${Date.now()}.${ext}`;
-            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedFile, { upsert: true });
             if (upErr) throw upErr;
 
             const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
@@ -648,9 +654,10 @@ export default function DriverProfile() {
         if (!file || !user) return;
         setUploadingEditVehPhoto(true);
         try {
-            const ext = file.name.split('.').pop() || 'jpg';
+            const compressedFile = await compressImage(file);
+            const ext = (compressedFile instanceof File ? compressedFile.name : file.name).split('.').pop() || 'jpg';
             const filePath = `delivery_docs/${user.uid}/veh_edit_${Date.now()}.${ext}`;
-            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, file, { upsert: true });
+            const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedFile, { upsert: true });
             if (upErr) throw upErr;
             const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
             setEditVehicleForm(prev => ({ ...prev, photoUrl: pubData.publicUrl }));
@@ -686,7 +693,7 @@ export default function DriverProfile() {
                 photo_url: editingVehicle.photo_url || ''
             };
 
-            const isComfort = editingVehicle.type !== 'moto' && Boolean(editVehicleForm.hasAc) && Number(editVehicleForm.year) >= 2009;
+            const isComfort = editingVehicle.type !== 'moto' && Number(editVehicleForm.year) >= 2016;
 
             const newData = {
                 brand: editVehicleForm.brand.trim(),
@@ -999,9 +1006,10 @@ export default function DriverProfile() {
 
             // Upload Selfie
             if (selfieFile) {
-                const ext = selfieFile.name.split('.').pop() || 'jpg';
+                const compressedSelfie = await compressImage(selfieFile);
+                const ext = (compressedSelfie instanceof File ? compressedSelfie.name : selfieFile.name).split('.').pop() || 'jpg';
                 const filePath = `delivery_docs/${user.uid}/selfie_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, selfieFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedSelfie, { upsert: true });
                 if (!upErr) {
                     const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
                     documents.selfieUrl = pubData.publicUrl;
@@ -1011,9 +1019,10 @@ export default function DriverProfile() {
 
             // Upload License
             if (licenseFile) {
-                const ext = licenseFile.name.split('.').pop() || 'jpg';
+                const compressedLicense = await compressImage(licenseFile);
+                const ext = (compressedLicense instanceof File ? compressedLicense.name : licenseFile.name).split('.').pop() || 'jpg';
                 const filePath = `delivery_docs/${user.uid}/license_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, licenseFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedLicense, { upsert: true });
                 if (!upErr) {
                     const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
                     documents.licenseUrl = pubData.publicUrl;
@@ -1022,9 +1031,10 @@ export default function DriverProfile() {
 
             // Upload Vehicle Photo
             if (vehicleFile) {
-                const ext = vehicleFile.name.split('.').pop() || 'jpg';
+                const compressedVehicle = await compressImage(vehicleFile);
+                const ext = (compressedVehicle instanceof File ? compressedVehicle.name : vehicleFile.name).split('.').pop() || 'jpg';
                 const filePath = `delivery_docs/${user.uid}/vehicle_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, vehicleFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedVehicle, { upsert: true });
                 if (!upErr) {
                     const { data: pubData } = supabase.storage.from('store_assets').getPublicUrl(filePath);
                     documents.vehicleUrl = pubData.publicUrl;
@@ -2934,24 +2944,24 @@ export default function DriverProfile() {
                 </div>
             </div>
 
-            {/* Active Raffle Promo Card */}
+            {/* Active Incentive Promo Card */}
             {activeRaffle && (
                 <div className="bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 rounded-[28px] p-5 text-slate-950 shadow-lg relative overflow-hidden flex items-center justify-between gap-4">
                     <div className="relative z-10">
                         <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-slate-950/20 rounded-full text-[10px] font-black uppercase tracking-wider mb-1">
-                            <span>🎁</span> Gran Sorteo Activo
+                            <span>🎯</span> Metas e Incentivos Activos
                         </div>
                         <h4 className="text-base font-black leading-tight">{activeRaffle.title}</h4>
                         <p className="text-xs font-semibold opacity-90 mt-0.5">
-                            Canjea tus puntos por boletos en la sección de Logros.
+                            Alcanza metas de viajes y canjea tus puntos por bonos o descuentos en comisiones.
                         </p>
                     </div>
                     <button
                         type="button"
                         onClick={() => navigate('/achievements')}
-                        className="shrink-0 px-4 py-2.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all relative z-10"
+                        className="shrink-0 px-4 py-2.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-xl shadow-md transition-all relative z-10 cursor-pointer"
                     >
-                        Ver Boletos
+                        Ver Metas
                     </button>
                     <div className="absolute -right-6 -bottom-6 w-28 h-28 bg-white/20 rounded-full blur-xl pointer-events-none" />
                 </div>
@@ -3038,11 +3048,15 @@ export default function DriverProfile() {
                             ❄️ Aire Acondicionado (A/A)
                         </span>
                     )}
-                    {(driverProfile?.is_comfort_eligible || (driverProfile?.vehicleType !== 'moto' && driverProfile?.hasAc && Number(driverProfile?.vehicleYear || driverProfile?.vehicle_year) >= 2009)) && (
+                    {(driverProfile?.vehicleType !== 'moto' && Number(driverProfile?.vehicleYear || driverProfile?.vehicle_year) >= 2016) ? (
                         <span className="bg-amber-100 text-amber-900 font-black px-2 py-1 rounded-lg border border-amber-300">
-                            ✨ Taxi Confort Elegible
+                            ✨ Taxi Confort Elegible (≥ 2016)
                         </span>
-                    )}
+                    ) : driverProfile?.vehicleType !== 'moto' ? (
+                        <span className="bg-slate-100 text-slate-700 font-bold px-2 py-1 rounded-lg border border-slate-300">
+                            🚕 Taxi Eco / Económico (&lt; 2016)
+                        </span>
+                    ) : null}
                     {driverProfile?.has_thermal_bag && (
                         <span className="bg-emerald-50 text-emerald-700 font-bold px-2 py-1 rounded-lg border border-emerald-200">
                             🎒 Bolso Térmico

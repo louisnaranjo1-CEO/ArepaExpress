@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { MapPin, Navigation, X, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useBranding } from '../context/BrandingContext';
 
 interface LocationRequiredModalProps {
     isOpen: boolean;
@@ -15,6 +16,7 @@ export default function LocationRequiredModal({
     title = "Ubicación Requerida", 
     description = "Para poder brindarte un servicio preciso de transporte o delivery, necesitamos acceder a tu ubicación en tiempo real." 
 }: LocationRequiredModalProps) {
+    const { branding } = useBranding();
     const navigate = useNavigate();
 
     const handleGoToSettings = () => {
@@ -94,7 +96,7 @@ export default function LocationRequiredModal({
                         {/* Privacy Footer */}
                         <div className="px-8 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-center gap-2">
                             <Navigation className="w-4 h-4 text-gray-400" />
-                            <span className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Seguridad Arepa Express</span>
+                            <span className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Seguridad {branding.app_client_name || 'Un 2x3'}</span>
                         </div>
                     </motion.div>
                 </div>

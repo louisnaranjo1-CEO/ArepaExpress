@@ -57,6 +57,17 @@ export const registerBiometric = async (userId: string, userEmail: string): Prom
   }
 };
 
+const getAppName = (): string => {
+  try {
+    const cached = localStorage.getItem('un2x3_app_branding_cache');
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed?.app_client_name) return parsed.app_client_name;
+    }
+  } catch (e) {}
+  return 'Un 2x3';
+};
+
 export const verifyBiometric = async (): Promise<boolean> => {
   try {
     const support = await isBiometricSupported();
@@ -65,8 +76,9 @@ export const verifyBiometric = async (): Promise<boolean> => {
     }
 
     const isIos = isIosDevice();
+    const appName = getAppName();
     await NativeBiometric.verifyIdentity({
-      reason: isIos ? "Ingresar con Face ID a Arepa Express" : "Ingresar a Arepa Express",
+      reason: isIos ? `Ingresar con Face ID a ${appName}` : `Ingresar a ${appName}`,
       title: isIos ? "Face ID" : "Autenticación Biométrica",
       subtitle: isIos ? "Confirma tu rostro con Face ID para ingresar" : "Usa tu huella o rostro para ingresar",
       description: isIos ? "Mira a la cámara para acceder" : "Por favor, verifica tu identidad",

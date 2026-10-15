@@ -7,6 +7,7 @@ import MergeTransferModal from '../components/MergeTransferModal';
 import SplitBillModal from '../components/SplitBillModal';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
+import { useBranding } from '../../context/BrandingContext';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -27,6 +28,7 @@ interface TableCardProps {
 }
 
 export default function WaiterDashboard() {
+    const { branding } = useBranding();
     const [activeFilter, setActiveFilter] = useState('Todos');
     const [searchQuery, setSearchQuery] = useState('');
     const [tables, setTables] = useState<Table[]>([]);
@@ -481,9 +483,14 @@ export default function WaiterDashboard() {
                             <div className="flex items-center justify-between mb-10">
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm p-2 overflow-hidden">
-                                        <img src={UN2X3_LOGO} alt="Logo" className="w-full h-full object-contain" onError={(e: any) => { e.target.src = '/icon-192.png'; }} />
+                                        <img 
+                                            src={branding.app_restaurant_logo || branding.app_client_logo || UN2X3_LOGO} 
+                                            alt={branding.app_client_name || "Un 2x3"} 
+                                            className="w-full h-full object-contain" 
+                                            onError={(e: any) => { e.target.src = '/icon-192.png'; }} 
+                                        />
                                     </div>
-                                    <span className="font-black text-slate-800 text-xl">Deliexpress</span>
+                                    <span className="font-black text-slate-800 text-xl">{branding.app_client_name || 'Un 2x3'}</span>
                                 </div>
                                 <button onClick={() => setShowSidebar(false)} className="p-2 rounded-xl bg-slate-50 text-slate-400">
                                     <X className="w-6 h-6" />

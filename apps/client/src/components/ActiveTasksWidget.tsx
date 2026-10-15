@@ -221,15 +221,17 @@ export default function ActiveTasksWidget() {
                 const { data: bidsData } = await supabase
                     .from('transport_bids')
                     .select('*')
-                    .in('transport_request_id', mandadoReqIds)
+                    .or(`transport_request_id.in.(${mandadoReqIds.join(',')}),request_id.in.(${mandadoReqIds.join(',')})`)
                     .eq('status', 'pending')
                     .order('created_at', { ascending: false });
 
                 (bidsData || []).forEach((b: any) => {
-                    if (!bidsMap[b.transport_request_id]) bidsMap[b.transport_request_id] = [];
-                    bidsMap[b.transport_request_id].push({
+                    const reqKey = b.transport_request_id || b.request_id;
+                    if (!reqKey) return;
+                    if (!bidsMap[reqKey]) bidsMap[reqKey] = [];
+                    bidsMap[reqKey].push({
                         id: b.id,
-                        transport_request_id: b.transport_request_id,
+                        transport_request_id: reqKey,
                         driver_id: b.driver_id,
                         driver_name: b.driver_name || 'Conductor',
                         driver_photo: b.driver_photo,
@@ -244,8 +246,8 @@ export default function ActiveTasksWidget() {
                         has_thermal_bag: Boolean(b.has_thermal_bag),
                         driver_payment_info: b.driver_payment_info || null,
                         driver_rating: b.driver_rating ? Number(b.driver_rating) : 5.0,
-                        amount: Number(b.amount || 0),
-                        eta_minutes: b.eta_minutes || 15,
+                        amount: Number(b.offered_price ?? b.amount ?? 0),
+                        eta_minutes: b.estimated_eta_minutes ?? b.eta_minutes ?? 10,
                         status: b.status
                     });
                 });
@@ -564,7 +566,7 @@ export default function ActiveTasksWidget() {
             await supabase
                 .from('transport_bids')
                 .update({ status: 'rejected' })
-                .eq('transport_request_id', taskId)
+                .or(`transport_request_id.eq.${taskId},request_id.eq.${taskId}`)
                 .neq('id', bid.id);
 
             // 3. Assign driver to the request
@@ -655,7 +657,7 @@ export default function ActiveTasksWidget() {
                 await supabase
                     .from('transport_bids')
                     .delete()
-                    .eq('transport_request_id', taskToCancel.id);
+                    .or(`transport_request_id.eq.${taskToCancel.id},request_id.eq.${taskToCancel.id}`);
 
                 localStorage.removeItem('active_transport_req_id');
             } else {

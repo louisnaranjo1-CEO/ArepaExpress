@@ -82,7 +82,8 @@ export default function TransportRequests() {
             const { data, error } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(100);
 
             if (!error && data) {
                 const mapped = data.map(d => ({

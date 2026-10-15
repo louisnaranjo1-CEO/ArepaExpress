@@ -33,7 +33,7 @@ createRoot(document.getElementById('root')!).render(
     <ErrorBoundary>
       <AuthProvider>
         <CurrencyProvider>
-          <BrandingProvider>
+          <BrandingProvider appType="delivery">
             <App />
           </BrandingProvider>
         </CurrencyProvider>

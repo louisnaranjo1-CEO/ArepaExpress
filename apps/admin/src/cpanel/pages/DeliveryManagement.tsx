@@ -797,8 +797,17 @@ _Enviado desde Deliexpress App_`,
                                                 </div>
                                                 <div className="bg-slate-50 p-2 rounded-lg">
                                                     <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Vehículo</span>
-                                                    <span className="font-bold text-slate-700 capitalize">
-                                                        {driver.vehicleType} {driver.vehicleBrand ? `(${driver.vehicleBrand} ${driver.vehicleModel || ''} ${driver.vehicleYear || ''})` : ''}
+                                                    <span className="font-bold text-slate-700 capitalize flex items-center gap-1.5 flex-wrap">
+                                                        <span>{driver.vehicleType} {driver.vehicleBrand ? `(${driver.vehicleBrand} ${driver.vehicleModel || ''} ${driver.vehicleYear || ''})` : ''}</span>
+                                                        {driver.vehicleType !== 'moto' && (
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                                                                Number(driver.vehicleYear) >= 2016 
+                                                                    ? 'bg-amber-100 text-amber-900 border border-amber-300' 
+                                                                    : 'bg-slate-100 text-slate-700 border border-slate-300'
+                                                            }`}>
+                                                                {Number(driver.vehicleYear) >= 2016 ? 'Confort (≥ 2016)' : 'Económico (< 2016)'}
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 </div>
                                             </div>
@@ -956,8 +965,19 @@ _Enviado desde Deliexpress App_`,
                                             <p className="text-xs text-slate-500">{driver.email}</p>
                                         </td>
                                         <td className="p-4">
-                                            <p className="font-bold text-slate-700 capitalize">{driver.vehicleType}</p>
-                                            <p className="text-xs text-slate-500 uppercase">{driver.vehiclePlate || 'N/A'}</p>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <p className="font-bold text-slate-700 capitalize">{driver.vehicleType}</p>
+                                                {driver.vehicleType !== 'moto' && (
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
+                                                        Number(driver.vehicleYear) >= 2016 
+                                                            ? 'bg-amber-100 text-amber-900 border border-amber-300' 
+                                                            : 'bg-slate-100 text-slate-700 border border-slate-300'
+                                                    }`}>
+                                                        {Number(driver.vehicleYear) >= 2016 ? 'Confort (≥ 2016)' : 'Económico (< 2016)'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500 uppercase">{driver.vehiclePlate || 'N/A'}{driver.vehicleYear ? ` • ${driver.vehicleYear}` : ''}</p>
                                         </td>
                                         <td className="p-4">
                                             <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
@@ -2040,9 +2060,13 @@ _Enviado desde Deliexpress App_`,
                                                                     ❄️ A/A
                                                                 </span>
                                                             )}
-                                                            {veh.is_comfort && (
-                                                                <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 font-bold text-[9px] rounded">
-                                                                    ✨ Confort
+                                                            {veh.type !== 'moto' && (
+                                                                <span className={`px-1.5 py-0.5 font-bold text-[9px] rounded ${
+                                                                    Number(veh.year) >= 2016 
+                                                                        ? 'bg-amber-200 text-amber-900' 
+                                                                        : 'bg-slate-100 text-slate-700'
+                                                                }`}>
+                                                                    {Number(veh.year) >= 2016 ? '✨ Confort (≥ 2016)' : '🚕 Económico (< 2016)'}
                                                                 </span>
                                                             )}
                                                             {veh.has_thermal_bag && (

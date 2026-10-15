@@ -52,10 +52,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [userData, setUserData] = useState<UserData | null>(null);
     const [loading, setLoading] = useState(true);
     const [isUnlocked, setIsUnlocked] = useState(true);
+    const [sessionTerminated, setSessionTerminated] = useState(false);
     const locationWatchId = useRef<string | null>(null);
+
+    // Unique device session token for this admin instance
+    const getDeviceId = () => {
+        let id = localStorage.getItem('un2x3_admin_device_id');
+        if (!id) {
+            id = 'adm_' + Math.random().toString(36).substring(2, 12) + '_' + Date.now().toString(36);
+            localStorage.setItem('un2x3_admin_device_id', id);
+        }
+        return id;
+    };
 
     useEffect(() => {
         let channel: any = null;
+        const currentDeviceId = getDeviceId();
 
         const fetchSession = async () => {
             const { data: { session } } = await supabase.auth.getSession();
@@ -65,6 +77,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const handleUser = async (sbUser: User | null) => {
             setUser(sbUser);
             if (sbUser) {
+                // Register/Update this admin device session specifically for 'admin' app
+                try {
+                    await supabase.rpc('update_app_session', {
+                        p_user_id: sbUser.id,
+                        p_app_type: 'admin',
+                        p_device_id: currentDeviceId
+                    });
+                } catch (err) {
+                    console.error("Error registering admin device session:", err);
+                }
+
                 // Fetch profile
                 const { data, error } = await supabase
                     .from('profiles')
@@ -81,13 +104,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     } as UserData);
                 }
 
-                // Subscribe to profile changes
-                channel = supabase.channel('public:profiles')
+                // Subscribe to profile changes for single device enforcement on 'admin' app
+                channel = supabase.channel(`public:profiles:${sbUser.id}`)
                     .on(
                         'postgres_changes',
                         { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${sbUser.id}` },
-                        (payload) => {
+                        async (payload) => {
                             const updated = payload.new as any;
+                            const adminSession = updated.active_sessions?.admin;
+                            // Check if a new device session took over specifically in the admin app
+                            if (adminSession && adminSession !== currentDeviceId) {
+                                console.warn("Admin session evicted by another device login in admin app");
+                                setSessionTerminated(true);
+                                await supabase.auth.signOut();
+                                setUser(null);
+                                setUserData(null);
+                                return;
+                            }
+
                             setUserData((prev) => ({
                                 ...prev,
                                 ...updated,
@@ -108,6 +142,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const { data: authListener } = supabase.auth.onAuthStateChange(
             async (event, session) => {
+                if (event === 'SIGNED_OUT') {
+                    setUser(null);
+                    setUserData(null);
+                    setLoading(false);
+                    return;
+                }
                 handleUser(session?.user ?? null);
             }
         );
@@ -167,6 +207,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return (
         <AuthContext.Provider value={{ user, userData, loading, isProfileComplete, isUnlocked, setIsUnlocked, currentLocation }}>
             {children}
+            {sessionTerminated && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md">
+                    <div className="bg-white rounded-[32px] w-full max-w-sm p-8 text-center shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900 mb-2">Sesión iniciada en otro equipo</h3>
+                        <p className="text-sm text-slate-500 mb-6 font-medium leading-relaxed">
+                            Tu cuenta de administrador se acaba de abrir en otro dispositivo. Por seguridad del sistema, esta sesión ha sido cerrada.
+                        </p>
+                        <button
+                            onClick={() => {
+                                setSessionTerminated(false);
+                                window.location.reload();
+                            }}
+                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black shadow-lg shadow-primary/30"
+                        >
+                            Entendido
+                        </button>
+                    </div>
+                </div>
+            )}
         </AuthContext.Provider>
     );
 };

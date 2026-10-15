@@ -259,7 +259,7 @@ export default function RafflesManager() {
             setRaffles(mapped);
         } catch (error) {
             console.error("Error fetching raffles:", error);
-            toast.error("Error al cargar sorteos");
+            toast.error("Error al cargar metas y recompensas");
         } finally {
             setLoading(false);
         }
@@ -318,12 +318,12 @@ export default function RafflesManager() {
         }
 
         if (newRaffle.scope === 'regional' && !newRaffle.targetState) {
-            toast.error("Selecciona el estado para el sorteo");
+            toast.error("Selecciona el estado para la meta");
             return;
         }
 
         if (newRaffle.scope === 'local' && (!newRaffle.targetState || !newRaffle.targetCity)) {
-            toast.error("Selecciona el estado y la ciudad para el sorteo local");
+            toast.error("Selecciona el estado y la ciudad para la meta local");
             return;
         }
 
@@ -361,7 +361,7 @@ export default function RafflesManager() {
             const { error } = await supabase.from(collectionName).insert([payload]);
             if (error) throw error;
 
-            toast.success("Sorteo creado exitosamente");
+            toast.success("Meta / Recompensa creada exitosamente");
             setShowAddModal(false);
             fetchRaffles();
             setNewRaffle({
@@ -382,18 +382,18 @@ export default function RafflesManager() {
             });
         } catch (error) {
             console.error("Error creating raffle:", error);
-            toast.error("Error al crear el sorteo");
+            toast.error("Error al crear la meta");
         }
     };
 
     const handleDeleteRaffle = async (id: string) => {
-        if (!window.confirm("¿Eliminar este sorteo?")) return;
+        if (!window.confirm("¿Eliminar esta meta o recompensa?")) return;
         try {
             const collectionName = activeTab === 'clients' ? 'raffles' : 'driver_raffles';
             const { error } = await supabase.from(collectionName).delete().eq('id', id);
             if (error) throw error;
 
-            toast.success("Sorteo eliminado");
+            toast.success("Campaña de fidelización eliminada");
             fetchRaffles();
         } catch (error) {
             toast.error("Error al eliminar");
@@ -641,11 +641,11 @@ export default function RafflesManager() {
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
                     <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-                        <Ticket className="w-8 h-8 text-primary" />
-                        Sorteos y Rifas Oficiales
+                        <Award className="w-8 h-8 text-primary" />
+                        Gestión de Premios, Retos y Fidelización
                     </h1>
                     <p className="text-slate-500 font-medium mt-1">
-                        Gestión con permisología SUNDDE, múltiples premios y Modo Presentación Ruleta En Vivo
+                        Gestión de metas alcanzables, reconocimiento por mérito y adjudicación oficial para clientes y pilotos
                     </p>
                 </div>
                 
@@ -673,7 +673,7 @@ export default function RafflesManager() {
                         onClick={() => setShowAddModal(true)}
                         className="bg-primary text-slate-900 px-5 py-2.5 rounded-2xl font-black text-xs shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 cursor-pointer"
                     >
-                        <Plus className="w-4 h-4" /> Nuevo Sorteo
+                        <Plus className="w-4 h-4" /> Nueva Meta / Premio
                     </button>
                 </div>
             </div>
@@ -685,9 +685,9 @@ export default function RafflesManager() {
                     </div>
                 ) : raffles.length === 0 ? (
                     <div className="col-span-full p-16 text-center bg-white rounded-[2.5rem] border-2 border-dashed border-slate-200">
-                        <Ticket className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-                        <h3 className="text-lg font-black text-slate-700 mb-1">No hay sorteos programados</h3>
-                        <p className="text-slate-400 font-bold text-sm">Crea tu primer sorteo con premios y permiso SUNDDE</p>
+                        <Award className="w-16 h-16 text-slate-200 mx-auto mb-4" />
+                        <h3 className="text-lg font-black text-slate-700 mb-1">No hay metas o premios programados</h3>
+                        <p className="text-slate-400 font-bold text-sm">Crea tu primera meta de fidelización o incentivo para clientes y pilotos</p>
                     </div>
                 ) : (
                     raffles.map((raffle) => (
@@ -705,7 +705,7 @@ export default function RafflesManager() {
                                         <button 
                                             onClick={() => handleDeleteRaffle(raffle.id)} 
                                             className="p-2 text-slate-300 hover:text-red-500 rounded-xl transition-all cursor-pointer"
-                                            title="Eliminar Sorteo"
+                                            title="Eliminar Meta / Premio"
                                         >
                                             <Trash2 className="w-4 h-4" />
                                         </button>
@@ -714,13 +714,6 @@ export default function RafflesManager() {
 
                                 <h3 className="text-xl font-black text-slate-900 mb-1 leading-snug">{raffle.title}</h3>
                                 <p className="text-xs text-slate-500 font-medium mb-4 line-clamp-2 leading-relaxed">{raffle.description}</p>
-
-                                {raffle.sunddePermit && (
-                                    <div className="mb-4 inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200/60 rounded-xl text-[10px] font-black text-amber-800">
-                                        <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-                                        {raffle.sunddePermit}
-                                    </div>
-                                )}
 
                                 <div className="space-y-2.5 mb-6 flex-1">
                                     <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-3">
@@ -739,7 +732,7 @@ export default function RafflesManager() {
                                     <div className="bg-slate-50 p-3 rounded-2xl flex items-center gap-3">
                                         <Calendar className="w-5 h-5 text-primary shrink-0" />
                                         <div>
-                                            <p className="text-[10px] text-slate-400 font-black uppercase leading-none mb-1">Fecha y Hora</p>
+                                            <p className="text-[10px] text-slate-400 font-black uppercase leading-none mb-1">Cierre de Meta</p>
                                             <p className="text-sm font-black text-slate-800">
                                                 {raffle.drawDate} {raffle.eventTime ? `• ${raffle.eventTime}` : ''}
                                             </p>
@@ -748,9 +741,9 @@ export default function RafflesManager() {
 
                                     {activeTab === 'drivers' && (
                                         <div className="bg-emerald-50 border border-emerald-100 p-3 rounded-2xl flex items-center gap-3">
-                                            <Ticket className="w-5 h-5 text-emerald-500 shrink-0" />
+                                            <Award className="w-5 h-5 text-emerald-500 shrink-0" />
                                             <div>
-                                                <p className="text-[10px] text-emerald-600/70 font-black uppercase leading-none mb-1">Costo (Puntos)</p>
+                                                <p className="text-[10px] text-emerald-600/70 font-black uppercase leading-none mb-1">Puntos Requeridos</p>
                                                 <p className="text-sm font-black text-emerald-700">{raffle.pointsCost} pts</p>
                                             </div>
                                         </div>
@@ -760,7 +753,7 @@ export default function RafflesManager() {
                                         <div className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-2xl flex items-center gap-2.5">
                                             <Trophy className="w-4 h-4 text-amber-600 shrink-0" />
                                             <p className="text-xs font-black text-amber-900 truncate">
-                                                Ganador: {raffle.winners[raffle.winners.length - 1].name} ({raffle.winners[raffle.winners.length - 1].ticketNumber})
+                                                Premiado: {raffle.winners[raffle.winners.length - 1].name} ({raffle.winners[raffle.winners.length - 1].ticketNumber})
                                             </p>
                                         </div>
                                     )}
@@ -772,7 +765,7 @@ export default function RafflesManager() {
                                     className="w-full bg-[#0B0F19] text-amber-400 border border-amber-400/30 hover:border-amber-400 py-3.5 rounded-2xl font-black text-xs flex items-center justify-center gap-2 hover:bg-black transition-all cursor-pointer shadow-md group/btn"
                                 >
                                     <Play className="w-4 h-4 fill-amber-400 text-amber-400 group-hover/btn:scale-110 transition-transform" />
-                                    Modo Presentación (Ruleta 60s)
+                                    Premiar por Cumplimiento de Meta / Top Ranking
                                 </button>
                             </div>
 
@@ -787,14 +780,14 @@ export default function RafflesManager() {
                 )}
             </div>
 
-            {/* Modal para añadir sorteo con campos SUNDDE y Multi-Premios */}
+            {/* Modal para añadir meta / recompensa oficial con Multi-Premios */}
             {showAddModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
                     <div className="bg-white rounded-[2.5rem] w-full max-w-xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 my-8">
                         <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center justify-between">
                             <div>
-                                <h3 className="text-2xl font-black text-slate-900">Nuevo Sorteo Oficial</h3>
-                                <p className="text-xs text-slate-500 font-bold mt-0.5">Configuración de premios y permisología legal</p>
+                                <h3 className="text-2xl font-black text-slate-900">Nueva Meta / Recompensa Oficial</h3>
+                                <p className="text-xs text-slate-500 font-bold mt-0.5">Configuración de premios y sistema de fidelización por mérito</p>
                             </div>
                             <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-all cursor-pointer">
                                 <X className="w-5 h-5 text-slate-400" />
@@ -803,10 +796,10 @@ export default function RafflesManager() {
 
                         <div className="p-6 sm:p-8 space-y-4 max-h-[75vh] overflow-y-auto">
                             <div className="space-y-1">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Título del Sorteo</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Título de la Meta o Recompensa</label>
                                 <input
                                     type="text"
-                                    placeholder="Ej: Gran Sorteo Navideño 2x3"
+                                    placeholder="Ej: Gran Meta de Fidelización 2x3"
                                     value={newRaffle.title}
                                     onChange={(e) => setNewRaffle({ ...newRaffle, title: e.target.value })}
                                     className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800"
@@ -817,39 +810,27 @@ export default function RafflesManager() {
                                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Descripción</label>
                                 <textarea
                                     rows={2}
-                                    placeholder="Detalles de la dinámica, condiciones de participación..."
+                                    placeholder="Detalles de la meta, condiciones de calificación por mérito..."
                                     value={newRaffle.description}
                                     onChange={(e) => setNewRaffle({ ...newRaffle, description: e.target.value })}
                                     className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-2.5 rounded-2xl outline-none font-bold text-sm text-slate-800 resize-none"
                                 />
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Permiso SUNDDE</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Ej: SUNDDE/DAJ/2026/0491"
-                                        value={newRaffle.sunddePermit}
-                                        onChange={(e) => setNewRaffle({ ...newRaffle, sunddePermit: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Transmisión / Lugar</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Ej: Instagram Live @un2x3"
-                                        value={newRaffle.eventLocation}
-                                        onChange={(e) => setNewRaffle({ ...newRaffle, eventLocation: e.target.value })}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800"
-                                    />
-                                </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Canal Informativo / Lugar de Entrega</label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: Entrega en Sede Principal / En vivo @un2x3"
+                                    value={newRaffle.eventLocation}
+                                    onChange={(e) => setNewRaffle({ ...newRaffle, eventLocation: e.target.value })}
+                                    className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-sm text-slate-800"
+                                />
                             </div>
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fecha del Evento</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Fecha de Cierre de Meta</label>
                                     <input
                                         type="date"
                                         value={newRaffle.drawDate}
@@ -858,7 +839,7 @@ export default function RafflesManager() {
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Hora del Evento</label>
+                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Hora de Cierre</label>
                                     <input
                                         type="text"
                                         placeholder="Ej: 08:00 PM"
@@ -971,18 +952,18 @@ export default function RafflesManager() {
 
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-emerald-600 uppercase tracking-widest ml-1 flex items-center gap-1.5">
-                                    <Award className="w-3.5 h-3.5" /> Costo en Puntos por Ticket
+                                    <Award className="w-3.5 h-3.5" /> Puntos Requeridos para la Meta
                                 </label>
                                 <input
                                     type="number"
                                     min="0"
                                     value={newRaffle.pointsCost || ''}
                                     onChange={(e) => setNewRaffle({ ...newRaffle, pointsCost: Number(e.target.value) })}
-                                    placeholder="Ej: 10 (10 puntos = 1 ticket)"
+                                    placeholder="Ej: 50 (50 puntos para calificar)"
                                     className="w-full bg-emerald-50 text-emerald-900 border-2 border-emerald-100 focus:border-emerald-500 px-4 py-3 rounded-2xl outline-none font-bold text-sm placeholder:text-emerald-300"
                                 />
                                 <p className="text-[10px] text-slate-400 ml-1">
-                                    Define la cantidad de puntos que cuesta canjear 1 ticket para este sorteo. Si es 0, no requiere puntos.
+                                    Puntos acumulados necesarios para canjear o calificar al premio. Si es 0, aplica por ranking directo.
                                 </p>
                             </div>
 
@@ -991,7 +972,7 @@ export default function RafflesManager() {
                                 <div className="flex items-center justify-between">
                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
                                         <Trophy className="w-3.5 h-3.5 text-amber-500" />
-                                        Premios del Sorteo
+                                        Premios de la Meta
                                     </label>
                                     <button
                                         type="button"
@@ -1081,7 +1062,7 @@ export default function RafflesManager() {
                                 onClick={handleAddRaffle}
                                 className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-black text-sm shadow-xl shadow-primary/20 hover:scale-[1.02] active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer mt-4"
                             >
-                                <Save className="w-5 h-5" /> Guardar y Publicar Sorteo
+                                <Save className="w-5 h-5" /> Guardar y Publicar Meta
                             </button>
                         </div>
                     </div>
@@ -1115,12 +1096,10 @@ export default function RafflesManager() {
                         </div>
 
                         <div className="flex items-center gap-4">
-                            {presentationRaffle.sunddePermit && (
-                                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/15 rounded-xl text-xs font-black text-amber-300">
-                                    <ShieldCheck className="w-4 h-4 text-amber-400" />
-                                    {presentationRaffle.sunddePermit}
-                                </div>
-                            )}
+                            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-white/5 border border-white/15 rounded-xl text-xs font-black text-emerald-300">
+                                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                                Fidelización por Mérito Directo
+                            </div>
 
                             <button
                                 onClick={() => setSoundEnabled(!soundEnabled)}
@@ -1156,7 +1135,7 @@ export default function RafflesManager() {
                                 <div className="text-center mb-8 relative z-10">
                                     <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-amber-500/10 border border-amber-500/30 rounded-full text-xs font-black text-amber-300 uppercase tracking-widest mb-3">
                                         <Award className="w-4 h-4 text-amber-400" />
-                                        Sorteando: {activePrize.place ? `${activePrize.place}° Lugar` : 'Premio Oficial'}
+                                        Adjudicando: {activePrize.place ? `${activePrize.place}° Lugar` : 'Premio Oficial'}
                                     </div>
                                     <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight drop-shadow-md">
                                         {activePrize.title}
@@ -1199,15 +1178,15 @@ export default function RafflesManager() {
                         {/* STEP 1: IDLE STAGE */}
                         {presentationStep === 'idle' && (
                             <div className="flex flex-col items-center text-center space-y-8 relative z-10">
-                                {/* Giant Roulette Drum Preview */}
+                                {/* Giant Recognition Drum Preview */}
                                 <div className="relative w-64 h-64 sm:w-80 sm:h-80 rounded-full border-4 border-amber-400/40 bg-gradient-to-b from-white/10 to-transparent flex flex-col items-center justify-center p-6 shadow-2xl shadow-amber-500/10">
                                     <div className="absolute inset-0 rounded-full border-2 border-dashed border-amber-400/20 animate-spin" style={{ animationDuration: '40s' }} />
-                                    <Ticket className="w-16 h-16 sm:w-20 sm:h-20 text-amber-400 mb-2 animate-bounce" />
+                                    <Trophy className="w-16 h-16 sm:w-20 sm:h-20 text-amber-400 mb-2 animate-bounce" />
                                     <p className="text-3xl sm:text-4xl font-black text-white">
                                         {ticketsPool.length > 0 ? ticketsPool.length : '1,420'}
                                     </p>
                                     <p className="text-xs font-black uppercase tracking-widest text-amber-300">
-                                        Tickets en la Ruleta
+                                        Participantes con Meta Cumplida
                                     </p>
                                 </div>
 
@@ -1217,10 +1196,10 @@ export default function RafflesManager() {
                                         className="bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 px-10 py-5 rounded-3xl font-black text-xl shadow-2xl shadow-amber-400/40 hover:scale-105 active:scale-95 transition-all flex items-center justify-center gap-3 cursor-pointer"
                                     >
                                         <Play className="w-7 h-7 fill-slate-950" />
-                                        INICIAR RULETA DE LA SUERTE (60s)
+                                        ADJUDICAR PREMIO POR MÉRITO / TOP RANKING
                                     </button>
                                     <p className="text-xs text-white/50 font-bold uppercase tracking-widest">
-                                        60 segundos de tensión con verificación aleatoria y certificación SUNDDE
+                                        Cálculo de líderes de actividad, puntuación y metas cumplidas
                                     </p>
                                 </div>
                             </div>
@@ -1250,7 +1229,7 @@ export default function RafflesManager() {
                                 {/* Rapidly spinning ticket number and participant */}
                                 <div className="bg-white/5 border-2 border-amber-400/50 rounded-3xl p-8 w-full shadow-2xl backdrop-blur-xl space-y-3">
                                     <span className="text-xs font-black uppercase tracking-[0.3em] text-amber-300 animate-pulse block">
-                                        RULETA EN MOVIMIENTO
+                                        CALCULANDO LÍDER DE METAS Y PUNTOS
                                     </span>
                                     <div className="text-5xl sm:text-6xl font-black text-white font-mono tracking-wider drop-shadow-lg scale-105 transition-transform">
                                         {displayTicket}
@@ -1275,10 +1254,10 @@ export default function RafflesManager() {
                         {presentationStep === 'winner' && winner && (
                             <div className="flex flex-col items-center text-center space-y-6 relative z-10 w-full max-w-xl animate-in zoom-in-95 duration-500">
                                 <div className="inline-flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 rounded-full font-black text-sm uppercase tracking-widest shadow-xl shadow-amber-400/30 animate-bounce">
-                                    <Sparkles className="w-4 h-4" /> ¡TENEMOS UN GANADOR OFICIAL! <Sparkles className="w-4 h-4" />
+                                    <Sparkles className="w-4 h-4" /> ¡GANADOR POR MÉRITO / TOP RANKING! <Sparkles className="w-4 h-4" />
                                 </div>
 
-                                {/* Golden Ticket Card */}
+                                {/* Golden Merit Card */}
                                 <div className="bg-gradient-to-b from-[#161F30] to-[#0D1424] border-2 border-amber-400 rounded-[2.5rem] p-8 w-full shadow-2xl relative overflow-hidden">
                                     {/* Gold stamp badge */}
                                     <div className="absolute top-4 right-4 bg-amber-400/10 border border-amber-400/40 text-amber-300 px-3 py-1 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
@@ -1286,9 +1265,9 @@ export default function RafflesManager() {
                                         CERTIFICADO
                                     </div>
 
-                                    {/* Big Winning Ticket Number */}
+                                    {/* Big Winning Code / Ticket Number */}
                                     <div className="mb-6">
-                                        <p className="text-[11px] font-black text-amber-400 uppercase tracking-widest mb-1">TICKET GANADOR</p>
+                                        <p className="text-[11px] font-black text-amber-400 uppercase tracking-widest mb-1">CÓDIGO DE IDENTIFICACIÓN / PUNTOS</p>
                                         <div className="text-6xl sm:text-7xl font-black text-amber-300 font-mono tracking-widest drop-shadow-[0_0_25px_rgba(251,191,36,0.5)]">
                                             {winner.ticketNumber}
                                         </div>
@@ -1364,7 +1343,7 @@ export default function RafflesManager() {
                                             className="flex-1 bg-gradient-to-r from-amber-400 to-yellow-300 text-slate-950 py-4 rounded-2xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xl shadow-amber-400/30 hover:scale-[1.02]"
                                         >
                                             <CheckCircle className="w-4 h-4" />
-                                            Finalizar Sorteo
+                                            Finalizar Adjudicación
                                         </button>
                                     )}
                                 </div>
@@ -1372,11 +1351,10 @@ export default function RafflesManager() {
                         )}
                     </main>
 
-                    {/* Bottom Legal / SUNDDE Footer */}
+                    {/* Bottom Legal Footer */}
                     <footer className="p-4 border-t border-white/10 bg-[#0B0F19]/80 backdrop-blur-sm text-center shrink-0">
                         <p className="text-[11px] font-bold text-white/50 tracking-wider">
-                            {presentationRaffle.sunddePermit ? `Sorteo autorizado bajo permisología oficial ${presentationRaffle.sunddePermit}. ` : ''}
-                            Sistema de Ruleta Criptográfica Certificada Un 2x3 • Todos los derechos reservados © {new Date().getFullYear()}
+                            Sistema Oficial de Reconocimiento y Recompensas por Mérito Un 2x3 • Todos los derechos reservados © {new Date().getFullYear()}
                         </p>
                     </footer>
                 </div>

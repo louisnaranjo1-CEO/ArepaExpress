@@ -330,7 +330,7 @@ export default function VerificationModal({
                                 type="text"
                                 value={businessName}
                                 onChange={(e) => setBusinessName(e.target.value)}
-                                placeholder="Ej: Arepa Express Gourmet"
+                                placeholder="Ej: Burger Express Gourmet"
                                 className="w-full bg-slate-50 border border-slate-200 focus:border-primary focus:bg-white p-3.5 rounded-2xl outline-none font-bold text-sm text-slate-800 transition-all"
                             />
                         </div>

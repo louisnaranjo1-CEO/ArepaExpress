@@ -204,7 +204,8 @@ export default function RideChat({
                     .from('messages')
                     .select('*')
                     .or(`chat_path.eq.${chatPath},order_id.eq.${requestId}`)
-                    .order('created_at', { ascending: true });
+                    .order('created_at', { ascending: true })
+                    .limit(100);
 
                 if (error) throw error;
                 if (data) {

@@ -3,6 +3,7 @@ import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
+import { useBranding } from '../../context/BrandingContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
@@ -71,6 +72,7 @@ interface Order {
 
 export default function Orders() {
     const { user, userData } = useAuth();
+    const { branding } = useBranding();
     const rid = userData?.managedRestaurantId || user?.uid;
     const [activeTab, setActiveTab] = useState<'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected' | 'tables'>('pending');
     const [orders, setOrders] = useState<Order[]>([]);
@@ -433,16 +435,32 @@ export default function Orders() {
     const fetchOrders = async () => {
         if (!rid) return;
         try {
-            const { data, error } = await supabase
+            // 1. Pedidos activos del restaurante en curso (sin límite restrictivo para seguimiento en tiempo real)
+            const { data: activeData, error: activeErr } = await supabase
                 .from('orders')
                 .select('*')
                 .eq('restaurant_id', rid)
+                .not('status', 'in', '("completed","cancelled","cancelled_by_client","cancelled_by_store","rejected")')
                 .order('created_at', { ascending: false });
 
-            if (error) {
-                console.error("Error fetching orders:", error);
+            // 2. Historial de pedidos completados/cancelados (limitado a 50 para alto rendimiento)
+            const { data: historyData, error: historyErr } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .in('status', ['completed', 'cancelled', 'cancelled_by_client', 'cancelled_by_store', 'rejected'])
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (activeErr && historyErr) {
+                console.error("Error fetching orders:", activeErr || historyErr);
                 return;
             }
+
+            const combinedMap = new Map<string, any>();
+            (activeData || []).forEach(o => combinedMap.set(o.id, o));
+            (historyData || []).forEach(o => combinedMap.set(o.id, o));
+            const data = Array.from(combinedMap.values()).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
             const items: Order[] = (data || []).map((o: any) => ({
                 id: o.id,
@@ -2053,7 +2071,7 @@ export default function Orders() {
                                 </span>
                             </div>
                             <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-primary transition-colors">
-                                {order.userName || 'Usuario de Deliexpress'}
+                                {order.userName || `Usuario de ${branding.app_client_name || 'Un 2x3'}`}
                             </h3>
                             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500 font-bold">
                                 {order.clientDNI && (
@@ -2117,7 +2135,7 @@ export default function Orders() {
                             </span>
                         )}
                     </div>
-                    <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || `Usuario de ${branding.app_client_name || 'Un 2x3'}`}</h3>
                     <div className="flex flex-wrap items-center gap-2 mt-0.5">
                         <p className="text-xs text-slate-400 font-bold flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5" />
@@ -4270,7 +4288,7 @@ export default function Orders() {
             {selectedOrderForComanda && (
                 <ComandaPreview
                     order={selectedOrderForComanda}
-                    restaurantName={restaurantConfig?.name || 'Deliexpress'}
+                    restaurantName={restaurantConfig?.name || (branding.app_client_name || 'Un 2x3')}
                     onClose={() => setSelectedOrderForComanda(null)}
                     onPrint={async (orderToPrint) => {
                         await handlePrintOrder(orderToPrint.id, orderToPrint as Order);
