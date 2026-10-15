@@ -272,11 +272,16 @@ export default function LiveTripMap({
 
             // Notificar información de ruta calculada
             if (onRouteCalculated) {
-                const durationMin = (routeResult as any).durationMinutes ?? (routeResult as any).durationMin ?? 1;
+                const rawDur = (routeResult as any).durationMinutes ?? (routeResult as any).durationMin;
+                const safeKm = Number(routeResult.distanceKm) || 1.0;
+                const durationMin = (typeof rawDur === 'number' && !isNaN(rawDur) && rawDur > 0)
+                    ? Math.round(rawDur)
+                    : Math.max(3, Math.round((safeKm / 28) * 60));
+
                 onRouteCalculated({
-                    distance: `${routeResult.distanceKm} km`,
+                    distance: `${safeKm} km`,
                     duration: `~${durationMin} min`,
-                    distanceKm: routeResult.distanceKm,
+                    distanceKm: safeKm,
                     durationMin: durationMin
                 });
             }

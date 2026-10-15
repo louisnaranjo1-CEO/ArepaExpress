@@ -48,6 +48,7 @@ export interface RouteResult {
     distanceKm: number;
     durationSeconds: number;
     durationMinutes: number;
+    durationMin?: number;
     coordinates: [number, number][]; // Array de [lng, lat]
     bounds: [[number, number], [number, number]]; // [[minLng, minLat], [maxLng, maxLat]]
     summary?: string;
@@ -101,11 +102,13 @@ export async function getMapboxRoute(
             if (lat > maxLat) maxLat = lat;
         }
 
+        const durMin = Math.max(1, Math.round(route.duration / 60));
         return {
             distanceMeters: route.distance,
             distanceKm: Number((route.distance / 1000).toFixed(2)),
             durationSeconds: route.duration,
-            durationMinutes: Math.max(1, Math.round(route.duration / 60)),
+            durationMinutes: durMin,
+            durationMin: durMin,
             coordinates,
             bounds: [[minLng, minLat], [maxLng, maxLat]],
             summary: route.legs?.[0]?.summary || ''

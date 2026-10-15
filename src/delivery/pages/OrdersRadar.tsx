@@ -235,14 +235,15 @@ export default function OrdersRadar() {
         // Si la solicitud era asignada directamente a este chofer, actualizar estado a driver_busy para notificar al cliente de inmediato
         try {
             const targetReq = availableTransport.find(r => r.id === requestId) || (incomingDispatch?.id === requestId ? incomingDispatch : null);
-            if (targetReq && (targetReq.assigned_driver_id === user?.uid || targetReq.driver_id === user?.uid)) {
+            const myId = user?.id || (user as any)?.uid;
+            if (targetReq && targetReq.assigned_driver_id && targetReq.assigned_driver_id === myId) {
                 await supabase.from('transport_requests').update({
                     status: 'driver_busy',
                     rejection_reason: 'El conductor seleccionado se encuentra ocupado llevando a otra persona en este momento.'
                 }).eq('id', requestId);
-            } else {
+            } else if (!targetReq) {
                 const { data: dbReq } = await supabase.from('transport_requests').select('assigned_driver_id, driver_id, status').eq('id', requestId).maybeSingle();
-                if (dbReq && (dbReq.assigned_driver_id === user?.uid || dbReq.driver_id === user?.uid) && dbReq.status === 'searching') {
+                if (dbReq && dbReq.assigned_driver_id && dbReq.assigned_driver_id === myId && (dbReq.status === 'searching' || dbReq.status === 'pending')) {
                     await supabase.from('transport_requests').update({
                         status: 'driver_busy',
                         rejection_reason: 'El conductor seleccionado se encuentra ocupado llevando a otra persona en este momento.'
@@ -603,20 +604,34 @@ export default function OrdersRadar() {
             const { data } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .eq('status', 'searching');
+                .in('status', ['searching', 'pending']);
             
             if (data) {
                 const drvVehicle = (driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto').toLowerCase();
                 const drvLoc = driverProfile?.current_location;
+                const isMotoDriver = drvVehicle === 'moto';
+                const isCarDriver = drvVehicle === 'carro' || drvVehicle === 'carro_ejecutivo' || drvVehicle === 'ejecutivo' || drvVehicle === 'auto';
+                const isComfortDriver = Boolean(
+                    !isMotoDriver &&
+                    Number(driverProfile?.vehicle_year || driverProfile?.vehicleYear || 0) >= 2016
+                );
+                const myId = user?.id || (user as any)?.uid;
+
                 const reqs = data.filter((req: any) => {
+                    // Si el viaje ya fue tomado por otro conductor, no mostrar
+                    if (req.driver_id && req.driver_id !== myId) {
+                        return false;
+                    }
+
                     // Si el viaje fue solicitado directamente a otro conductor específico, no mostrarlo ni sonar para mí
-                    const myId = user?.id || (user as any)?.uid;
                     if (req.assigned_driver_id && req.assigned_driver_id !== myId) {
                         return false;
                     }
 
                     const reqType = req.type || req.service_category || 'transport';
-                    const isMandado = reqType === 'muchacho_mandado' || req.service_category === 'muchacho_mandado' || reqType === 'personal_shopper' || req.service_category === 'personal_shopper' || reqType === 'mandado' || req.service_category === 'mandado';
+                    const reqVehicle = (req.vehicle_type || req.vehicleType || 'moto').toLowerCase();
+                    const reqCat = (req.service_category || req.serviceCategory || '').toLowerCase();
+                    const isMandado = reqType === 'muchacho_mandado' || reqCat === 'muchacho_mandado' || reqType === 'personal_shopper' || reqCat === 'personal_shopper' || reqType === 'mandado' || reqCat === 'mandado';
 
                     // Geolocation proximity filter: evaluate both direct and nested coordinates
                     const reqOriginLat = req.origin?.lat || req.origin?.coords?.lat;
@@ -633,17 +648,26 @@ export default function OrdersRadar() {
                         }
                     }
 
-                    if (isMandado) return true;
-                    if (reqType === 'food_delivery' || reqType === 'package_delivery' || reqType === 'delivery_envios') return true;
-
-                    const isComfortDriver = Boolean(
-                        drvVehicle !== 'moto' &&
-                        Number(driverProfile?.vehicle_year || driverProfile?.vehicleYear || 0) >= 2016
-                    );
-
-                    const reqVehicle = (req.vehicle_type || req.vehicleType || 'moto').toLowerCase();
-                    const reqCat = (req.service_category || req.serviceCategory || '').toLowerCase();
+                    const isReqMoto = reqVehicle === 'moto' || reqCat === 'mototaxi' || reqCat === 'moto_envios';
+                    const isReqCar = reqVehicle === 'carro' || reqVehicle === 'car' || reqVehicle === 'auto' || reqCat === 'taxi_driver' || reqCat === 'auto_envios';
                     const isReqComfort = reqVehicle === 'ejecutivo' || reqVehicle === 'confort' || reqVehicle === 'carro_ejecutivo' || reqCat.includes('confort') || reqCat.includes('ejecutivo');
+
+                    // Paquetería / Envíos: enviar moto a moto y auto a auto
+                    if (reqType === 'package_delivery' || reqType === 'delivery_envios' || reqCat === 'delivery_envios') {
+                        if (isReqMoto) return isMotoDriver;
+                        if (isReqCar || isReqComfort) return isCarDriver;
+                        return isMotoDriver;
+                    }
+
+                    if (isMandado) {
+                        if (isReqCar) return isCarDriver;
+                        return isMotoDriver;
+                    }
+
+                    if (reqType === 'food_delivery') {
+                        if (isReqCar) return isCarDriver;
+                        return isMotoDriver;
+                    }
 
                     // Solicitud Confort: Solo conductores habilitados para Confort
                     if (isReqComfort) {
@@ -651,13 +675,13 @@ export default function OrdersRadar() {
                     }
 
                     // Solicitud Mototaxi: Solo conductores de moto
-                    if (reqVehicle === 'moto' || reqCat === 'mototaxi') {
-                        return drvVehicle === 'moto';
+                    if (isReqMoto) {
+                        return isMotoDriver;
                     }
 
                     // Solicitud Carro Económico / Taxi: Conductores con carro (económico o confort)
-                    if (reqVehicle === 'carro' || reqCat === 'taxi_driver') {
-                        return drvVehicle === 'carro' || drvVehicle === 'carro_ejecutivo' || drvVehicle === 'ejecutivo';
+                    if (isReqCar) {
+                        return isCarDriver;
                     }
 
                     return reqVehicle === drvVehicle;
@@ -1123,27 +1147,46 @@ export default function OrdersRadar() {
             const driverDocs = driverProfile?.documents || {};
             const realSelfie = driverProfile?.photo_url || driverDocs?.selfie_url || driverDocs?.selfieUrl || driverProfile?.photoURL || driverProfile?.avatar_url || null;
             const driverName = driverProfile?.full_name || driverProfile?.fullName || driverProfile?.displayName || driverProfile?.name || 'Conductor';
+            const driverPhone = driverProfile?.phone || driverProfile?.phoneNumber || null;
+            const vehicleModel = driverProfile?.vehicle_model || driverProfile?.vehicleModel || null;
+            const vehiclePlate = driverProfile?.vehicle_plate || driverProfile?.plate || null;
+            const myId = user.uid || (user as any).id;
 
             const { data, error } = await supabase
                 .from('transport_requests')
                 .update({ 
                     status: 'accepted', 
-                    driver_id: user.uid, 
+                    driver_id: myId, 
                     driver_name: driverName,
                     driver_photo: realSelfie,
+                    driver_phone: driverPhone,
+                    vehicle_model: vehicleModel,
+                    vehicle_plate: vehiclePlate,
                     driver_assigned_at: new Date().toISOString() 
                 })
                 .eq('id', reqId)
-                .eq('status', 'searching')
+                .in('status', ['searching', 'pending'])
+                .is('driver_id', null)
                 .select();
                 
             if (error || !data || data.length === 0) {
-                alert("Este viaje ya fue tomado por otro conductor.");
+                toast.error("Este viaje ya fue tomado por otro conductor.");
+                setAvailableTransport(prev => prev.filter(t => t.id !== reqId));
+                if (incomingDispatch?.id === reqId) {
+                    setIncomingDispatch(null);
+                }
             } else {
                 await triggerHaptic('success');
+                toast.success("¡Viaje aceptado! Dirígete al punto de recogida.");
+                setAvailableTransport(prev => prev.filter(t => t.id !== reqId));
+                if (incomingDispatch?.id === reqId) {
+                    setIncomingDispatch(null);
+                }
+                setActiveTransport(data[0]);
             }
         } catch (error) {
             console.error("Error al aceptar viaje:", error);
+            toast.error("Error al procesar la aceptación del viaje.");
         } finally {
             setProcessingAction(null);
         }

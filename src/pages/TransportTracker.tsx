@@ -14,11 +14,13 @@ import { UN2X3_LOGO } from '../lib/env';
 import { isNightTime, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
 import RainOverlay from '../components/RainOverlay';
 import { useCurrency } from '../context/CurrencyContext';
+import { useBranding } from '../context/BrandingContext';
 
 export default function TransportTracker() {
     const { requestId } = useParams();
     const navigate = useNavigate();
     const { bcvRate } = useCurrency();
+    const { branding } = useBranding();
     const [request, setRequest] = useState<any>(null);
     const [driver, setDriver] = useState<DeliveryDriver | null>(null);
     const [loading, setLoading] = useState(true);
@@ -121,15 +123,15 @@ export default function TransportTracker() {
         setCameraMode('fit');
     };
 
-    // Fetch and subscribe to bids if muchacho_mandado and searching
+    // Fetch and subscribe to bids if muchacho_mandado and searching/pending
     useEffect(() => {
-        if (!requestId || request?.service_category !== 'muchacho_mandado' || request?.status !== 'searching') return;
+        if (!requestId || request?.service_category !== 'muchacho_mandado' || !['searching', 'pending'].includes(request?.status)) return;
 
         const fetchBids = async () => {
             const { data } = await supabase
                 .from('transport_bids')
                 .select('*')
-                .eq('transport_request_id', requestId)
+                .or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`)
                 .eq('status', 'pending')
                 .order('created_at', { ascending: false });
             if (data) setMandadoBids(data);
@@ -141,10 +143,12 @@ export default function TransportTracker() {
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
-                table: 'transport_bids',
-                filter: `transport_request_id=eq.${requestId}`
-            }, () => {
-                fetchBids();
+                table: 'transport_bids'
+            }, (payload: any) => {
+                const b = payload.new || payload.old;
+                if (!b || b.transport_request_id === requestId || b.request_id === requestId) {
+                    fetchBids();
+                }
             })
             .subscribe();
 
@@ -171,7 +175,7 @@ export default function TransportTracker() {
             await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
             // 2. Reject others
             await supabase.from('transport_bids').update({ status: 'rejected' })
-                .eq('transport_request_id', requestId)
+                .or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`)
                 .neq('id', bid.id);
             // 3. Assign driver
             const { error: updErr } = await supabase.from('transport_requests').update({
@@ -796,7 +800,7 @@ export default function TransportTracker() {
 
             // If mandado, remove bids
             if (request.service_category === 'muchacho_mandado') {
-                await supabase.from('transport_bids').delete().eq('transport_request_id', requestId);
+                await supabase.from('transport_bids').delete().or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`);
             }
 
             localStorage.removeItem('active_transport_req_id');
@@ -822,7 +826,7 @@ export default function TransportTracker() {
             }).eq('id', requestId);
 
             if (request.service_category === 'muchacho_mandado') {
-                await supabase.from('transport_bids').delete().eq('transport_request_id', requestId);
+                await supabase.from('transport_bids').delete().or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`);
             }
             localStorage.removeItem('active_transport_req_id');
             toast.success("Reserva cancelada con éxito");
@@ -887,6 +891,7 @@ export default function TransportTracker() {
                 };
             case 'verifying_payment':
                 return { title: "Verificando Pago", subtitle: "Validando tu comprobante...", color: "text-amber-500", bg: "bg-amber-50", icon: ShieldCheck };
+            case 'pending':
             case 'searching':
                 if (request.service_category === 'muchacho_mandado') {
                     return {
@@ -986,9 +991,9 @@ export default function TransportTracker() {
                     <div className="flex flex-col items-center justify-center gap-4 animate-fade-in px-6 w-full h-full pb-20">
                         <div className="w-32 h-32 bg-white rounded-3xl shadow-xl shadow-primary/20 p-5 flex items-center justify-center">
                             <img
-                                src={UN2X3_LOGO}
+                                src={branding.app_client_logo || UN2X3_LOGO}
                                 onError={(e: any) => { e.currentTarget.src = '/logo.png'; }}
-                                alt="Deliexpress Logo"
+                                alt={`${branding.app_client_name || 'Un 2x3'} Logo`}
                                 className="w-full h-full object-contain animate-bounce-subtle"
                             />
                         </div>
@@ -1013,10 +1018,17 @@ export default function TransportTracker() {
                                 driverName={driverName}
                                 showControls={false}
                                 cameraFocus={cameraMode}
-                                onRouteCalculated={(info) => setRouteInfo({ 
-                                    distance: info.distance, 
-                                    duration: (!info.duration || info.duration.includes('undefined')) ? '~5 min' : info.duration 
-                                })}
+                                onRouteCalculated={(info) => {
+                                    const rawDur = info?.duration;
+                                    const safeKm = Number(info?.distanceKm || parseFloat(String(info?.distance || '1'))) || 1.0;
+                                    const durClean = (rawDur && !rawDur.includes('undefined') && !rawDur.includes('NaN')) 
+                                        ? rawDur 
+                                        : `~${Math.max(3, Math.round((safeKm / 28) * 60))} min`;
+                                    setRouteInfo({ 
+                                        distance: `${safeKm} km`, 
+                                        duration: durClean 
+                                    });
+                                }}
                             />
                         </div>
 
@@ -1144,7 +1156,7 @@ export default function TransportTracker() {
                                 )}
                             </div>
                             <p className="font-bold text-slate-500 text-xs mt-0.5 leading-snug truncate">
-                                {request.scheduled && request.status === 'searching' 
+                                {request.scheduled && ['searching', 'pending'].includes(request.status) 
                                     ? `Programado para: ${(request.scheduledAt ? (typeof request.scheduledAt.toDate === 'function' ? request.scheduledAt.toDate() : new Date(request.scheduledAt)) : null)?.toLocaleString('es-VE', { weekday: 'long', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) || 'Fecha pendiente'}`
                                     : statusInfo.subtitle}
                             </p>
@@ -1293,8 +1305,8 @@ export default function TransportTracker() {
                     </div>
                 )}
 
-                {/* Muchacho e' Mandao: Live Driver Bids in Tracker (Only while searching) */}
-                {request.service_category === 'muchacho_mandado' && request.status === 'searching' && (
+                {/* Muchacho e' Mandao: Live Driver Bids in Tracker (Only while searching/pending) */}
+                {request.service_category === 'muchacho_mandado' && ['searching', 'pending'].includes(request.status) && (
                     <div className="mb-4 space-y-3">
 
                         <div className="flex items-center justify-between px-1">
@@ -1359,7 +1371,7 @@ export default function TransportTracker() {
                                                         )
                                                     )}
                                                     <span className="text-[9px] font-black text-emerald-600 ml-0.5">
-                                                        ⏱️ Llega en ~{bid.eta_minutes || 15} min
+                                                        ⏱️ Llega en ~{bid.estimated_eta_minutes ?? bid.eta_minutes ?? 10} min
                                                     </span>
                                                 </div>
                                             </div>
@@ -1368,11 +1380,11 @@ export default function TransportTracker() {
                                         <div className="flex flex-col items-end shrink-0 gap-1.5">
                                             <div className="text-right">
                                                 <div className="text-base font-black text-slate-900 leading-tight">
-                                                    ${Number(bid.amount).toFixed(2)}
+                                                    ${Number(bid.offered_price ?? bid.amount ?? 0).toFixed(2)}
                                                 </div>
                                                 {bcvRate > 0 && (
                                                     <div className="text-[9px] font-bold text-slate-500">
-                                                        {(Number(bid.amount) * bcvRate).toFixed(0)} Bs
+                                                        {(Number(bid.offered_price ?? bid.amount ?? 0) * bcvRate).toFixed(0)} Bs
                                                     </div>
                                                 )}
                                             </div>
@@ -1396,7 +1408,7 @@ export default function TransportTracker() {
                 {request.scheduled && ['searching', 'accepted'].includes(request.status) && (
                     <div className="mb-4 p-2.5 bg-red-50 border border-red-100 rounded-xl flex flex-col items-center">
                         <p className="text-[10px] text-red-600 font-bold text-center mb-2 leading-tight">
-                            Puedes cancelar y el dinero será devuelto a tu billetera.
+                            Puedes cancelar la reserva sin penalización antes del inicio del viaje.
                         </p>
                         <button
                             onClick={handleCancelReservation}
@@ -1994,7 +2006,7 @@ export default function TransportTracker() {
                         <div className="flex items-center gap-1.5">
                             <p className="text-[10px] font-bold text-slate-500">Total del Viaje</p>
                             {Boolean(request?.notes?.includes('Transporte Rápido') || (request as any)?.is_quick_transport) && (
-                                ['searching', 'accepted', 'arriving'].includes(request.status) ? (
+                                ['searching', 'pending', 'accepted', 'arriving'].includes(request.status) ? (
                                     <span className="text-[8px] font-black uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded-md">
                                         Base Inicial
                                     </span>
@@ -2025,7 +2037,7 @@ export default function TransportTracker() {
                 </div>
 
                 {/* Banner Informativo de Transporte Rápido mientras el conductor llega */}
-                {Boolean(request?.notes?.includes('Transporte Rápido') || (request as any)?.is_quick_transport) && ['searching', 'accepted', 'arriving'].includes(request.status) && (
+                {Boolean(request?.notes?.includes('Transporte Rápido') || (request as any)?.is_quick_transport) && ['searching', 'pending', 'accepted', 'arriving'].includes(request.status) && (
                     <div className="mt-2.5 p-3 bg-amber-50/90 border border-amber-200/80 rounded-2xl flex items-start gap-2.5 text-xs text-amber-950 leading-relaxed shadow-xs">
                         <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                         <div>
@@ -2038,7 +2050,7 @@ export default function TransportTracker() {
                 )}
 
                 {/* Cancel Trip Button */}
-                {['searching', 'accepted', 'arriving'].includes(request.status) && (
+                {['searching', 'pending', 'accepted', 'arriving'].includes(request.status) && (
                     <button
                         onClick={() => setShowCancelModal(true)}
                         className="w-full mt-3 py-2.5 bg-red-50 text-red-600 font-black text-xs rounded-xl border border-red-200/80 hover:bg-red-100 active:scale-95 transition-all flex items-center justify-center gap-1.5"
