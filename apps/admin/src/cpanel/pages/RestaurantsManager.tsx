@@ -795,7 +795,7 @@ export default function RestaurantsManager() {
                         <div className="flex flex-col sm:flex-row gap-2.5">
                             <button
                                 onClick={() => {
-                                    const text = `*Credenciales de Acceso a tu Tienda en Deliexpress*\n\n🏪 Tienda: ${viewCredsStore.name}\n📧 Correo: ${viewCredsStore.email || 'N/A'}\n🔑 ID Cuenta: ${viewCredsStore.owner_uid || viewCredsStore.id}\n📱 WhatsApp: ${viewCredsStore.whatsapp || 'N/A'}\n\nPuedes ingresar desde el portal de comercios de la aplicación para gestionar tus ventas.`;
+                                    const text = `*Credenciales de Acceso a tu Tienda en Un 2x3*\n\n🏪 Tienda: ${viewCredsStore.name}\n📧 Correo: ${viewCredsStore.email || 'N/A'}\n🔑 ID Cuenta: ${viewCredsStore.owner_uid || viewCredsStore.id}\n📱 WhatsApp: ${viewCredsStore.whatsapp || 'N/A'}\n\nPuedes ingresar desde el portal de comercios de la aplicación para gestionar tus ventas.`;
                                     navigator.clipboard.writeText(text);
                                     setCredsCopied(true);
                                     toast.success('¡Ficha copiada al portapapeles!');

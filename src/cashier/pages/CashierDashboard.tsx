@@ -3000,7 +3000,7 @@ ESTADO: ${order.status.toUpperCase()}
             {selectedOrderForComanda && (
                 <ComandaPreview
                     order={selectedOrderForComanda as any}
-                    restaurantName={restaurant?.name || 'Deliexpress'}
+                    restaurantName={restaurant?.name || 'Un 2x3'}
                     onClose={() => setSelectedOrderForComanda(null)}
                     onPrint={async (orderToPrint) => {
                         await handlePrintOrder(orderToPrint.id, orderToPrint as any);

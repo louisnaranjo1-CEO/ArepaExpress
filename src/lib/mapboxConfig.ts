@@ -167,7 +167,7 @@ export async function searchMapboxPlaces(
     try {
         const osmUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanQuery + ' ' + rawCityName + ' Venezuela')}&format=json&addressdetails=1&limit=10`;
         const osmRes = await fetch(osmUrl, {
-            headers: { 'User-Agent': 'ArepaExpress/1.0 (contacto@un2x3.com)' }
+            headers: { 'User-Agent': 'Un2x3/1.0 (contacto@un2x3.com)' }
         });
 
         if (osmRes.ok) {

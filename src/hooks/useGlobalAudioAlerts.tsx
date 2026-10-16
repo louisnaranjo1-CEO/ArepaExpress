@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { sendAppNotification } from '../services/nativeNotificationService';
+import { sendAppNotification, getAppBrandingName } from '../services/nativeNotificationService';
+import { useBranding } from '../context/BrandingContext';
 
 export const NOTIFICATION_SOUND_URL = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/Digital_Cascade_01.mp3";
 export const CPANEL_SOUND_URL = "https://xfialzrbbsdzzcjtefqo.supabase.co/storage/v1/object/public/store_assets/telefono_off.mp3";
@@ -31,6 +32,15 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const cpanelAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioAlertsEnabledRef = useRef<boolean>(true);
+  let appName = 'Un 2x3';
+  try {
+    const { branding } = useBranding();
+    if (branding?.app_client_name) {
+      appName = branding.app_client_name;
+    }
+  } catch {
+    appName = getAppBrandingName('Un 2x3');
+  }
 
   useEffect(() => {
     const initAudio = async () => {
@@ -165,28 +175,40 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           filter: `user_id=eq.${userId}`
         }, (payload: any) => {
           const status = payload.new?.status;
-          if (status === 'accepted') {
+          if (status === 'searching' || status === 'pending') {
             sendAppNotification({
-              title: '¡Conductor Asignado!',
-              body: 'Un conductor ha aceptado tu viaje y va en camino.',
+              title: `${appName} • Buscando conductor`,
+              body: 'Buscando pilotos y conductores disponibles en la zona...',
+              soundType: 'client'
+            });
+          } else if (status === 'accepted') {
+            sendAppNotification({
+              title: `${appName} • Conductor en camino`,
+              body: 'Tu conductor ha aceptado el viaje y va en camino.',
               soundType: 'client'
             });
           } else if (status === 'arrived' || status === 'arriving') {
             sendAppNotification({
-              title: '¡Tu Conductor Ha Llegado!',
+              title: `${appName} • Tu conductor ha llegado`,
               body: 'Tu conductor ya está en el punto de encuentro esperándote.',
               soundType: 'client'
             });
           } else if (status === 'started' || status === 'in_progress') {
             sendAppNotification({
-              title: '¡Viaje en Curso!',
-              body: 'Tu viaje ha iniciado. ¡Que tengas un excelente recorrido!',
+              title: `${appName} • Viaje en curso`,
+              body: 'Seguimiento activo en tiempo real. ¡Que tengas un excelente recorrido!',
               soundType: 'client'
             });
           } else if (status === 'completed') {
             sendAppNotification({
-              title: '¡Has Llegado a tu Destino!',
-              body: 'Viaje finalizado exitosamente. ¡Gracias por viajar con nosotros!',
+              title: `${appName} • Viaje finalizado`,
+              body: 'Has llegado a tu destino con éxito. ¡Gracias por viajar con nosotros!',
+              soundType: 'client'
+            });
+          } else if (status === 'canceled' || status === 'cancelled') {
+            sendAppNotification({
+              title: `${appName} • Viaje cancelado`,
+              body: 'El viaje ha sido cancelado.',
               soundType: 'client'
             });
           }

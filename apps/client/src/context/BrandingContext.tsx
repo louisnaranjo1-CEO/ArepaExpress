@@ -14,6 +14,11 @@ export interface AppBranding {
     client_footer_text?: string | null;
     primary_color?: string;
     secondary_color?: string;
+    splash_bg_color?: string | null;
+    splash_text_color?: string | null;
+    splash_animation?: string | null;
+    splash_duration_ms?: number | null;
+    splash_tagline?: string | null;
 }
 
 // Interfaz para compatibilidad retrospectiva con código previo
@@ -29,7 +34,12 @@ export const DEFAULT_BRANDING: AppBranding = {
     splash_screen_logo: null,
     app_favicon: null,
     driver_footer_text: 'Conductores v2.0',
-    client_footer_text: 'Hecho con ❤️ en Venezuela'
+    client_footer_text: 'Hecho con ❤️ en Venezuela',
+    splash_bg_color: '#FFD100',
+    splash_text_color: '#0F172A',
+    splash_animation: 'snap-pulse',
+    splash_duration_ms: 1250,
+    splash_tagline: '¡En un 2x3 lo tienes!'
 };
 
 const STORAGE_KEY = 'un2x3_app_branding_cache';
@@ -84,6 +94,11 @@ export const BrandingProvider: React.FC<{
             client_footer_text: data.client_footer_text || DEFAULT_BRANDING.client_footer_text,
             primary_color: data.primary_color,
             secondary_color: data.secondary_color,
+            splash_bg_color: data.splash_bg_color || DEFAULT_BRANDING.splash_bg_color,
+            splash_text_color: data.splash_text_color || DEFAULT_BRANDING.splash_text_color,
+            splash_animation: data.splash_animation || DEFAULT_BRANDING.splash_animation,
+            splash_duration_ms: data.splash_duration_ms ? Number(data.splash_duration_ms) : DEFAULT_BRANDING.splash_duration_ms,
+            splash_tagline: data.splash_tagline || DEFAULT_BRANDING.splash_tagline,
         };
     };
 

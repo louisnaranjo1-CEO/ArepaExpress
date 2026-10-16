@@ -231,17 +231,23 @@ export function useGlobalAudioAlerts(role?: 'cpanel' | 'restaurant' | 'delivery'
           filter: `user_id=eq.${userId}`
         }, (payload: any) => {
           const status = payload.new?.status;
-          if (status === 'accepted') {
-            toast.success('¡Un conductor ha aceptado tu viaje!');
+          if (status === 'searching' || status === 'pending') {
+            toast.success('Buscando conductor');
             playAlert();
-          } else if (status === 'arrived') {
-            toast.success('¡Tu conductor ha llegado!');
+          } else if (status === 'accepted') {
+            toast.success('Conductor en camino');
             playAlert();
-          } else if (status === 'started') {
-            toast.success('¡Viaje iniciado!');
+          } else if (status === 'arrived' || status === 'arriving') {
+            toast.success('Tu conductor ha llegado');
+            playAlert();
+          } else if (status === 'started' || status === 'in_progress') {
+            toast.success('Viaje en curso');
             playAlert();
           } else if (status === 'completed') {
-            toast.success('¡Viaje finalizado exitosamente!');
+            toast.success('Viaje finalizado');
+            playAlert();
+          } else if (status === 'canceled' || status === 'cancelled') {
+            toast.success('Viaje cancelado');
             playAlert();
           }
         })

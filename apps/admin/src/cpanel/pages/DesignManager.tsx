@@ -14,7 +14,12 @@ import {
     Store, 
     Car, 
     LayoutDashboard,
-    Zap
+    Zap,
+    Play,
+    Check,
+    Clock,
+    Type,
+    Paintbrush
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
@@ -29,6 +34,11 @@ export interface BrandingData {
     splash_screen_logo?: string | null;
     driver_footer_text?: string | null;
     client_footer_text?: string | null;
+    splash_bg_color?: string | null;
+    splash_text_color?: string | null;
+    splash_animation?: string | null;
+    splash_duration_ms?: number | null;
+    splash_tagline?: string | null;
 }
 
 const DEFAULT_BRANDING: BrandingData = {
@@ -40,13 +50,19 @@ const DEFAULT_BRANDING: BrandingData = {
     splash_screen_logo: null,
     app_favicon: null,
     driver_footer_text: 'Conductores v2.0',
-    client_footer_text: 'Hecho con ❤️ en Venezuela'
+    client_footer_text: 'Hecho con ❤️ en Venezuela',
+    splash_bg_color: '#FFD100',
+    splash_text_color: '#0F172A',
+    splash_animation: 'snap-pulse',
+    splash_duration_ms: 1250,
+    splash_tagline: '¡En un 2x3 lo tienes!'
 };
 
 export default function DesignManager() {
     const [branding, setBranding] = useState<BrandingData>(DEFAULT_BRANDING);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [testAnimationKey, setTestAnimationKey] = useState(0);
 
     // Archivos seleccionados localmente para subir
     const [filesToUpload, setFilesToUpload] = useState<{ [key: string]: File }>({});
@@ -77,7 +93,12 @@ export default function DesignManager() {
                     app_favicon: data.app_favicon || null,
                     splash_screen_logo: data.splash_screen_logo || null,
                     driver_footer_text: data.driver_footer_text || DEFAULT_BRANDING.driver_footer_text,
-                    client_footer_text: data.client_footer_text || DEFAULT_BRANDING.client_footer_text
+                    client_footer_text: data.client_footer_text || DEFAULT_BRANDING.client_footer_text,
+                    splash_bg_color: data.splash_bg_color || DEFAULT_BRANDING.splash_bg_color,
+                    splash_text_color: data.splash_text_color || DEFAULT_BRANDING.splash_text_color,
+                    splash_animation: data.splash_animation || DEFAULT_BRANDING.splash_animation,
+                    splash_duration_ms: data.splash_duration_ms ? Number(data.splash_duration_ms) : DEFAULT_BRANDING.splash_duration_ms,
+                    splash_tagline: data.splash_tagline ?? DEFAULT_BRANDING.splash_tagline
                 });
             }
         } catch (e) {
@@ -143,23 +164,66 @@ export default function DesignManager() {
             const finalBranding: BrandingData = {
                 ...branding,
                 ...updatedUrls,
-                app_client_name: (branding.app_client_name || 'Un 2x3').trim()
+                app_client_name: (branding.app_client_name || 'Un 2x3').trim(),
+                splash_bg_color: branding.splash_bg_color || '#FFD100',
+                splash_text_color: branding.splash_text_color || '#0F172A',
+                splash_animation: branding.splash_animation || 'snap-pulse',
+                splash_duration_ms: branding.splash_duration_ms ? Number(branding.splash_duration_ms) : 1250,
+                splash_tagline: branding.splash_tagline ?? '¡En un 2x3 lo tienes!'
             };
 
             const nowIso = new Date().toISOString();
 
-            // 1. Actualizar public.app_branding (registro id = 'current')
+            // 1. Actualizar public.app_branding (registro id = 'current') con fallback seguro si alguna columna opcional no existe
+            const fullPayload: Record<string, any> = {
+                id: 'current',
+                app_client_name: finalBranding.app_client_name,
+                app_client_logo: finalBranding.app_client_logo,
+                app_driver_logo: finalBranding.app_driver_logo,
+                app_restaurant_logo: finalBranding.app_restaurant_logo,
+                app_admin_logo: finalBranding.app_admin_logo,
+                app_favicon: finalBranding.app_favicon,
+                splash_screen_logo: finalBranding.splash_screen_logo,
+                driver_footer_text: finalBranding.driver_footer_text,
+                client_footer_text: finalBranding.client_footer_text,
+                splash_bg_color: finalBranding.splash_bg_color,
+                splash_text_color: finalBranding.splash_text_color,
+                splash_animation: finalBranding.splash_animation,
+                splash_duration_ms: finalBranding.splash_duration_ms,
+                splash_tagline: finalBranding.splash_tagline,
+                updated_at: nowIso
+            };
+
             const { error: dbError } = await supabase
                 .from('app_branding')
-                .upsert({
+                .upsert(fullPayload);
+
+            if (dbError) {
+                console.warn("Aviso en upsert completo de app_branding, aplicando fallback seguro:", dbError);
+                // Fallback sin columnas extendidas si la base de datos devuelve error de columna
+                const safePayload: Record<string, any> = {
                     id: 'current',
-                    ...finalBranding,
+                    app_client_name: finalBranding.app_client_name,
+                    app_client_logo: finalBranding.app_client_logo,
+                    app_driver_logo: finalBranding.app_driver_logo,
+                    app_restaurant_logo: finalBranding.app_restaurant_logo,
+                    app_admin_logo: finalBranding.app_admin_logo,
+                    splash_screen_logo: finalBranding.splash_screen_logo,
+                    driver_footer_text: finalBranding.driver_footer_text,
+                    client_footer_text: finalBranding.client_footer_text,
                     updated_at: nowIso
-                });
+                };
+                const { error: retryError } = await supabase
+                    .from('app_branding')
+                    .upsert(safePayload);
 
-            if (dbError) throw dbError;
+                if (retryError) {
+                    console.error("Error en upsert seguro de app_branding:", retryError);
+                    throw retryError;
+                }
+            }
 
-            // 2. Sincronizar en public.system_settings (key = 'branding')
+            // 2. Sincronizar en public.system_settings (key = 'branding') guardando la configuración completa
             const { error: settingsError } = await supabase
                 .from('system_settings')
                 .upsert({
@@ -228,16 +292,38 @@ export default function DesignManager() {
             badge: 'Super Admin',
             icon: LayoutDashboard,
             accent: 'from-purple-500/20 to-indigo-500/20 text-purple-600'
-        },
-        {
-            key: 'splash_screen_logo',
-            title: 'Logo de Splash Screen (Pantalla de Carga)',
-            desc: 'Aparece en el splash de arranque y animación de bienvenida de todas las aplicaciones.',
-            badge: 'Splash Screen',
-            icon: Zap,
-            accent: 'from-yellow-500/20 to-amber-500/20 text-yellow-600'
         }
     ];
+
+    const splashPresets = [
+        { name: 'Amarillo Un 2x3', hex: '#FFD100', textHex: '#0F172A', badge: 'Oficial' },
+        { name: 'Blanco Puro', hex: '#FFFFFF', textHex: '#0F172A', badge: 'Limpio' },
+        { name: 'Negro Obsidiana', hex: '#0F172A', textHex: '#FFFFFF', badge: 'Dark' },
+        { name: 'Gris Ejecutivo', hex: '#F8FAFC', textHex: '#0F172A', badge: 'Neutro' },
+    ];
+
+    const splashAnimationOptions = [
+        {
+            id: 'snap-pulse',
+            title: 'Snap & Pulse (Recomendado)',
+            desc: 'Rebote elástico veloz con destello resplandeciente y zoom de salida suave.',
+            badge: 'Recomendado'
+        },
+        {
+            id: 'speed-zoom',
+            title: 'Speed Zoom',
+            desc: 'Entrada acelerada con desenfoque de movimiento cinemático.',
+            badge: 'Dinámico'
+        },
+        {
+            id: 'minimal-fade',
+            title: 'Minimal Fade',
+            desc: 'Pulso elegante y limpio, ideal para transiciones minimalistas.',
+            badge: 'Clásico'
+        }
+    ];
+
+    const splashDurationPresets = [1000, 1250, 1500, 2000];
 
     if (loading) {
         return (
@@ -376,7 +462,7 @@ export default function DesignManager() {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
                     {logoCards.map((card) => {
                         const currentImg = previews[card.key] || (branding as any)[card.key];
                         const hasPendingUpload = !!filesToUpload[card.key];
@@ -455,6 +541,306 @@ export default function DesignManager() {
                         );
                     })}
                 </div>
+
+                {/* TARJETA ESPECIAL: LOGO DE SPLASH SCREEN Y PERSONALIZACIÓN DE CARGA */}
+                {(() => {
+                    const splashKey = 'splash_screen_logo';
+                    const currentImg = previews[splashKey] || branding.splash_screen_logo || branding.app_client_logo || DEFAULT_BRANDING.app_client_logo;
+                    const hasPendingUpload = !!filesToUpload[splashKey];
+                    const activeBg = branding.splash_bg_color || '#FFD100';
+                    const activeAnim = branding.splash_animation || 'snap-pulse';
+                    const activeTagline = branding.splash_tagline ?? '¡En un 2x3 lo tienes!';
+                    const activeDuration = branding.splash_duration_ms ? Number(branding.splash_duration_ms) : 1250;
+                    const isDark = activeBg === '#0F172A' || activeBg === '#000000';
+                    const textContrastColor = isDark ? '#FFFFFF' : '#0F172A';
+
+                    return (
+                        <div className="bg-white border-2 border-primary/30 rounded-[36px] p-6 md:p-8 shadow-md hover:border-primary/50 transition-all space-y-6">
+                            {/* Header */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-5">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 rounded-2xl bg-gradient-to-br from-yellow-500/20 to-amber-500/20 text-yellow-600 shadow-sm">
+                                        <Zap className="w-6 h-6" />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="px-2.5 py-0.5 bg-yellow-100 text-yellow-800 font-black text-[10px] uppercase tracking-wider rounded-xl">
+                                                Pantalla de Carga
+                                            </span>
+                                            {hasPendingUpload && (
+                                                <span className="px-2.5 py-0.5 bg-amber-100 text-amber-800 font-bold text-[10px] uppercase tracking-wider rounded-xl animate-pulse">
+                                                    Nuevo Logo por Guardar
+                                                </span>
+                                            )}
+                                        </div>
+                                        <h4 className="text-xl font-black text-slate-900 mt-0.5">
+                                            Logo de Splash Screen (Pantalla de Carga) y Animación
+                                        </h4>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setTestAnimationKey(prev => prev + 1)}
+                                    className="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-slate-800 active:scale-95 transition-all shadow-sm"
+                                >
+                                    <Play className="w-3.5 h-3.5 text-primary fill-primary" />
+                                    <span>Probar Animación</span>
+                                </button>
+                            </div>
+
+                            {/* Contenido Grid: Preview a la izquierda, Controles a la derecha */}
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                                {/* Columna Izquierda: Vista Previa Real del Splash */}
+                                <div className="lg:col-span-5 flex flex-col items-center">
+                                    <div className="w-full text-center mb-2">
+                                        <span className="text-[11px] font-black text-slate-400 uppercase tracking-wider">
+                                            Vista Previa en Vivo ({activeDuration} ms)
+                                        </span>
+                                    </div>
+
+                                    {/* Preview Screen Container */}
+                                    <div 
+                                        className="w-full h-72 rounded-[28px] border-4 border-slate-900/10 shadow-2xl relative overflow-hidden flex flex-col items-center justify-center p-6 transition-colors duration-500"
+                                        style={{ backgroundColor: activeBg }}
+                                    >
+                                        <style>{`
+                                            @keyframes preview-snap-pulse {
+                                                0% { transform: scale(0.65); opacity: 0; filter: brightness(1.2); }
+                                                45% { transform: scale(1.06); opacity: 1; filter: brightness(1.05); }
+                                                70% { transform: scale(0.97); opacity: 1; }
+                                                100% { transform: scale(1); opacity: 1; filter: brightness(1); }
+                                            }
+                                            @keyframes preview-speed-zoom {
+                                                0% { transform: scale(0.25) translateY(30px); opacity: 0; filter: blur(10px); }
+                                                60% { transform: scale(1.04) translateY(-3px); opacity: 1; filter: blur(0px); }
+                                                85% { transform: scale(0.98) translateY(0); opacity: 1; }
+                                                100% { transform: scale(1) translateY(0); opacity: 1; filter: blur(0px); }
+                                            }
+                                            @keyframes preview-minimal-fade {
+                                                0% { opacity: 0; transform: scale(0.94); }
+                                                100% { opacity: 1; transform: scale(1); }
+                                            }
+                                        `}</style>
+
+                                        <div
+                                            key={`${testAnimationKey}-${activeAnim}`}
+                                            className="flex flex-col items-center justify-center"
+                                            style={{
+                                                animation: activeAnim === 'speed-zoom'
+                                                    ? 'preview-speed-zoom 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards'
+                                                    : activeAnim === 'minimal-fade'
+                                                    ? 'preview-minimal-fade 1.1s ease-out forwards'
+                                                    : 'preview-snap-pulse 1.1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards'
+                                            }}
+                                        >
+                                            <div className="relative w-40 h-32 flex items-center justify-center p-2">
+                                                <img 
+                                                    src={currentImg} 
+                                                    alt="Splash Screen Logo Preview"
+                                                    className="max-h-full max-w-full object-contain filter drop-shadow-lg"
+                                                />
+                                            </div>
+                                            {activeTagline && (
+                                                <p 
+                                                    className="mt-3 text-xs md:text-sm font-black tracking-tight text-center px-4"
+                                                    style={{ color: textContrastColor }}
+                                                >
+                                                    {activeTagline}
+                                                </p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Upload Splash Logo Button */}
+                                    <div className="w-full mt-4">
+                                        <input
+                                            type="file"
+                                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                            id={`file-${splashKey}`}
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0];
+                                                if (file) handleFileSelect(splashKey, file);
+                                            }}
+                                            className="hidden"
+                                        />
+                                        <label
+                                            htmlFor={`file-${splashKey}`}
+                                            className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-black text-xs uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md active:scale-98"
+                                        >
+                                            <UploadCloud className="w-4 h-4 text-primary" />
+                                            <span>{hasPendingUpload ? "Cambiar Archivo Seleccionado" : "Subir Logo de Splash"}</span>
+                                        </label>
+                                        <p className="text-[10px] text-slate-400 text-center font-medium mt-1.5">
+                                            Recomendado: PNG con fondo transparente (dimensiones aprox. 512x512)
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Columna Derecha: Configuración Visual Completa */}
+                                <div className="lg:col-span-7 space-y-6">
+                                    {/* 1. COLOR DE FONDO */}
+                                    <div>
+                                        <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                            <Paintbrush className="w-4 h-4 text-primary" />
+                                            Color de Fondo del Splash (splash_bg_color)
+                                        </label>
+
+                                        {/* Presets Rápidos */}
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                                            {splashPresets.map((preset) => {
+                                                const isSelected = (branding.splash_bg_color || '#FFD100').toUpperCase() === preset.hex.toUpperCase();
+                                                return (
+                                                    <button
+                                                        key={preset.hex}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setBranding({ 
+                                                                ...branding, 
+                                                                splash_bg_color: preset.hex,
+                                                                splash_text_color: preset.textHex 
+                                                            });
+                                                        }}
+                                                        className={`p-3 rounded-2xl border-2 flex flex-col items-center text-center transition-all ${
+                                                            isSelected 
+                                                                ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/30' 
+                                                                : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300'
+                                                        }`}
+                                                    >
+                                                        <div 
+                                                            className="w-8 h-8 rounded-full border-2 border-white shadow-md mb-1.5 flex items-center justify-center"
+                                                            style={{ backgroundColor: preset.hex }}
+                                                        >
+                                                            {isSelected && <Check className="w-4 h-4 text-slate-900" />}
+                                                        </div>
+                                                        <span className="text-[11px] font-black text-slate-900 leading-tight">{preset.name}</span>
+                                                        <span className="text-[9px] font-mono text-slate-400 font-bold">{preset.hex}</span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Color Picker Personalizado */}
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative">
+                                                <input
+                                                    type="color"
+                                                    value={branding.splash_bg_color || '#FFD100'}
+                                                    onChange={(e) => setBranding({ ...branding, splash_bg_color: e.target.value })}
+                                                    className="w-12 h-12 rounded-xl cursor-pointer border-2 border-slate-200 p-0.5 bg-white"
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <input
+                                                    type="text"
+                                                    value={branding.splash_bg_color || '#FFD100'}
+                                                    onChange={(e) => setBranding({ ...branding, splash_bg_color: e.target.value })}
+                                                    className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary px-4 py-2.5 rounded-xl font-mono text-xs font-bold text-slate-800 uppercase"
+                                                    placeholder="#FFD100"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* 2. TIPO DE ANIMACIÓN */}
+                                    <div>
+                                        <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                            <Sparkles className="w-4 h-4 text-primary" />
+                                            Tipo de Animación de Entrada (splash_animation)
+                                        </label>
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            {splashAnimationOptions.map((opt) => {
+                                                const isSelected = (branding.splash_animation || 'snap-pulse') === opt.id;
+                                                return (
+                                                    <button
+                                                        key={opt.id}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setBranding({ ...branding, splash_animation: opt.id });
+                                                            setTestAnimationKey(prev => prev + 1);
+                                                        }}
+                                                        className={`p-3.5 rounded-2xl border-2 text-left transition-all relative flex flex-col justify-between ${
+                                                            isSelected 
+                                                                ? 'border-primary bg-primary/10 shadow-md ring-2 ring-primary/30' 
+                                                                : 'border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-slate-300'
+                                                        }`}
+                                                    >
+                                                        <div>
+                                                            <div className="flex items-center justify-between mb-1">
+                                                                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white border border-slate-200 text-slate-700">
+                                                                    {opt.badge}
+                                                                </span>
+                                                                {isSelected && <Check className="w-4 h-4 text-primary" />}
+                                                            </div>
+                                                            <div className="font-black text-xs text-slate-900 mt-1">
+                                                                {opt.title}
+                                                            </div>
+                                                            <p className="text-[10px] text-slate-500 font-medium mt-1 leading-snug">
+                                                                {opt.desc}
+                                                            </p>
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    {/* 3. FRASE CORTA INFERIOR Y DURACIÓN */}
+                                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+                                        <div className="sm:col-span-8">
+                                            <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                <Type className="w-4 h-4 text-primary" />
+                                                Frase Corta Inferior (splash_tagline)
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={branding.splash_tagline ?? '¡En un 2x3 lo tienes!'}
+                                                onChange={(e) => setBranding({ ...branding, splash_tagline: e.target.value })}
+                                                className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary px-4 py-3 rounded-2xl font-bold text-slate-800 text-sm outline-none transition-all"
+                                                placeholder="¡En un 2x3 lo tienes!"
+                                            />
+                                            <p className="text-[10px] text-slate-400 mt-1">
+                                                Texto inspirador que acompaña al logo durante la carga de arranque.
+                                            </p>
+                                        </div>
+
+                                        <div className="sm:col-span-4">
+                                            <label className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2 mb-2">
+                                                <Clock className="w-4 h-4 text-primary" />
+                                                Duración (ms)
+                                            </label>
+                                            <input
+                                                type="number"
+                                                min={500}
+                                                max={5000}
+                                                step={50}
+                                                value={branding.splash_duration_ms ? Number(branding.splash_duration_ms) : 1250}
+                                                onChange={(e) => setBranding({ ...branding, splash_duration_ms: Number(e.target.value) })}
+                                                className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary px-4 py-3 rounded-2xl font-black text-slate-800 text-sm outline-none transition-all"
+                                                placeholder="1250"
+                                            />
+                                            <div className="flex gap-1.5 mt-2">
+                                                {splashDurationPresets.map((ms) => (
+                                                    <button
+                                                        key={ms}
+                                                        type="button"
+                                                        onClick={() => setBranding({ ...branding, splash_duration_ms: ms })}
+                                                        className={`text-[9px] font-bold px-2 py-1 rounded-lg border transition-all ${
+                                                            (branding.splash_duration_ms ? Number(branding.splash_duration_ms) : 1250) === ms
+                                                                ? 'bg-slate-900 text-white border-slate-900'
+                                                                : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                                                        }`}
+                                                    >
+                                                        {ms}ms
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
 
             {/* SECCIÓN DE TEXTOS COMPLEMENTARIOS DE PIE DE PÁGINA */}

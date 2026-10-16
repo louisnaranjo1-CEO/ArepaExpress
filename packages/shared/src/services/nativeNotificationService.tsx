@@ -2,6 +2,7 @@ import React from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
 import toast from 'react-hot-toast';
+import { sanitizeNotificationText, getAppBrandingName } from '../lib/notifications';
 
 export type NotificationSoundType = 'client' | 'driver' | 'chat';
 
@@ -233,7 +234,10 @@ export async function ensureNativeNotificationPermission(): Promise<boolean> {
  * 5. Display High-Priority Native Android Notification
  */
 export async function postNativeNotification(options: NotificationOptions) {
-    const { title, body, icon = '/icons/icon-192x192.png', tag, data, vibratePattern } = options;
+    const appName = getAppBrandingName('Un 2x3');
+    const title = sanitizeNotificationText(options.title || `${appName} • Notificación`);
+    const body = sanitizeNotificationText(options.body || '');
+    const { icon = '/icons/icon-192x192.png', tag, data, vibratePattern } = options;
     const channelId = options.soundType === 'driver' ? 'driver_dispatch_channel' : 'un_2x3_high_priority';
 
     try {
@@ -294,6 +298,9 @@ export async function postNativeNotification(options: NotificationOptions) {
  */
 export function displayNotificationBanner(options: NotificationOptions) {
     const isDriver = options.soundType === 'driver';
+    const appName = getAppBrandingName('Un 2x3');
+    const cleanTitle = sanitizeNotificationText(options.title || appName);
+    const cleanBody = sanitizeNotificationText(options.body || '');
 
     toast.custom((t) => (
         <div
@@ -317,10 +324,10 @@ export function displayNotificationBanner(options: NotificationOptions) {
                 </div>
                 <div className="flex-1 min-w-0 pt-0.5">
                     <p className={`text-sm font-black tracking-tight truncate ${isDriver ? 'text-amber-400' : 'text-slate-900'}`}>
-                        {options.title}
+                        {cleanTitle}
                     </p>
                     <p className={`text-xs mt-0.5 font-medium line-clamp-2 leading-relaxed ${isDriver ? 'text-slate-300' : 'text-slate-600'}`}>
-                        {options.body}
+                        {cleanBody}
                     </p>
                 </div>
                 <button
@@ -347,6 +354,12 @@ export function displayNotificationBanner(options: NotificationOptions) {
  */
 export async function sendAppNotification(options: NotificationOptions) {
     const { soundType = 'client' } = options;
+    const appName = getAppBrandingName('Un 2x3');
+    const cleanOptions: NotificationOptions = {
+        ...options,
+        title: sanitizeNotificationText(options.title || `${appName} • Notificación`),
+        body: sanitizeNotificationText(options.body || '')
+    };
 
     // 1. Play synthesized tone
     if (soundType === 'driver') {
@@ -361,8 +374,8 @@ export async function sendAppNotification(options: NotificationOptions) {
     await triggerHaptic(soundType === 'driver' ? 'warning' : 'medium');
 
     // 3. Post native system notification (for status bar & lock-screen)
-    postNativeNotification(options).catch(console.warn);
+    postNativeNotification(cleanOptions).catch(console.warn);
 
     // 4. Show in-app banner toast
-    displayNotificationBanner(options);
+    displayNotificationBanner(cleanOptions);
 }

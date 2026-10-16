@@ -3,7 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { DeliveryDriver } from '../lib/delivery-service';
 import toast from 'react-hot-toast';
-import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield, CreditCard, Sparkles } from 'lucide-react';
+import { Navigation, Clock, CheckCircle2, Phone, ArrowLeft, Car, ShieldCheck, MessageCircle, Star, XCircle, MapPin, Package, Copy, AlertTriangle, Wind, Music, Wifi, BatteryCharging, AlertCircle, X, ShoppingBag, Shield, CreditCard, Sparkles, UploadCloud, Trash2, Check, ArrowRight } from 'lucide-react';
 import LiveTripMap from '../components/LiveTripMap';
 
 import RideChat from '../components/RideChat';
@@ -15,6 +15,8 @@ import { isNightTime, getWeatherByCoordinates, WeatherInfo } from '../lib/weathe
 import RainOverlay from '../components/RainOverlay';
 import { useCurrency } from '../context/CurrencyContext';
 import { useBranding } from '../context/BrandingContext';
+import { compressImage } from '../utils/mediaCompressor';
+import { vibrate } from '../utils/haptics';
 
 export default function TransportTracker() {
     const { requestId } = useParams();
@@ -56,6 +58,129 @@ export default function TransportTracker() {
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'pago_movil' | 'cash_ves' | 'cash_usd'>('cash_usd');
     const [updatingPaymentMethod, setUpdatingPaymentMethod] = useState(false);
     const hasAutoOpenedPaymentModal = useRef(false);
+
+    // Pago y Comprobante en viaje completado
+    const [trackerProofFile, setTrackerProofFile] = useState<File | null>(null);
+    const [trackerProofPreview, setTrackerProofPreview] = useState<string | null>(null);
+    const [trackerPaymentRef, setTrackerPaymentRef] = useState<string>('');
+    const [submittingTrackerProof, setSubmittingTrackerProof] = useState<boolean>(false);
+    const [isEditingTrackerProof, setIsEditingTrackerProof] = useState<boolean>(false);
+    const [copiedPmKey, setCopiedPmKey] = useState<string | null>(null);
+
+    const handleCopyPm = (text: string, key: string) => {
+        if (!text) return;
+        navigator.clipboard.writeText(text);
+        vibrate(30);
+        setCopiedPmKey(key);
+        toast.success(`Copiado: ${text}`);
+        setTimeout(() => setCopiedPmKey(null), 2000);
+    };
+
+    const handleCopyAllPm = (drvName: string, bank: string, ph: string, idfVal: string, amtBs: string, amtUsd: string) => {
+        const text = `Pago Móvil a: ${drvName}\nBanco: ${bank}\nTeléfono: ${ph}\nCédula: ${idfVal}\nMonto: Bs. ${amtBs} (${amtUsd} USD)`;
+        navigator.clipboard.writeText(text);
+        vibrate(40);
+        toast.success("¡Datos de Pago Móvil copiados!");
+    };
+
+    const handleReportTrackerPayment = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!requestId || !request) return;
+        if (!trackerPaymentRef.trim() && !trackerProofFile && !request.payment_proof_url) {
+            toast.error("Ingresa el número de referencia o adjunta el capture de pantalla.");
+            return;
+        }
+
+        setSubmittingTrackerProof(true);
+        try {
+            let uploadedProofUrl = request.payment_proof_url || null;
+
+            if (trackerProofFile) {
+                const compressed = await compressImage(trackerProofFile, 1280, 0.8);
+                const ext = trackerProofFile.name.split('.').pop() || 'jpg';
+                const filePath = `payment_proofs/proof_${requestId}_${Date.now()}.${ext}`;
+
+                const { error: upErr } = await supabase.storage
+                    .from('store_assets')
+                    .upload(filePath, compressed, { upsert: true });
+
+                if (!upErr) {
+                    const { data: { publicUrl } } = supabase.storage
+                        .from('store_assets')
+                        .getPublicUrl(filePath);
+                    uploadedProofUrl = publicUrl;
+                }
+            }
+
+            const cleanRef = trackerPaymentRef.trim();
+
+            const { error: updErr } = await supabase
+                .from('transport_requests')
+                .update({
+                    payment_status: 'reported',
+                    payment_proof_url: uploadedProofUrl,
+                    payment_ref: cleanRef || request.payment_ref || null,
+                    payment_reported_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', requestId);
+
+            if (updErr) throw updErr;
+
+            try {
+                const notifyChannel = supabase.channel(`call_${requestId}`);
+                notifyChannel.subscribe((subStatus) => {
+                    if (subStatus === 'SUBSCRIBED') {
+                        notifyChannel.send({
+                            type: 'broadcast',
+                            event: 'payment_reported',
+                            payload: {
+                                requestId,
+                                payment_ref: cleanRef,
+                                payment_proof_url: uploadedProofUrl
+                            }
+                        });
+                    }
+                });
+            } catch (bErr) {
+                console.warn("Broadcast payment error:", bErr);
+            }
+
+            try {
+                const chatPath = `transport_requests/${requestId}`;
+                const amountBsVal = (parseFloat(request.price || request.total || 0) * (bcvRate || 1)).toFixed(2);
+                const refText = cleanRef ? ` (Ref: ${cleanRef})` : '';
+                await supabase.from('messages').insert({
+                    chat_path: chatPath,
+                    order_id: requestId,
+                    sender_id: request.user_id || 'client',
+                    sender_name: request.user_name || 'Cliente',
+                    sender_role: 'client',
+                    text: `📲 He enviado el pago por Pago Móvil de Bs. ${amountBsVal}${refText}. Favor confirmar recepción.`,
+                    image_url: uploadedProofUrl,
+                    created_at: new Date().toISOString()
+                });
+            } catch (chatErr) {
+                console.warn("Chat notify error:", chatErr);
+            }
+
+            setRequest((prev: any) => ({
+                ...prev,
+                payment_status: 'reported',
+                payment_proof_url: uploadedProofUrl,
+                payment_ref: cleanRef || prev.payment_ref
+            }));
+
+            setIsEditingTrackerProof(false);
+            vibrate(50);
+            toast.success("¡Comprobante enviado! El conductor validará el pago.", { icon: '🚀', duration: 4000 });
+        } catch (err: any) {
+            console.error("Error al reportar pago:", err);
+            toast.error("No se pudo enviar el reporte de pago.");
+        } finally {
+            setSubmittingTrackerProof(false);
+        }
+    };
     
     // Notification sound
     const notificationSoundUrl = useRef<string | null>(null);
@@ -1129,6 +1254,7 @@ export default function TransportTracker() {
                             serviceCategory={request?.service_category}
                             requestStatus={request?.status}
                             completedAt={request?.completed_at || (request as any)?.updated_at}
+                            allowChatOnCompleted={!request?.driver_paid || request?.payment_status !== 'confirmed'}
                         />
                     </div>
                 </div>
@@ -1447,13 +1573,103 @@ export default function TransportTracker() {
 
                 {/* ── ESTADO DEL PAGO & CONCILIACIÓN CON EL CONDUCTOR (Audio 2) ── */}
                 {request.status === 'completed' && (() => {
-                    const isPaymentConfirmed = request.payment_status === 'confirmed' || request.payment_status === 'paid';
+                    const isPaymentConfirmed = request.payment_status === 'confirmed' || request.payment_status === 'paid' || request.driver_paid === true;
                     const amountUsd = parseFloat(request.price || request.total || 0).toFixed(2);
                     const amountBs = (parseFloat(request.price || request.total || 0) * (bcvRate || 1)).toFixed(2);
 
+                    const pmData = request.driver_payment_info || (driver as any)?.pago_movil || (driver as any)?.payment_mobile || (driver as any)?.driver_payment_info || {};
+                    const bankName = pmData.bank || pmData.banco || (driver as any)?.bank_name || 'Banco de Venezuela';
+                    const driverPhone = pmData.phone || pmData.telefono || driver?.phone || 'Sin teléfono';
+                    const driverIdf = pmData.idf || pmData.cedula || pmData.dni || (driver as any)?.cedula || 'Sin cédula';
+                    const driverName = driver?.fullName || (driver as any)?.full_name || request.driver_name || 'Conductor';
+
+                    const isReported = (request.payment_status === 'reported' || Boolean(request.payment_ref || request.payment_proof_url)) && !isEditingTrackerProof;
+
                     if (!isPaymentConfirmed) {
+                        if (isReported) {
+                            // ── ESTADO B: Pago enviado / Esperando confirmación del conductor ──
+                            return (
+                                <div className="bg-gradient-to-br from-blue-50/90 via-indigo-50/70 to-amber-50/50 border-2 border-blue-400 rounded-3xl p-4.5 mb-4 shadow-md space-y-3.5 animate-in fade-in">
+                                    <div className="flex items-start gap-3">
+                                        <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-sm font-black">
+                                            <Clock className="w-5 h-5 text-white animate-spin" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="flex items-center justify-between">
+                                                <h3 className="text-sm font-black text-blue-950 leading-tight">
+                                                    Pago Reportado
+                                                </h3>
+                                                <span className="text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-mono border border-blue-200">
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-ping" />
+                                                    Por Conciliar
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-blue-900/90 font-medium mt-1 leading-relaxed">
+                                                Pago enviado {request.payment_ref ? `(Ref: ${request.payment_ref})` : ''}. Esperando que tu conductor <strong>{driverName}</strong> presione "Pago Recibido" en su aplicación.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Montos y Detalles Reportados */}
+                                    <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-3 border border-blue-200/80 flex items-center justify-between shadow-xs">
+                                        <div>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Monto a Validar</span>
+                                            <span className="text-lg font-black text-slate-900">${amountUsd} USD</span>
+                                        </div>
+                                        {bcvRate > 0 && (
+                                            <div className="text-right">
+                                                <span className="text-[10px] font-bold text-slate-400 block">En Bolívares (BCV)</span>
+                                                <span className="text-sm font-black text-emerald-600">{amountBs} Bs</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Comprobante / Referencia si existe */}
+                                    {(request.payment_proof_url || request.payment_ref) && (
+                                        <div className="p-2.5 bg-white/80 rounded-xl border border-blue-200/70 flex items-center justify-between text-xs">
+                                            <div className="flex items-center gap-2 truncate">
+                                                <CreditCard className="w-4 h-4 text-slate-600 shrink-0" />
+                                                <span className="font-bold text-slate-700 truncate">
+                                                    {request.payment_ref ? `Ref: ${request.payment_ref}` : 'Comprobante adjuntado'}
+                                                </span>
+                                            </div>
+                                            {request.payment_proof_url && (
+                                                <a 
+                                                    href={request.payment_proof_url} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    className="text-[11px] font-black text-blue-600 hover:underline shrink-0"
+                                                >
+                                                    Ver Capture
+                                                </a>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* BOTÓN OBLIGATORIO: ESCRIBIR AL CONDUCTOR POR CHAT */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowChat(true)}
+                                        className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        <MessageCircle className="w-4 h-4" />
+                                        <span>Escribir al conductor por Chat</span>
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditingTrackerProof(true)}
+                                        className="w-full py-1.5 text-slate-500 hover:text-slate-800 font-bold text-[11px] transition-colors text-center"
+                                    >
+                                        ¿Deseas corregir el número de referencia o capture?
+                                    </button>
+                                </div>
+                            );
+                        }
+
+                        // ── ESTADO A: Pendiente de Pago y Envío de Capture/Referencia ──
                         return (
-                            <div className="bg-gradient-to-br from-amber-500/10 via-amber-50 to-orange-50 border-2 border-amber-400 rounded-3xl p-4.5 mb-4 shadow-md space-y-3 animate-in fade-in">
+                            <div className="bg-gradient-to-br from-amber-500/10 via-amber-50 to-orange-50 border-2 border-amber-400 rounded-3xl p-4.5 mb-4 shadow-md space-y-4 animate-in fade-in">
                                 <div className="flex items-start gap-3">
                                     <div className="w-10 h-10 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 shadow-sm font-black">
                                         <AlertTriangle className="w-5 h-5 text-slate-950" />
@@ -1461,15 +1677,15 @@ export default function TransportTracker() {
                                     <div className="flex-1">
                                         <div className="flex items-center justify-between">
                                             <h3 className="text-sm font-black text-amber-950 leading-tight">
-                                                Pago Pendiente de Confirmación
+                                                Pago Pendiente de Conciliación
                                             </h3>
                                             <span className="text-[10px] font-black uppercase tracking-wider bg-amber-400 text-slate-950 px-2.5 py-0.5 rounded-full flex items-center gap-1 font-mono shadow-xs">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
-                                                En espera
+                                                Por Pagar
                                             </span>
                                         </div>
                                         <p className="text-xs text-amber-900/90 font-medium mt-1 leading-relaxed">
-                                            El conductor aún debe confirmar la recepción del pago en su aplicación. Por favor, asegúrate de entregarle el efectivo o realizar el Pago Móvil.
+                                            Tienes un pago pendiente de <strong>${amountUsd} USD</strong> con tu conductor <strong>{driverName}</strong>. Realiza el pago y adjunta tu comprobante o número de referencia.
                                         </p>
                                     </div>
                                 </div>
@@ -1477,7 +1693,7 @@ export default function TransportTracker() {
                                 {/* Montos Exactos */}
                                 <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-3 border border-amber-200/80 flex items-center justify-between shadow-xs">
                                     <div>
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Monto Total</span>
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Monto a Pagar</span>
                                         <span className="text-lg font-black text-slate-900">${amountUsd} USD</span>
                                     </div>
                                     {bcvRate > 0 && (
@@ -1488,10 +1704,173 @@ export default function TransportTracker() {
                                     )}
                                 </div>
 
-                                <div className="flex items-center gap-2 text-[11px] font-bold text-amber-900 bg-amber-100/80 p-2.5 rounded-xl border border-amber-200/60">
-                                    <Clock className="w-4 h-4 shrink-0 text-amber-700 animate-spin" />
-                                    <span>Esperando confirmación del conductor en su app...</span>
+                                {/* Datos de Pago Móvil del Conductor */}
+                                <div className="bg-white/95 rounded-2xl p-3 border border-amber-200/70 space-y-2">
+                                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <CreditCard className="w-3.5 h-3.5 text-amber-600" />
+                                            <span className="text-[11px] font-black text-slate-800 uppercase tracking-wide">
+                                                Datos de Pago Móvil del Conductor
+                                            </span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCopyAllPm(driverName, bankName, driverPhone, driverIdf, amountBs, amountUsd)}
+                                            className="text-[10px] font-black text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded-lg active:scale-95 transition-transform"
+                                        >
+                                            Copiar todo
+                                        </button>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div className="bg-slate-50 p-2 rounded-xl flex items-center justify-between border border-slate-100">
+                                            <div className="truncate pr-1">
+                                                <span className="text-[9px] font-bold text-slate-400 block uppercase">Banco</span>
+                                                <span className="font-black text-slate-800 truncate block">{bankName}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCopyPm(bankName, 'bank')}
+                                                className="text-slate-400 hover:text-slate-700 p-1 shrink-0"
+                                                title="Copiar Banco"
+                                            >
+                                                {copiedPmKey === 'bank' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-slate-50 p-2 rounded-xl flex items-center justify-between border border-slate-100">
+                                            <div className="truncate pr-1">
+                                                <span className="text-[9px] font-bold text-slate-400 block uppercase">Teléfono</span>
+                                                <span className="font-black text-slate-800 font-mono truncate block">{driverPhone}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCopyPm(driverPhone, 'phone')}
+                                                className="text-slate-400 hover:text-slate-700 p-1 shrink-0"
+                                                title="Copiar Teléfono"
+                                            >
+                                                {copiedPmKey === 'phone' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-slate-50 p-2 rounded-xl flex items-center justify-between border border-slate-100">
+                                            <div className="truncate pr-1">
+                                                <span className="text-[9px] font-bold text-slate-400 block uppercase">Cédula / RIF</span>
+                                                <span className="font-black text-slate-800 font-mono truncate block">{driverIdf}</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCopyPm(driverIdf, 'idf')}
+                                                className="text-slate-400 hover:text-slate-700 p-1 shrink-0"
+                                                title="Copiar Cédula"
+                                            >
+                                                {copiedPmKey === 'idf' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                            </button>
+                                        </div>
+
+                                        <div className="bg-slate-50 p-2 rounded-xl flex items-center justify-between border border-slate-100">
+                                            <div className="truncate pr-1">
+                                                <span className="text-[9px] font-bold text-slate-400 block uppercase">Monto Exacto</span>
+                                                <span className="font-black text-emerald-700 font-mono truncate block">{amountBs} Bs</span>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleCopyPm(amountBs, 'bs')}
+                                                className="text-slate-400 hover:text-slate-700 p-1 shrink-0"
+                                                title="Copiar Monto"
+                                            >
+                                                {copiedPmKey === 'bs' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
+
+                                {/* Formulario de Capture y/o Referencia */}
+                                <form onSubmit={handleReportTrackerPayment} className="space-y-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-black text-slate-700 block">
+                                            Adjuntar Capture o Comprobante
+                                        </label>
+                                        {trackerProofPreview ? (
+                                            <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-slate-900 h-32 flex items-center justify-center">
+                                                <img 
+                                                    src={trackerProofPreview} 
+                                                    alt="Preview comprobante" 
+                                                    className="w-full h-full object-contain" 
+                                                />
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setTrackerProofFile(null);
+                                                        setTrackerProofPreview(null);
+                                                    }}
+                                                    className="absolute top-2 right-2 w-7 h-7 rounded-full bg-red-600 text-white flex items-center justify-center shadow-md active:scale-95"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <label className="border-2 border-dashed border-amber-300 hover:border-amber-400 bg-white/80 rounded-2xl p-3 flex flex-col items-center justify-center cursor-pointer transition-colors active:scale-98">
+                                                <UploadCloud className="w-6 h-6 text-amber-600 mb-1" />
+                                                <span className="text-xs font-black text-slate-800">Toca para subir Capture</span>
+                                                <span className="text-[10px] text-slate-400 font-medium">PNG, JPG hasta 8MB</span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (!file) return;
+                                                        if (file.size > 8 * 1024 * 1024) {
+                                                            toast.error("El archivo supera los 8MB");
+                                                            return;
+                                                        }
+                                                        setTrackerProofFile(file);
+                                                        setTrackerProofPreview(URL.createObjectURL(file));
+                                                    }}
+                                                    className="hidden"
+                                                />
+                                            </label>
+                                        )}
+                                    </div>
+
+                                    <div className="space-y-1.5">
+                                        <label className="text-[11px] font-black text-slate-700 block">
+                                            Número de Referencia (Últimos dígitos)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={trackerPaymentRef}
+                                            onChange={(e) => setTrackerPaymentRef(e.target.value)}
+                                            placeholder="Ej: 123456"
+                                            className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-400 shadow-xs placeholder:text-slate-300"
+                                        />
+                                    </div>
+
+                                    <button
+                                        type="submit"
+                                        disabled={submittingTrackerProof}
+                                        className="w-full py-3.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                                    >
+                                        {submittingTrackerProof ? (
+                                            <div className="w-4 h-4 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            <>
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                <span>Pagar y Enviar Capture / Referencia</span>
+                                            </>
+                                        )}
+                                    </button>
+                                </form>
+
+                                {/* Botón de Chat para acordar pago con conductor */}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowChat(true)}
+                                    className="w-full py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                                >
+                                    <MessageCircle className="w-4 h-4 text-slate-600" />
+                                    <span>Escribir al conductor por Chat</span>
+                                </button>
                             </div>
                         );
                     }

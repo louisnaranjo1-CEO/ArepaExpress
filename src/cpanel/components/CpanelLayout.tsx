@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert, Package } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert, Package, Award } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useBranding } from '../../context/BrandingContext';
@@ -89,12 +89,12 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
     const navItems = [
         { path: '/', icon: LayoutDashboard, label: 'Resumen' },
         { path: '/app-orders', icon: ShoppingBag, label: 'Pedidos App en Vivo' },
-        { path: '/restaurants', icon: Store, label: 'Restaurantes' },
+        { path: '/restaurants', icon: Store, label: 'Negocios' },
         { path: '/common-products', icon: Package, label: 'Productos Comunes' },
         { path: '/verifications', icon: ShieldCheck, label: 'Verificación de Negocios', badge: pendingVerifications },
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
-        { path: '/design', icon: Palette, label: 'Diseño' },
+        { path: '/design', icon: Palette, label: 'Branding Global' },
         { path: '/categories', icon: Tag, label: 'Categorías' },
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
         { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
@@ -102,6 +102,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
         { path: '/finances', icon: Wallet, label: 'Finanzas' },
         { path: '/liquidations', icon: Wallet, label: 'Liquidaciones', badge: pendingPayouts },
         { path: '/fidelization', icon: Gift, label: 'Fidelización' },
+        { path: '/rewards-challenges', icon: Award, label: 'Premios y Retos' },
         { path: '/achievements', icon: Trophy, label: 'Logros de Pilotos' },
         { path: '/marketing', icon: Megaphone, label: 'Marketing & Push' },
         { path: '/icons', icon: Share2, label: 'Iconos' },
@@ -110,20 +111,20 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
 
     return (
         <div className="h-[100dvh] bg-slate-50 flex overflow-hidden">
-            {/* Mobile Sidebar Backdrop */}
+            {/* Mobile/Tablet Sidebar Backdrop */}
             {isSidebarOpen && (
                 <div
-                    className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 md:hidden"
+                    className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden"
                     onClick={() => setIsSidebarOpen(false)}
                 />
             )}
 
             {/* Sidebar */}
-            <aside className={`fixed inset-y-0 left-0 w-[85vw] max-w-sm bg-slate-900 border-r border-slate-800 z-50 transform transition-transform duration-300 ease-in-out md:relative md:w-72 md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+            <aside className={`fixed inset-y-0 left-0 w-[85vw] max-w-sm bg-slate-900 border-r border-slate-800 z-50 transform transition-transform duration-300 ease-in-out lg:relative lg:w-72 lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
                 <div className="flex flex-col h-full pt-safe">
                     {/* Sidebar Header */}
                     <div className="p-4 border-b border-slate-800 flex items-center justify-between">
-                        <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
+                        <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://un2x3.app'}>
                             <div className="relative w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
                                     src={branding.app_admin_logo || UN2X3_LOGO}
@@ -132,12 +133,12 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
                                 />
                             </div>
                             <div className="flex flex-col">
-                                <h1 className="font-black text-white leading-tight">Encontrado en un 2x3</h1>
+                                <h1 className="font-black text-white leading-tight">{branding.app_client_name || 'Un 2x3'}</h1>
                                 <p className="text-[10px] font-bold text-white/50 uppercase tracking-wider">Cpanel Administrativo</p>
                             </div>
                         </div>
-                        <button className="md:hidden" onClick={() => setIsSidebarOpen(false)}>
-                            <X className="w-6 h-6 text-slate-400" />
+                        <button className="lg:hidden p-2 text-slate-400 hover:text-white" onClick={() => setIsSidebarOpen(false)}>
+                            <X className="w-6 h-6" />
                         </button>
                     </div>
 
@@ -185,41 +186,42 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
             </aside>
 
             {/* Main Content */}
-            <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pb-[65px] md:pb-0">
-                {/* Top Header */}
-                <header className="h-14 md:h-20 bg-white border-b border-slate-200 px-4 md:px-6 flex items-center justify-between flex-shrink-0 pt-safe">
-                    <div className="flex items-center gap-3">
+            <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative pt-14 lg:pt-0 pb-[65px] md:pb-0">
+                {/* Top Header Fixed in Mobile */}
+                <header className="fixed top-0 left-0 right-0 z-40 h-14 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 flex items-center justify-between lg:static lg:h-20 lg:bg-white lg:border-b lg:border-slate-200 lg:px-6 flex-shrink-0 pt-safe">
+                    <div className="flex items-center gap-3 min-w-0">
                         <button
-                            className="md:hidden p-2 -ml-2 text-slate-500 active:scale-95 transition-transform"
+                            className="lg:hidden p-2 -ml-2 text-slate-700 hover:text-slate-950 active:scale-95 transition-transform shrink-0"
                             onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
+                            aria-label="Abrir menú"
                         >
                             <Menu className="w-6 h-6" />
                         </button>
-                        <h2 className="text-lg md:text-xl font-black text-slate-900">Control Principal</h2>
+                        <h2 className="text-base lg:text-xl font-black text-slate-900 truncate">Control Principal</h2>
                     </div>
 
-                    <div className="flex items-center gap-2 md:gap-3">
+                    <div className="flex items-center gap-2 lg:gap-3 shrink-0">
                         <button
                             onClick={() => setShowDevicesModal(true)}
-                            className="flex items-center gap-2 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-black transition-all shadow-sm border border-slate-200/60 active:scale-95"
+                            className="flex items-center gap-2 px-3 py-1.5 lg:px-3.5 lg:py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-black transition-all shadow-xs border border-slate-200/60 active:scale-95"
                             title="Administrar Dispositivos Autorizados"
                         >
-                            <Shield className="w-4 h-4 text-emerald-600" />
+                            <Shield className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-emerald-600" />
                             <span className="hidden sm:inline">Dispositivos</span>
                         </button>
 
                         <button
                             onClick={handleLogout}
-                            className="flex items-center gap-2 px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-black transition-all border border-red-100 active:scale-95"
+                            className="flex items-center gap-1.5 lg:gap-2 px-3 py-1.5 lg:px-3.5 lg:py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl text-xs font-black transition-all border border-red-100 active:scale-95"
                             title="Cerrar Sesión"
                         >
-                            <LogOut className="w-4 h-4" />
-                            <span className="hidden md:inline">Salir</span>
+                            <LogOut className="w-3.5 h-3.5 lg:w-4 lg:h-4" />
+                            <span className="hidden lg:inline">Salir</span>
                         </button>
                     </div>
                 </header>
 
-                <div className="flex-1 overflow-y-auto p-2 md:p-8 relative custom-scrollbar">
+                <div className="flex-1 overflow-y-auto p-3 sm:p-5 md:p-8 relative custom-scrollbar">
                     {children}
                 </div>
 
@@ -230,43 +232,43 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
                 />
 
                 {/* Mobile Bottom Navigation */}
-                <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex items-center justify-around pb-safe z-40 h-[65px] px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+                <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 flex items-center justify-around pb-safe z-40 h-[65px] px-2 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
                     <NavLink
                         to="/"
                         onClick={() => vibrateSelection()}
-                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors ${isActive ? 'text-primary font-black' : 'text-slate-400'}`}
                     >
                         <LayoutDashboard className="w-5 h-5" />
                         <span className="text-[10px] font-bold">Resumen</span>
                     </NavLink>
                     <NavLink
-                        to="/restaurants"
+                        to="/app-orders"
                         onClick={() => vibrateSelection()}
-                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors ${isActive ? 'text-primary font-black' : 'text-slate-400'}`}
                     >
-                        <Store className="w-5 h-5" />
-                        <span className="text-[10px] font-bold">Tiendas</span>
+                        <ShoppingBag className="w-5 h-5" />
+                        <span className="text-[10px] font-bold">Pedidos</span>
                     </NavLink>
                     <NavLink
                         to="/transports"
                         onClick={() => vibrateSelection()}
-                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 relative ${isActive ? 'text-primary' : 'text-slate-400'}`}
+                        className={({ isActive }) => `flex flex-col items-center justify-center w-full h-full space-y-1 relative transition-colors ${isActive ? 'text-primary font-black' : 'text-slate-400'}`}
                     >
                         <Car className="w-5 h-5" />
                         {pendingTransports > 0 && (
-                            <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                            <span className="absolute top-1 right-3 w-2 h-2 bg-red-500 rounded-full animate-ping"></span>
                         )}
                         <span className="text-[10px] font-bold">Taxis</span>
                     </NavLink>
                     <button
                         onClick={() => { vibrateSelection(); setIsSidebarOpen(true); }}
-                        className="flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 relative"
+                        className="flex flex-col items-center justify-center w-full h-full space-y-1 text-slate-400 hover:text-slate-700 relative transition-colors"
                     >
                         <Menu className="w-5 h-5" />
-                        {pendingTickets > 0 && (
-                            <span className="absolute top-1 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+                        {(pendingTickets > 0 || pendingVerifications > 0 || pendingPayouts > 0) && (
+                            <span className="absolute top-1 right-3 w-2 h-2 bg-red-500 rounded-full"></span>
                         )}
-                        <span className="text-[10px] font-bold">Más</span>
+                        <span className="text-[10px] font-bold">Menú</span>
                     </button>
                 </nav>
             </main>

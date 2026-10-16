@@ -2,7 +2,7 @@
  * Utility to manage offline/cache-first persistence for store and product images
  */
 
-const CACHE_NAME = 'deliexpress-images-cache-v1';
+const CACHE_NAME = 'un2x3-images-cache-v1';
 
 export async function cacheImage(url: string): Promise<void> {
   if (!url || typeof window === 'undefined' || !('caches' in window)) return;

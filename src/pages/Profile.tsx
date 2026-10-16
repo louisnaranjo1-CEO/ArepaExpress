@@ -922,7 +922,7 @@ export default function Profile() {
                 >
                     <img 
                         src={UN2X3_LOGO} 
-                        alt="Deliexpress Logo"
+                        alt="Un 2x3 Logo"
                         className="w-auto h-full object-contain filter drop-shadow-xl"
                     />
                 </div>
@@ -1254,7 +1254,7 @@ export default function Profile() {
                                     ¡Gana 200 puntos! 🎉
                                 </h3>
                                 <p className="text-slate-500 text-sm text-center mb-6 font-medium">
-                                    ¿Alguien te invitó a Deliexpress? Ingresa su código ahora y ambos recibirán puntos gratis.
+                                    ¿Alguien te invitó a Un 2x3? Ingresa su código ahora y ambos recibirán puntos gratis.
                                 </p>
 
                                 <div className="space-y-4">
@@ -2251,7 +2251,7 @@ export default function Profile() {
                     className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
                     onClick={() => window.location.href = 'https://deliexpress.app'}
                 >
-                    <img src={UN2X3_LOGO} alt="Deliexpress" className="h-12 mx-auto mb-2" />
+                    <img src={UN2X3_LOGO} alt="Un 2x3" className="h-12 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{clientFooterText}</p>
                 </div>
             </div>

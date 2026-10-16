@@ -43,8 +43,8 @@ export default function BottomNav() {
         // 1. Check active transport_requests
         let trQuery = supabase
           .from('transport_requests')
-          .select('id, status, service_category, order_id')
-          .in('status', ['searching', 'accepted', 'arriving', 'in_progress', 'verifying_payment'])
+          .select('id, status, service_category, order_id, driver_paid, payment_status')
+          .in('status', ['searching', 'accepted', 'arriving', 'in_progress', 'verifying_payment', 'completed'])
           .order('created_at', { ascending: false })
           .limit(1);
 
@@ -60,18 +60,25 @@ export default function BottomNav() {
           const { data: trData } = await trQuery;
           if (trData && trData.length > 0) {
             const tr = trData[0];
-            const isFood = tr.service_category === 'food_delivery' || Boolean(tr.order_id);
-            const isMandado = tr.service_category === 'muchacho_mandado';
-            const url = isFood && tr.order_id 
-              ? `/track/${tr.order_id}` 
-              : isMandado 
-              ? `/mandado/tracking/${tr.id}` 
-              : `/taxi/track/${tr.id}`;
-            setActiveService({
-              url,
-              label: isFood ? 'Delivery' : isMandado ? 'Mandado' : 'En Viaje'
-            });
-            return;
+            const isCompletedPending = tr.status === 'completed' && (!tr.driver_paid || tr.payment_status !== 'confirmed');
+            
+            // Si está completado pero ya confirmado, no mostrar como activo
+            if (tr.status === 'completed' && !isCompletedPending) {
+              // no-op, continue to orders
+            } else {
+              const isFood = tr.service_category === 'food_delivery' || Boolean(tr.order_id);
+              const isMandado = tr.service_category === 'muchacho_mandado';
+              const url = isFood && tr.order_id 
+                ? `/track/${tr.order_id}` 
+                : isMandado 
+                ? `/mandado/tracking/${tr.id}` 
+                : `/taxi/track/${tr.id}`;
+              setActiveService({
+                url,
+                label: isCompletedPending ? '💳 Por Pagar' : isFood ? 'Delivery' : isMandado ? 'Mandado' : 'En Viaje'
+              });
+              return;
+            }
           }
         }
 

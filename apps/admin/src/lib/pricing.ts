@@ -1,6 +1,6 @@
 /**
  * Sistema de Tarifas Dinámicas Inteligentes (Estilo Yango / Uber)
- * Deliexpress - Cálculo de tarifas para Delivery Restaurante y Taxi (Moto, Standard, Ejecutivo)
+ * Un 2x3 - Cálculo de tarifas para Delivery Restaurante y Taxi (Moto, Standard, Ejecutivo)
  */
 
 export interface ServicePricingConfig {

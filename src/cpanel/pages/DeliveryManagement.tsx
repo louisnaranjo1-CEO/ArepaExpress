@@ -6,7 +6,7 @@ import { Truck, CheckCircle2, XCircle, FileText, User, DollarSign, ExternalLink,
 import { motion, AnimatePresence } from 'motion/react';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
-import { useJsApiLoader, GoogleMap, Marker, InfoWindow } from '@react-google-maps/api';
+import FleetLeafletMap from '../components/FleetLeafletMap';
 import { GOOGLE_MAPS_API_KEY } from '../../lib/mapsConfig';
 import { DEFAULT_PRICING_SETTINGS, calculateDynamicFare, SmartPricingSettings } from '../../lib/pricing';
 import { getWeatherByCoordinates, WeatherInfo } from '../../lib/weather';
@@ -28,18 +28,75 @@ export default function DeliveryManagement() {
                 const { data, error } = await supabase
                     .from('orders')
                     .select('*')
-                    .in('status', ['completed', 'delivered'])
+                    .in('status', ['completed', 'delivered', 'COMPLETED', 'DELIVERED'])
                     .order('created_at', { ascending: false })
                     .limit(100);
                 if (!error && data) {
-                    setCompletedOrders(data.map(d => ({
-                        ...d,
-                        createdAt: d.created_at,
-                        deliveryDriverId: d.delivery_driver_id || d.deliveryDriverId,
-                        deliveryFee: d.delivery_fee || d.deliveryFee,
-                        driverPayout: d.driver_payout || d.driverPayout,
-                        deliveryPaid: d.delivery_paid !== undefined ? d.delivery_paid : d.deliveryPaid
-                    })));
+                    const userIds = Array.from(new Set(data.map(d => d.user_id).filter(Boolean)));
+                    const driverIds = Array.from(new Set(data.map(d => d.driver_id || d.delivery_driver_id || d.driverId || d.deliveryDriverId).filter(Boolean)));
+                    const restIds = Array.from(new Set(data.map(d => d.restaurant_id || d.restaurantId).filter(Boolean)));
+
+                    let profilesMap: Record<string, any> = {};
+                    if (userIds.length > 0) {
+                        const { data: profs } = await supabase
+                            .from('profiles')
+                            .select('id, photo_url, avatar_url, full_name')
+                            .in('id', userIds);
+                        if (profs) profs.forEach((p: any) => { profilesMap[p.id] = p; });
+                    }
+
+                    let comerciosMap: Record<string, any> = {};
+                    if (restIds.length > 0) {
+                        const { data: coms } = await supabase
+                            .from('comercios')
+                            .select('id, name, logo_url, image_url, image')
+                            .in('id', restIds);
+                        if (coms) coms.forEach((c: any) => { comerciosMap[c.id] = c; });
+                    }
+
+                    let driversMap: Record<string, any> = {};
+                    if (driverIds.length > 0) {
+                        const { data: drvs } = await supabase
+                            .from('drivers')
+                            .select('id, full_name, photo_url, documents')
+                            .in('id', driverIds);
+                        if (drvs) drvs.forEach((drv: any) => { driversMap[drv.id] = drv; });
+
+                        const missingDrvs = driverIds.filter((id: string) => !driversMap[id]);
+                        if (missingDrvs.length > 0) {
+                            const { data: drvProfs } = await supabase
+                                .from('profiles')
+                                .select('id, full_name, photo_url, avatar_url')
+                                .in('id', missingDrvs);
+                            if (drvProfs) {
+                                drvProfs.forEach((dp: any) => {
+                                    driversMap[dp.id] = { id: dp.id, full_name: dp.full_name, photo_url: dp.photo_url || dp.avatar_url };
+                                });
+                            }
+                        }
+                    }
+
+                    setCompletedOrders(data.map(d => {
+                        const prof = profilesMap[d.user_id];
+                        const rest = comerciosMap[d.restaurant_id || d.restaurantId];
+                        const drvId = d.driver_id || d.delivery_driver_id || d.driverId || d.deliveryDriverId;
+                        const drv = driversMap[drvId];
+
+                        return {
+                            ...d,
+                            createdAt: d.created_at,
+                            deliveryDriverId: drvId,
+                            driverName: d.driver_name || d.driverName || drv?.full_name || 'N/A',
+                            driverPhoto: d.driver_photo || d.driverPhoto || drv?.photo_url || drv?.documents?.selfie_url || drv?.documents?.selfie || drv?.documents?.photo_url || null,
+                            userName: d.user_name || d.userName || prof?.full_name || 'Cliente',
+                            userPhoto: d.user_photo || prof?.photo_url || prof?.avatar_url || null,
+                            restaurantName: d.restaurant_name || d.restaurantName || rest?.name || 'Tienda',
+                            restaurantLogo: d.restaurant_logo || d.restaurantLogo || rest?.logo_url || rest?.image_url || rest?.image || null,
+                            deliveryFee: d.delivery_fee || d.deliveryFee,
+                            driverPayout: d.driver_payout || d.driverPayout,
+                            deliveryPaid: d.delivery_paid !== undefined ? d.delivery_paid : d.deliveryPaid
+                        };
+                    }));
                 }
                 setLoadingHistory(false);
             };
@@ -87,7 +144,7 @@ export default function DeliveryManagement() {
         },
         deliveryRadius: 15,
         whatsappMessageTemplate: `👋 ¡Hola *{RestaurantName}*!
-Soy *{UserName}* y vengo desde la app con Deliexpress 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
+Soy *{UserName}* y vengo desde la app con Un 2x3 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
 
 🛒 *Detalles del Pedido:*
 {OrderItems}
@@ -102,9 +159,9 @@ Soy *{UserName}* y vengo desde la app con Deliexpress 🚀. Mi identificación e
 
 {OrderNotes}
 
-_Enviado desde Deliexpress App_`,
+_Enviado desde Un 2x3 App_`,
         whatsappMessageTemplateAppDelivery: `👋 ¡Hola *{RestaurantName}*!
-Soy *{UserName}* y vengo desde la app con Deliexpress 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
+Soy *{UserName}* y vengo desde la app con Un 2x3 🚀. Mi identificación es *{Cedula}* y requiero el siguiente pedido:
 
 🛒 *Detalles del Pedido:*
 {OrderItems}
@@ -121,7 +178,7 @@ Soy *{UserName}* y vengo desde la app con Deliexpress 🚀. Mi identificación e
 
 {OrderNotes}
 
-_Enviado desde Deliexpress App_`,
+_Enviado desde Un 2x3 App_`,
         driverRadarTips: [
             "💡 Mantén la app abierta en primer plano con volumen alto para recibir y escuchar alertas al instante.",
             "🛵 Conduce seguro: Usa siempre tu casco abrochado, chaleco reflectivo y respeta las leyes de tránsito.",
@@ -192,12 +249,6 @@ _Enviado desde Deliexpress App_`,
             .catch(err => console.error("Error fetching city weather in admin:", err));
     }, [mapCenter]);
 
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-        libraries: ['places', 'geometry'] as any
-    });
-
     useEffect(() => {
         const fetchDrivers = async () => {
             try {
@@ -240,7 +291,38 @@ _Enviado desde Deliexpress App_`,
                 .select('*')
                 .eq('status', 'verificando_pago_delivery');
             if (data) {
-                setVerifyingOrders(data);
+                const userIds = Array.from(new Set(data.map(d => d.user_id).filter(Boolean)));
+                const restIds = Array.from(new Set(data.map(d => d.restaurant_id || d.restaurantId).filter(Boolean)));
+
+                let profilesMap: Record<string, any> = {};
+                if (userIds.length > 0) {
+                    const { data: profs } = await supabase
+                        .from('profiles')
+                        .select('id, photo_url, avatar_url, full_name')
+                        .in('id', userIds);
+                    if (profs) profs.forEach((p: any) => { profilesMap[p.id] = p; });
+                }
+
+                let comerciosMap: Record<string, any> = {};
+                if (restIds.length > 0) {
+                    const { data: coms } = await supabase
+                        .from('comercios')
+                        .select('id, name, logo_url, image_url, image')
+                        .in('id', restIds);
+                    if (coms) coms.forEach((c: any) => { comerciosMap[c.id] = c; });
+                }
+
+                setVerifyingOrders(data.map(d => {
+                    const prof = profilesMap[d.user_id];
+                    const rest = comerciosMap[d.restaurant_id || d.restaurantId];
+                    return {
+                        ...d,
+                        userPhoto: d.user_photo || prof?.photo_url || prof?.avatar_url || null,
+                        userName: d.user_name || d.userName || prof?.full_name || 'Cliente',
+                        restaurantName: d.restaurant_name || d.restaurantName || rest?.name || 'Tienda',
+                        restaurantLogo: d.restaurant_logo || d.restaurantLogo || rest?.logo_url || rest?.image_url || rest?.image || null
+                    };
+                }));
             }
         };
         fetchVerifications();
@@ -797,8 +879,17 @@ _Enviado desde Deliexpress App_`,
                                                 </div>
                                                 <div className="bg-slate-50 p-2 rounded-lg">
                                                     <span className="text-slate-400 font-bold uppercase tracking-wider block mb-0.5">Vehículo</span>
-                                                    <span className="font-bold text-slate-700 capitalize">
-                                                        {driver.vehicleType} {driver.vehicleBrand ? `(${driver.vehicleBrand} ${driver.vehicleModel || ''} ${driver.vehicleYear || ''})` : ''}
+                                                    <span className="font-bold text-slate-700 capitalize flex items-center gap-1.5 flex-wrap">
+                                                        <span>{driver.vehicleType} {driver.vehicleBrand ? `(${driver.vehicleBrand} ${driver.vehicleModel || ''} ${driver.vehicleYear || ''})` : ''}</span>
+                                                        {driver.vehicleType !== 'moto' && (
+                                                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-black ${
+                                                                Number(driver.vehicleYear) >= 2016 
+                                                                    ? 'bg-amber-100 text-amber-900 border border-amber-300' 
+                                                                    : 'bg-slate-100 text-slate-700 border border-slate-300'
+                                                            }`}>
+                                                                {Number(driver.vehicleYear) >= 2016 ? 'Confort (≥ 2016)' : 'Económico (< 2016)'}
+                                                            </span>
+                                                        )}
                                                     </span>
                                                 </div>
                                             </div>
@@ -850,11 +941,49 @@ _Enviado desde Deliexpress App_`,
                             {verifyingOrders.map(order => (
                                 <div key={order.id} className="bg-white rounded-3xl p-6 border flex flex-col justify-between border-slate-100 relative overflow-hidden shadow-sm group">
                                     <div className="mb-4">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <h3 className="font-bold text-slate-900 line-clamp-1">{order.userName}</h3>
-                                            <span className="text-xs font-bold bg-amber-100 text-amber-700 px-2 py-1 rounded-full uppercase">Pte. Verificación</span>
+                                        <div className="flex justify-between items-start mb-3 gap-2">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                {order.userPhoto ? (
+                                                    <img 
+                                                        src={order.userPhoto} 
+                                                        alt={order.userName || 'Cliente'} 
+                                                        className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0 bg-white"
+                                                        onError={(e) => {
+                                                            (e.currentTarget as HTMLElement).style.display = 'none';
+                                                            (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                                        }}
+                                                    />
+                                                ) : null}
+                                                <div className={`w-10 h-10 rounded-full bg-slate-900 text-white flex items-center justify-center font-black text-xs shrink-0 ${order.userPhoto ? 'hidden' : ''}`}>
+                                                    {order.userName ? order.userName.slice(0, 2).toUpperCase() : <User className="w-5 h-5 text-slate-300" />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h3 className="font-bold text-slate-900 line-clamp-1">{order.userName}</h3>
+                                                    <p className="text-[11px] text-slate-400 font-medium">#{order.id.slice(-5).toUpperCase()}</p>
+                                                </div>
+                                            </div>
+                                            <span className="text-[10px] font-black bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full uppercase shrink-0">
+                                                PTE. VERIFICACIÓN
+                                            </span>
                                         </div>
-                                        <p className="text-xs text-slate-500 font-medium">#{order.id.slice(-5).toUpperCase()} • {order.restaurantName}</p>
+
+                                        <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-xl border border-slate-100 mb-3">
+                                            {order.restaurantLogo ? (
+                                                <img 
+                                                    src={order.restaurantLogo} 
+                                                    alt={order.restaurantName || 'Comercio'} 
+                                                    className="w-7 h-7 rounded-lg object-cover border border-slate-200 shrink-0 bg-white"
+                                                    onError={(e) => {
+                                                        (e.currentTarget as HTMLElement).style.display = 'none';
+                                                        (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                                    }}
+                                                />
+                                            ) : null}
+                                            <div className={`w-7 h-7 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 ${order.restaurantLogo ? 'hidden' : ''}`}>
+                                                <Store className="w-3.5 h-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-800 truncate">{order.restaurantName}</span>
+                                        </div>
                                         
                                         <div className="mt-4 p-3 bg-slate-50 rounded-xl space-y-2 text-sm border border-slate-100">
                                             <div className="flex justify-between">
@@ -956,8 +1085,19 @@ _Enviado desde Deliexpress App_`,
                                             <p className="text-xs text-slate-500">{driver.email}</p>
                                         </td>
                                         <td className="p-4">
-                                            <p className="font-bold text-slate-700 capitalize">{driver.vehicleType}</p>
-                                            <p className="text-xs text-slate-500 uppercase">{driver.vehiclePlate || 'N/A'}</p>
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <p className="font-bold text-slate-700 capitalize">{driver.vehicleType}</p>
+                                                {driver.vehicleType !== 'moto' && (
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${
+                                                        Number(driver.vehicleYear) >= 2016 
+                                                            ? 'bg-amber-100 text-amber-900 border border-amber-300' 
+                                                            : 'bg-slate-100 text-slate-700 border border-slate-300'
+                                                    }`}>
+                                                        {Number(driver.vehicleYear) >= 2016 ? 'Confort (≥ 2016)' : 'Económico (< 2016)'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="text-xs text-slate-500 uppercase">{driver.vehiclePlate || 'N/A'}{driver.vehicleYear ? ` • ${driver.vehicleYear}` : ''}</p>
                                         </td>
                                         <td className="p-4">
                                             <div className="flex bg-slate-100 p-1 rounded-xl w-fit">
@@ -1883,7 +2023,7 @@ _Enviado desde Deliexpress App_`,
                                         </div>
                                         <button
                                             onClick={() => {
-                                                const text = `*Credenciales de Conductor - Deliexpress*\n\nPiloto: ${selectedDriver.fullName}\nCorreo: ${selectedDriver.email}\nID Conductor: ${selectedDriver.id}\nCédula: ${selectedDriver.cedula}\nTeléfono: ${selectedDriver.phone}\nVehículo: ${selectedDriver.vehicleType} (${selectedDriver.vehiclePlate || 'N/A'})\n\nPuedes ingresar desde la app de Repartidores.`;
+                                                const text = `*Credenciales de Conductor - Un 2x3*\n\nPiloto: ${selectedDriver.fullName}\nCorreo: ${selectedDriver.email}\nID Conductor: ${selectedDriver.id}\nCédula: ${selectedDriver.cedula}\nTeléfono: ${selectedDriver.phone}\nVehículo: ${selectedDriver.vehicleType} (${selectedDriver.vehiclePlate || 'N/A'})\n\nPuedes ingresar desde la app de Repartidores.`;
                                                 navigator.clipboard.writeText(text);
                                                 alert('¡Credenciales copiadas al portapapeles!');
                                             }}
@@ -2040,9 +2180,13 @@ _Enviado desde Deliexpress App_`,
                                                                     ❄️ A/A
                                                                 </span>
                                                             )}
-                                                            {veh.is_comfort && (
-                                                                <span className="px-1.5 py-0.5 bg-amber-200 text-amber-900 font-bold text-[9px] rounded">
-                                                                    ✨ Confort
+                                                            {veh.type !== 'moto' && (
+                                                                <span className={`px-1.5 py-0.5 font-bold text-[9px] rounded ${
+                                                                    Number(veh.year) >= 2016 
+                                                                        ? 'bg-amber-200 text-amber-900' 
+                                                                        : 'bg-slate-100 text-slate-700'
+                                                                }`}>
+                                                                    {Number(veh.year) >= 2016 ? '✨ Confort (≥ 2016)' : '🚕 Económico (< 2016)'}
                                                                 </span>
                                                             )}
                                                             {veh.has_thermal_bag && (
@@ -2357,76 +2501,7 @@ _Enviado desde Deliexpress App_`,
                             </div>
 
                             <div className="flex-1 relative bg-slate-100">
-                                {isLoaded ? (
-                                    <GoogleMap
-                                        mapContainerStyle={{ width: '100%', height: '100%' }}
-                                        center={mapCenter}
-                                        zoom={12}
-                                        options={{
-                                            styles: [
-                                                {
-                                                    "featureType": "poi",
-                                                    "stylers": [{ "visibility": "off" }]
-                                                }
-                                            ],
-                                            disableDefaultUI: false,
-                                            zoomControl: true,
-                                            streetViewControl: false,
-                                        }}
-                                    >
-                                        {activeDrivers.filter(d => d.homeLocation?.coords).map(driver => (
-                                            <Marker
-                                                key={driver.id}
-                                                position={driver.homeLocation!.coords!}
-                                                onClick={() => setActiveMarker(driver.id)}
-                                                icon={{
-                                                    url: driver.vehicleType === 'moto' 
-                                                        ? 'https://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-                                                        : 'https://maps.google.com/mapfiles/ms/icons/red-dot.png',
-                                                }}
-                                            >
-                                                {activeMarker === driver.id ? (
-                                                    <InfoWindow onCloseClick={() => setActiveMarker(null)}>
-                                                        <div className="p-3 min-w-[200px]">
-                                                            <div className="flex items-center gap-3 mb-3">
-                                                                <img src={driver.documents.selfieUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
-                                                                <div>
-                                                                    <p className="font-black text-slate-900 leading-none">{driver.fullName}</p>
-                                                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">{driver.vehicleType} • {driver.vehiclePlate}</p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="space-y-1.5 border-t border-slate-100 pt-3">
-                                                                <p className="text-xs font-bold text-slate-700 flex items-center gap-2">
-                                                                    <MapPin className="w-3.5 h-3.5 text-slate-400" />
-                                                                    {driver.homeLocation?.city}, {driver.homeLocation?.state}
-                                                                </p>
-                                                                <p className="text-xs font-bold text-slate-600 flex items-center gap-2">
-                                                                    <Activity className="w-3.5 h-3.5 text-slate-400" />
-                                                                    Estado: <span className={driver.isOnline ? 'text-emerald-600' : 'text-slate-400'}>{driver.isOnline ? 'Online' : 'Offline'}</span>
-                                                                </p>
-                                                            </div>
-                                                            <div className="mt-4 flex gap-2">
-                                                                <a 
-                                                                    href={`https://www.google.com/maps/dir/?api=1&destination=${driver.homeLocation?.coords?.lat},${driver.homeLocation?.coords?.lng}`}
-                                                                    target="_blank"
-                                                                    rel="noreferrer"
-                                                                    className="flex-1 bg-primary text-slate-900 text-[10px] font-black uppercase py-2 px-3 rounded-lg text-center shadow-lg shadow-primary/20"
-                                                                >
-                                                                    Cómo llegar
-                                                                </a>
-                                                            </div>
-                                                        </div>
-                                                    </InfoWindow>
-                                                ) : null}
-                                            </Marker>
-                                        ))}
-                                    </GoogleMap>
-                                ) : (
-                                    <div className="w-full h-full flex flex-col items-center justify-center gap-3">
-                                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                                        <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Cargando Mapa...</p>
-                                    </div>
-                                )}
+                                <FleetLeafletMap drivers={activeDrivers} center={mapCenter} />
                             </div>
                         </motion.div>
                     </motion.div>
@@ -2463,10 +2538,12 @@ _Enviado desde Deliexpress App_`,
                                 <table className="w-full border-separate border-spacing-y-2">
                                     <thead>
                                         <tr className="text-slate-400 text-xs font-black uppercase tracking-widest">
-                                            <th className="px-4 py-2 text-left">Pedido</th>
+                                            <th className="px-4 py-2 text-left">Pedido y Tienda</th>
+                                            <th className="px-4 py-2 text-left">Cliente</th>
                                             <th className="px-4 py-2 text-left">Piloto</th>
-                                            <th className="px-4 py-2 text-left">Origen/Destino</th>
-                                            <th className="px-4 py-2 text-center">Duración Total</th>
+                                            <th className="px-4 py-2 text-left">Origen / Destino</th>
+                                            <th className="px-4 py-2 text-center">Duración</th>
+                                            <th className="px-4 py-2 text-center">Estado</th>
                                             <th className="px-4 py-2 text-right">Fecha</th>
                                         </tr>
                                     </thead>
@@ -2474,54 +2551,110 @@ _Enviado desde Deliexpress App_`,
                                         {completedOrders
                                             .filter(o => 
                                                 !historySearchTerm || 
-                                                o.driverName?.toLowerCase().includes(historySearchTerm.toLowerCase())
+                                                o.driverName?.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+                                                o.userName?.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+                                                o.restaurantName?.toLowerCase().includes(historySearchTerm.toLowerCase())
                                             )
                                             .map((order) => (
                                             <tr key={order.id} className="group hover:bg-slate-50 transition-colors">
-                                                <td className="px-4 py-4 rounded-l-2xl border-y border-l border-slate-100 bg-white">
-                                                    <div className="flex flex-col">
-                                                        <span className="font-black text-slate-900 group-hover:text-primary transition-colors">#{order.id.slice(-6).toUpperCase()}</span>
-                                                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                                            {order.restaurantName || 'Tienda'}
-                                                        </span>
+                                                <td className="px-4 py-3 rounded-l-2xl border-y border-l border-slate-100 bg-white">
+                                                    <div className="flex items-center gap-2.5">
+                                                        {order.restaurantLogo ? (
+                                                            <img 
+                                                                src={order.restaurantLogo} 
+                                                                alt={order.restaurantName || 'Tienda'} 
+                                                                className="w-8 h-8 rounded-xl object-cover border border-slate-200 shrink-0 bg-white"
+                                                                onError={(e) => {
+                                                                    (e.currentTarget as HTMLElement).style.display = 'none';
+                                                                    (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                                                }}
+                                                            />
+                                                        ) : null}
+                                                        <div className={`w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 ${order.restaurantLogo ? 'hidden' : ''}`}>
+                                                            <Store className="w-4 h-4" />
+                                                        </div>
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="font-black text-slate-900 group-hover:text-primary transition-colors text-xs">#{order.id.slice(-6).toUpperCase()}</span>
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter truncate max-w-[120px]">
+                                                                {order.restaurantName || 'Tienda'}
+                                                            </span>
+                                                        </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-4 border-y border-slate-100 bg-white">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
-                                                            {order.driverName?.charAt(0) || '?'}
+                                                <td className="px-4 py-3 border-y border-slate-100 bg-white">
+                                                    <div className="flex items-center gap-2.5">
+                                                        {order.userPhoto ? (
+                                                            <img 
+                                                                src={order.userPhoto} 
+                                                                alt={order.userName || 'Cliente'} 
+                                                                className="w-8 h-8 rounded-full object-cover border border-slate-200 shrink-0 bg-white"
+                                                                onError={(e) => {
+                                                                    (e.currentTarget as HTMLElement).style.display = 'none';
+                                                                    (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                                                }}
+                                                            />
+                                                        ) : null}
+                                                        <div className={`w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-black text-[10px] shrink-0 ${order.userPhoto ? 'hidden' : ''}`}>
+                                                            {order.userName ? order.userName.slice(0, 2).toUpperCase() : <User className="w-4 h-4 text-slate-300" />}
                                                         </div>
-                                                        <div className="flex flex-col">
-                                                            <span className="font-bold text-slate-800 text-sm">{order.driverName || 'N/A'}</span>
-                                                            <span className="text-[10px] text-slate-400 font-medium">Piloto</span>
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="font-bold text-slate-800 text-xs truncate max-w-[110px]">{order.userName || 'Cliente'}</span>
+                                                            <span className="text-[9px] text-slate-400 font-medium">Cliente</span>
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-4 border-y border-slate-100 bg-white">
-                                                    <div className="flex flex-col max-w-[200px]">
+                                                <td className="px-4 py-3 border-y border-slate-100 bg-white">
+                                                    <div className="flex items-center gap-2.5">
+                                                        {order.driverPhoto ? (
+                                                            <img 
+                                                                src={order.driverPhoto} 
+                                                                alt={order.driverName || 'Piloto'} 
+                                                                className="w-8 h-8 rounded-full object-cover border-2 border-primary/30 shrink-0 bg-white"
+                                                                onError={(e) => {
+                                                                    (e.currentTarget as HTMLElement).style.display = 'none';
+                                                                    (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                                                }}
+                                                            />
+                                                        ) : null}
+                                                        <div className={`w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs shrink-0 ${order.driverPhoto ? 'hidden' : ''}`}>
+                                                            {order.driverName?.charAt(0) || <Bike className="w-4 h-4" />}
+                                                        </div>
+                                                        <div className="flex flex-col min-w-0">
+                                                            <span className="font-bold text-slate-800 text-xs truncate max-w-[110px]">{order.driverName || 'N/A'}</span>
+                                                            <span className="text-[9px] text-slate-400 font-medium">Piloto</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="px-4 py-3 border-y border-slate-100 bg-white">
+                                                    <div className="flex flex-col max-w-[180px]">
                                                         <div className="flex items-center gap-1 text-xs font-bold text-slate-600 truncate">
                                                             <MapPin className="w-3 h-3 shrink-0" />
                                                             {order.restaurantName || 'Pickup'}
                                                         </div>
-                                                        <div className="flex items-center gap-1 text-[10px] text-slate-400 truncate mt-1">
+                                                        <div className="flex items-center gap-1 text-[10px] text-slate-400 truncate mt-0.5">
                                                             <Navigation className="w-3 h-3 shrink-0" />
                                                             {order.clientAddress || 'S/D'}
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="px-4 py-4 border-y border-slate-100 bg-white text-center">
+                                                <td className="px-4 py-3 border-y border-slate-100 bg-white text-center">
                                                     {order.totalServiceDuration !== undefined ? (
-                                                        <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 font-black text-sm">
-                                                            <Clock className="w-3.5 h-3.5" />
+                                                        <div className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-amber-50 text-amber-700 rounded-lg border border-amber-100 font-black text-xs">
+                                                            <Clock className="w-3 h-3" />
                                                             {formatDuration(order.totalServiceDuration)}
                                                         </div>
                                                     ) : (
-                                                        <span className="text-slate-300 font-bold text-xs uppercase italic">No registrado</span>
+                                                        <span className="text-slate-300 font-bold text-[10px] uppercase italic">--</span>
                                                     )}
                                                 </td>
-                                                <td className="px-4 py-4 rounded-r-2xl border-y border-r border-slate-100 bg-white text-right">
-                                                    <span className="text-xs font-bold text-slate-500">
-                                                        {order.createdAt?.toDate?.().toLocaleDateString('es-VE')}
+                                                <td className="px-4 py-3 border-y border-slate-100 bg-white text-center">
+                                                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800">
+                                                        COMPLETADO
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 rounded-r-2xl border-y border-r border-slate-100 bg-white text-right">
+                                                    <span className="text-xs font-bold text-slate-500 whitespace-nowrap">
+                                                        {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleDateString('es-VE') : (order.createdAt ? new Date(order.createdAt).toLocaleDateString('es-VE') : '--')}
                                                     </span>
                                                 </td>
                                             </tr>

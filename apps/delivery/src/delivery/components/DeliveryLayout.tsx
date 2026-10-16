@@ -88,7 +88,11 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                 const profile = await driversApi.getDriver(user.uid);
                 if (isMounted) {
                     if (profile) {
-                        setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                        const rawAvail = (profile.availability || (profile.isOnline ? 'active' : 'offline')) as string;
+                        const normalized: AvailabilityStatus = (rawAvail === 'available' || rawAvail === 'online' || rawAvail === 'active')
+                            ? 'active'
+                            : (rawAvail === 'busy' || rawAvail === 'in_trip' ? 'busy' : 'offline');
+                        setDriverStatus(normalized);
                     } else {
                         setDriverStatus('offline');
                     }
@@ -106,7 +110,11 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                 try {
                     const profile = await driversApi.getDriver(user.uid);
                     if (profile) {
-                        setDriverStatus((profile.availability as AvailabilityStatus) || (profile.isOnline ? 'active' : 'offline'));
+                        const rawAvail = (profile.availability || (profile.isOnline ? 'active' : 'offline')) as string;
+                        const normalized: AvailabilityStatus = (rawAvail === 'available' || rawAvail === 'online' || rawAvail === 'active')
+                            ? 'active'
+                            : (rawAvail === 'busy' || rawAvail === 'in_trip' ? 'busy' : 'offline');
+                        setDriverStatus(normalized);
                     } else {
                         setDriverStatus('offline');
                     }
@@ -134,21 +142,33 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
         }
     };
 
-    const getStatusStyle = (status: AvailabilityStatus) => {
+    const getStatusStyle = (status: AvailabilityStatus | string) => {
         switch (status) {
-            case 'active': return 'bg-emerald-500 text-white';
-            case 'busy': return 'bg-amber-500 text-white';
-            case 'offline': return 'bg-slate-400 text-white';
-            default: return 'bg-slate-400 text-white';
+            case 'active':
+            case 'available':
+            case 'online':
+                return 'bg-emerald-500 text-white';
+            case 'busy':
+            case 'in_trip':
+                return 'bg-amber-500 text-white';
+            case 'offline':
+            default:
+                return 'bg-slate-400 text-white';
         }
     };
 
-    const getStatusLabel = (status: AvailabilityStatus) => {
+    const getStatusLabel = (status: AvailabilityStatus | string) => {
         switch (status) {
-            case 'active': return 'Activo';
-            case 'busy': return 'Ocupado';
-            case 'offline': return 'Desconectado';
-            default: return 'Desconectado';
+            case 'active':
+            case 'available':
+            case 'online':
+                return 'Activo';
+            case 'busy':
+            case 'in_trip':
+                return 'Ocupado';
+            case 'offline':
+            default:
+                return 'Desconectado';
         }
     };
 

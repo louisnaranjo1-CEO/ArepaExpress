@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { X, UploadCloud, CheckCircle2, AlertCircle } from 'lucide-react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, storage } from '../lib/firebase';
+import { X, CheckCircle2, AlertCircle } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 interface DeliveryPaymentModalProps {
     isOpen: boolean;
@@ -10,14 +8,17 @@ interface DeliveryPaymentModalProps {
     orderId: string;
     deliveryFee: number;
     bcvRate: number;
+    exchangeRate?: number;
     businessName: string;
     onSuccess: () => void;
 }
 
-export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliveryFee, bcvRate, businessName, onSuccess }: DeliveryPaymentModalProps) {
+export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliveryFee, bcvRate, exchangeRate, businessName, onSuccess }: DeliveryPaymentModalProps) {
     const [reference, setReference] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const effectiveRate = Number(exchangeRate || bcvRate || 855.66);
 
     if (!isOpen) return null;
 
@@ -32,12 +33,15 @@ export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliver
         setError(null);
 
         try {
-            // Update order doc
-            await updateDoc(doc(db, 'orders', orderId), {
+            const { error: updateError } = await supabase.from('orders').update({
+                delivery_payment_ref: reference.trim(),
                 deliveryPaymentRef: reference.trim(),
+                delivery_payment_status: 'verifying',
                 deliveryPaymentStatus: 'verifying',
-                status: 'verificando_pago_delivery' // new status
-            });
+                status: 'verificando_pago_delivery'
+            }).eq('id', orderId);
+
+            if (updateError) throw updateError;
 
             onSuccess();
             onClose();
@@ -79,7 +83,7 @@ export default function DeliveryPaymentModal({ isOpen, onClose, orderId, deliver
                                     Monto a transferir o pago móvil:
                                 </p>
                                 <p className="text-lg font-black text-emerald-900 mt-1">
-                                    ${deliveryFee.toFixed(2)} USD <span className="text-sm opacity-50 font-medium">|</span> {(deliveryFee * bcvRate).toFixed(2)} Bs
+                                    ${deliveryFee.toFixed(2)} USD <span className="text-sm opacity-50 font-medium">|</span> {(deliveryFee * effectiveRate).toFixed(2)} Bs
                                 </p>
                             </div>
                         </div>

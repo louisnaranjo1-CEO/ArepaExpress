@@ -56,25 +56,42 @@ export default function UsersManager() {
     const [filterRole, setFilterRole] = useState<UserRoleCategory>('all');
     const [sortBy, setSortBy] = useState<'recent' | 'referrals' | 'activity'>('recent');
     const [showShareLinkModal, setShowShareLinkModal] = useState(false);
-    const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con Deliexpress y obtén premios increíbles.');
-    const [shareUrl, setShareUrl] = useState('https://deliexpress.app');
+    const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con Un 2x3 y obtén premios increíbles.');
+    const [shareUrl, setShareUrl] = useState('https://un2x3.app');
     const [savingConfig, setSavingConfig] = useState(false);
     const [restaurantNames, setRestaurantNames] = useState<Record<string, string>>({});
     const [userCredsCopied, setUserCredsCopied] = useState(false);
     const [sendingReset, setSendingReset] = useState(false);
+    const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
 
     useEffect(() => {
         const fetchSystemConfig = async () => {
             try {
+                // 1. Intentar leer desde 'share_config'
                 const { data } = await supabase
                     .from('system_configs')
                     .select('*')
-                    .eq('id', 'fidelization')
+                    .eq('id', 'share_config')
                     .maybeSingle();
 
                 if (data) {
-                    if (data.shareMessage) setShareMessage(data.shareMessage);
-                    if (data.shareUrl) setShareUrl(data.shareUrl);
+                    const msg = data.share_message || data.sharemessage || data.shareMessage || data.data?.share_message || data.data?.shareMessage;
+                    const url = data.share_url || data.shareurl || data.shareUrl || data.data?.share_url || data.data?.shareUrl;
+                    if (msg) setShareMessage(msg);
+                    if (url) setShareUrl(url);
+                } else {
+                    // Fallback a 'fidelization'
+                    const { data: fidData } = await supabase
+                        .from('system_configs')
+                        .select('*')
+                        .eq('id', 'fidelization')
+                        .maybeSingle();
+                    if (fidData) {
+                        const msg = fidData.share_message || fidData.sharemessage || fidData.shareMessage || fidData.data?.share_message || fidData.data?.shareMessage;
+                        const url = fidData.share_url || fidData.shareurl || fidData.shareUrl || fidData.data?.share_url || fidData.data?.shareUrl;
+                        if (msg) setShareMessage(msg);
+                        if (url) setShareUrl(url);
+                    }
                 }
             } catch (err) {
                 console.error("Error fetching config", err);
@@ -86,18 +103,57 @@ export default function UsersManager() {
     const handleSaveShareConfig = async () => {
         setSavingConfig(true);
         try {
-            const { error } = await supabase.from('system_configs').upsert({
-                id: 'fidelization',
-                shareMessage,
-                shareUrl,
-                updatedAt: new Date().toISOString()
-            });
-            if (error) throw error;
+            const nowIso = new Date().toISOString();
+            const payload: Record<string, any> = {
+                id: 'share_config',
+                share_message: shareMessage,
+                share_url: shareUrl,
+                sharemessage: shareMessage,
+                shareurl: shareUrl,
+                data: {
+                    shareMessage,
+                    shareUrl,
+                    share_message: shareMessage,
+                    share_url: shareUrl
+                },
+                updated_at: nowIso,
+                updatedAt: nowIso
+            };
+
+            const { error } = await supabase
+                .from('system_configs')
+                .upsert(payload);
+
+            if (error) {
+                console.warn("Aviso al guardar en system_configs(share_config), reintentando:", error);
+                const { error: fallbackErr } = await supabase
+                    .from('system_configs')
+                    .upsert({
+                        id: 'share_config',
+                        data: { shareMessage, shareUrl },
+                        updated_at: nowIso
+                    });
+                if (fallbackErr) throw fallbackErr;
+            }
+
+            // También sincronizar con 'fidelization' para retrocompatibilidad
+            try {
+                await supabase.from('system_configs').upsert({
+                    id: 'fidelization',
+                    shareMessage,
+                    shareUrl,
+                    share_message: shareMessage,
+                    share_url: shareUrl,
+                    data: { shareMessage, shareUrl },
+                    updated_at: nowIso
+                });
+            } catch (e) {}
+
             setShowShareLinkModal(false);
-            toast.success("Configuración de referidos guardada con éxito.");
-        } catch (error) {
-            console.error(error);
-            toast.error("Error al guardar la configuración.");
+            toast.success("Configuración de compartir guardada correctamente");
+        } catch (error: any) {
+            console.error("Error guardando share_config:", error);
+            toast.error(error.message || "Error al guardar la configuración.");
         } finally {
             setSavingConfig(false);
         }
@@ -105,19 +161,21 @@ export default function UsersManager() {
 
     const fetchUsers = async () => {
         try {
-            // Fetch profiles, drivers, comercios, waiters, and cashiers simultaneously
+            // Fetch profiles, drivers, comercios, waiters, cashiers, and update requests simultaneously
             const [
                 { data: profilesData, error: profilesErr },
                 { data: driversData },
                 { data: comerciosData },
                 { data: waitersData },
-                { data: cashiersData }
+                { data: cashiersData },
+                { data: updateReqsData }
             ] = await Promise.all([
                 supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-                supabase.from('drivers').select('id, vehicle_type, vehicle_plate, is_online, full_name, phone'),
-                supabase.from('comercios').select('id, name, owner_uid, email, phone'),
+                supabase.from('drivers').select('id, user_id, vehicle_type, vehicle_plate, is_online, full_name, phone, photo_url, documents'),
+                supabase.from('comercios').select('id, name, owner_uid, email, phone, logo_url, image_url, image'),
                 supabase.from('waiters').select('id, restaurant_id, name, email, phone, role, is_active, created_at, updated_at'),
-                supabase.from('cashiers').select('id, restaurant_id, name, username, email, phone, is_active, created_at, updated_at, last_active_at')
+                supabase.from('cashiers').select('id, restaurant_id, name, username, email, phone, is_active, created_at, updated_at, last_active_at'),
+                supabase.from('delivery_update_requests').select('driver_id, selfie_url, new_data')
             ]);
 
             if (profilesErr) throw profilesErr;
@@ -132,12 +190,13 @@ export default function UsersManager() {
             const comerciosList = comerciosData || [];
             const waitersList = waitersData || [];
             const cashiersList = cashiersData || [];
+            const updateReqsList = updateReqsData || [];
 
             const mapped: UserProfile[] = (profilesData || []).map((p: any) => {
                 const emailLower = (p.email || '').toLowerCase().trim();
                 const phoneTrim = (p.phone || '').trim();
 
-                const matchedDriver = driversList.find((d: any) => d.id === p.id);
+                const matchedDriver = driversList.find((d: any) => d.id === p.id || d.user_id === p.id);
                 const isDriver = Boolean(matchedDriver) || ['driver', 'delivery', 'conductor'].includes(p.role);
 
                 const matchedComercio = comerciosList.find((c: any) => 
@@ -159,6 +218,10 @@ export default function UsersManager() {
                     (phoneTrim && c.phone && c.phone.trim() === phoneTrim)
                 );
 
+                const matchedUpdateReq = updateReqsList.find((u: any) => 
+                    u.driver_id === p.id || (matchedDriver && u.driver_id === matchedDriver.id)
+                );
+
                 let roleCategory: 'client' | 'driver' | 'business' | 'waiter' | 'cashier' = 'client';
                 let businessName: string | undefined = undefined;
 
@@ -177,6 +240,34 @@ export default function UsersManager() {
                     roleCategory = 'client';
                 }
 
+                // Prioridad estricta de fotos de perfil solicitada:
+                // 1. Conductor: driver.photo_url || driver.documents?.selfie_url || driver.documents?.selfie || driver.documents?.photo_url || update_requests.selfie_url || profile.photo_url
+                // 2. Negocio: comercio.logo_url || comercio.image || profile.photo_url
+                // 3. Cliente: profile.photo_url
+                let resolvedPhoto: string | null = null;
+                const profilePhoto = p.avatar_url || p.photo_url || p.photoURL || null;
+
+                if (isDriver) {
+                    resolvedPhoto = matchedDriver?.photo_url ||
+                                    matchedDriver?.documents?.selfie_url ||
+                                    matchedDriver?.documents?.selfieUrl ||
+                                    matchedDriver?.documents?.selfie ||
+                                    matchedDriver?.documents?.photo_url ||
+                                    matchedUpdateReq?.selfie_url ||
+                                    matchedUpdateReq?.new_data?.documents?.selfie_url ||
+                                    matchedUpdateReq?.new_data?.documents?.selfieUrl ||
+                                    profilePhoto ||
+                                    null;
+                } else if (isComercio) {
+                    resolvedPhoto = matchedComercio?.logo_url ||
+                                    matchedComercio?.image ||
+                                    matchedComercio?.image_url ||
+                                    profilePhoto ||
+                                    null;
+                } else {
+                    resolvedPhoto = profilePhoto;
+                }
+
                 const actMinutes = Number(p.active_minutes ?? p.total_usage_minutes ?? 0);
                 const lastAct = p.last_active_at || p.last_seen || p.last_login || p.updated_at;
 
@@ -189,7 +280,7 @@ export default function UsersManager() {
                     role: p.role || 'client',
                     roleCategory,
                     businessName,
-                    photoURL: p.avatar_url || p.photo_url || p.photoURL,
+                    photoURL: resolvedPhoto,
                     walletBalance: p.wallet_balance ?? p.walletBalance ?? 0,
                     createdAt: p.created_at || p.createdAt,
                     lastSeen: lastAct,
@@ -626,8 +717,71 @@ export default function UsersManager() {
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-[40px] border border-slate-100 overflow-hidden shadow-xl shadow-slate-200/40">
-                        <div className="overflow-x-auto">
+                    <div className="bg-white rounded-2xl md:rounded-[40px] border border-slate-100 overflow-hidden shadow-md md:shadow-xl shadow-slate-200/40">
+                        {/* Mobile Cards View (Optimized for Mobile/Android: no right truncation) */}
+                        <div className="block md:hidden divide-y divide-slate-100">
+                            {filteredUsers.map((user) => (
+                                <div
+                                    key={user.id}
+                                    onClick={() => handleUserClick(user)}
+                                    className="p-3.5 hover:bg-slate-50/80 transition-colors flex items-center justify-between gap-3 cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        <div
+                                            onClick={(e) => {
+                                                if (user.photoURL) {
+                                                    e.stopPropagation();
+                                                    setPreviewPhoto({ url: user.photoURL, title: user.displayName || user.name || 'Usuario' });
+                                                }
+                                            }}
+                                            className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200 shadow-xs relative cursor-pointer active:scale-95 transition-transform"
+                                            title={user.photoURL ? "Toca para ampliar foto" : undefined}
+                                        >
+                                            {user.photoURL ? (
+                                                <img src={user.photoURL} alt={user.displayName} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="w-full h-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">
+                                                    {(user.displayName || user.name || user.email || 'U').charAt(0).toUpperCase()}
+                                                </div>
+                                            )}
+                                            {isOnline(user.lastActiveAt) && (
+                                                <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full"></div>
+                                            )}
+                                        </div>
+
+                                        <div className="min-w-0 flex-1">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <h4 className="font-black text-slate-900 text-xs sm:text-sm truncate">
+                                                    {user.displayName || user.name || 'Sin Nombre'}
+                                                </h4>
+                                                <span className={`w-1.5 h-1.5 rounded-full ${isOnline(user.lastActiveAt) ? 'bg-green-500 animate-pulse' : 'bg-slate-300'}`}></span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                                {renderRoleBadge(user)}
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5">
+                                                {user.phone || user.email || user.id.slice(0, 8)}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <div className="text-right">
+                                            <span className="text-[10px] font-black text-primary block">
+                                                {user.totalReferrals || 0} ref
+                                            </span>
+                                            <span className="text-[9px] font-bold text-slate-400 block">
+                                                {user.points || 0} pts
+                                            </span>
+                                        </div>
+                                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block overflow-x-auto">
                             <table className="w-full text-left whitespace-nowrap">
                                 <thead className="bg-slate-50/50 text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] border-b border-slate-100">
                                     <tr>
@@ -646,26 +800,37 @@ export default function UsersManager() {
                                             onClick={() => handleUserClick(user)}
                                             className="group hover:bg-slate-50/80 transition-all cursor-pointer"
                                         >
-                                            <td className="px-6 py-5">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-12 h-12 rounded-full bg-slate-100 flex flex-col items-center justify-center shrink-0 overflow-hidden border border-slate-200 shadow-inner relative">
+                                            <td className="px-6 py-4">
+                                                <div className="flex items-center gap-3.5">
+                                                    <div 
+                                                        onClick={(e) => {
+                                                            if (user.photoURL) {
+                                                                e.stopPropagation();
+                                                                setPreviewPhoto({ url: user.photoURL, title: user.displayName || user.name || 'Usuario' });
+                                                            }
+                                                        }}
+                                                        className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center shrink-0 overflow-hidden border border-slate-200 shadow-xs relative cursor-pointer hover:ring-2 hover:ring-primary transition-all"
+                                                        title={user.photoURL ? "Toca para ampliar foto" : undefined}
+                                                    >
                                                         {user.photoURL ? (
                                                             <img src={user.photoURL} alt={user.displayName} className="w-full h-full object-cover" />
                                                         ) : (
-                                                            <User className="w-6 h-6 text-slate-400" />
+                                                            <div className="w-full h-full bg-slate-900 text-white font-black text-xs flex items-center justify-center">
+                                                                {(user.displayName || user.name || user.email || 'U').charAt(0).toUpperCase()}
+                                                            </div>
                                                         )}
                                                         {isOnline(user.lastActiveAt) && (
-                                                            <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full shadow-sm shadow-green-500/50"></div>
+                                                            <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-white rounded-full shadow-xs"></div>
                                                         )}
                                                     </div>
                                                     <div>
-                                                        <div className="font-bold text-slate-900 group-hover:text-slate-900 transition-colors">{user.displayName || user.name || 'Sin Nombre'}</div>
+                                                        <div className="font-bold text-sm text-slate-900 group-hover:text-primary transition-colors">{user.displayName || user.name || 'Sin Nombre'}</div>
                                                         <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{user.id.slice(0, 8)}...</div>
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5">
-                                                <div className="flex flex-col gap-1.5">
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-col gap-1">
                                                     {renderRoleBadge(user)}
                                                     <span className={`text-[10px] font-bold ${isOnline(user.lastActiveAt) ? 'text-green-600 flex items-center gap-1' : 'text-slate-400'}`}>
                                                         {isOnline(user.lastActiveAt) && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>}
@@ -673,19 +838,19 @@ export default function UsersManager() {
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5">
+                                            <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <div className="text-sm font-medium text-slate-600 flex items-center gap-2">
-                                                        <Mail className="w-3 h-3 text-slate-300" /> {user.email || 'N/A'}
+                                                    <div className="text-xs font-medium text-slate-600 flex items-center gap-2">
+                                                        <Mail className="w-3 h-3 text-slate-400" /> {user.email || 'N/A'}
                                                     </div>
-                                                    <div className="text-[10px] font-black text-slate-400 flex items-center gap-2">
-                                                        <Phone className="w-3 h-3 text-slate-300" /> {user.phone || 'N/A'}
+                                                    <div className="text-[10px] font-black text-slate-500 flex items-center gap-2">
+                                                        <Phone className="w-3 h-3 text-slate-400" /> {user.phone || 'N/A'}
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-8 py-5">
+                                            <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                                                    <div className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                                                         <Clock className="w-3.5 h-3.5 text-primary" /> {formatUsage(user.activeMinutes)}
                                                     </div>
                                                     <div className="text-[10px] font-semibold text-slate-400">
@@ -695,18 +860,18 @@ export default function UsersManager() {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5">
+                                            <td className="px-6 py-4">
                                                 <div className="flex flex-col gap-1">
-                                                    <div className="text-sm font-black text-slate-800 flex items-center gap-1.5">
-                                                        <Users className="w-4 h-4 text-primary" /> {user.totalReferrals || 0}
+                                                    <div className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                                        <Users className="w-3.5 h-3.5 text-primary" /> {user.totalReferrals || 0}
                                                     </div>
                                                     <div className="text-[10px] font-bold text-slate-400 flex items-center gap-1.5">
                                                         <Gift className="w-3 h-3" /> {user.points || 0} pts
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-6 py-5 text-right">
-                                                <ChevronRight className="w-5 h-5 text-slate-200 group-hover:text-slate-400 transition-colors" />
+                                            <td className="px-6 py-4 text-right">
+                                                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-primary transition-colors" />
                                             </td>
                                         </tr>
                                     ))}
@@ -818,7 +983,7 @@ export default function UsersManager() {
                                 <div>
                                     <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
                                         <Gift className="w-6 h-6 text-primary" />
-                                        Compartir Deliexpress
+                                        Compartir Un 2x3
                                     </h3>
                                     <p className="text-slate-500 text-sm mt-1">Configura el mensaje que enviarán los usuarios para invitar a sus amigos.</p>
                                 </div>
@@ -834,7 +999,7 @@ export default function UsersManager() {
                                         value={shareMessage}
                                         onChange={e => setShareMessage(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all resize-none h-24 text-sm"
-                                        placeholder="Ej: ¡Usa Deliexpress y obtén recompensas!"
+                                        placeholder="Ej: ¡Usa Un 2x3 y obtén recompensas!"
                                     />
                                     <p className="text-[10px] font-medium text-slate-400 ml-1">Nota: El código del usuario y la URL se agregarán al final automáticamente.</p>
                                 </div>
@@ -846,7 +1011,7 @@ export default function UsersManager() {
                                         value={shareUrl}
                                         onChange={e => setShareUrl(e.target.value)}
                                         className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all text-sm"
-                                        placeholder="https://deliexpress.app"
+                                        placeholder="https://un2x3.app"
                                     />
                                 </div>
 
@@ -856,13 +1021,41 @@ export default function UsersManager() {
                                     className="w-full mt-4 bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:bg-primary hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
                                 >
                                     {savingConfig ? (
-                                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
                                     ) : (
-                                        'Guardar Configuración'
+                                        <>
+                                            <Save className="w-5 h-5 text-slate-900" />
+                                            <span>Guardar Configuración</span>
+                                        </>
                                     )}
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal para visualizar foto ampliada del usuario */}
+            {previewPhoto && (
+                <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200" onClick={() => setPreviewPhoto(null)}>
+                    <div className="relative max-w-sm sm:max-w-md w-full bg-slate-900 rounded-3xl p-4 overflow-hidden border border-slate-700 shadow-2xl flex flex-col items-center gap-3" onClick={e => e.stopPropagation()}>
+                        <div className="flex items-center justify-between w-full pb-2 border-b border-slate-800">
+                            <h4 className="text-white font-black text-sm truncate">{previewPhoto.title}</h4>
+                            <button onClick={() => setPreviewPhoto(null)} className="p-1.5 rounded-full bg-slate-800 text-slate-300 hover:text-white">
+                                <X className="w-4 h-4" />
+                            </button>
+                        </div>
+                        <div className="w-full aspect-square rounded-2xl overflow-hidden bg-slate-950 flex items-center justify-center">
+                            <img src={previewPhoto.url} alt={previewPhoto.title} className="w-full h-full object-cover" />
+                        </div>
+                        <a 
+                            href={previewPhoto.url} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1.5"
+                        >
+                            <ExternalLink className="w-3.5 h-3.5" /> Abrir imagen original
+                        </a>
                     </div>
                 </div>
             )}
@@ -960,7 +1153,7 @@ export default function UsersManager() {
                                             </div>
                                             <button
                                                 onClick={() => {
-                                                    const text = `*Credenciales de Usuario - Deliexpress*\n\nNombre: ${selectedUser.displayName || selectedUser.name || 'Sin nombre'}\nCorreo: ${selectedUser.email || 'N/A'}\nUID Auth: ${selectedUser.id}\nTeléfono: ${selectedUser.phone || 'N/A'}\nRol: ${selectedUser.role || 'cliente'}`;
+                                                    const text = `*Credenciales de Usuario - Un 2x3*\n\nNombre: ${selectedUser.displayName || selectedUser.name || 'Sin nombre'}\nCorreo: ${selectedUser.email || 'N/A'}\nUID Auth: ${selectedUser.id}\nTeléfono: ${selectedUser.phone || 'N/A'}\nRol: ${selectedUser.role || 'cliente'}`;
                                                     navigator.clipboard.writeText(text);
                                                     setUserCredsCopied(true);
                                                     toast.success('¡Credenciales copiadas!');

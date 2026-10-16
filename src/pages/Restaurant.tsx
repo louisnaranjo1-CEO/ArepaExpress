@@ -131,7 +131,7 @@ export default function RestaurantPage() {
 
     if (navigator.share) {
       navigator.share({
-        title: `Mira este sitio en Deliexpress`,
+        title: `Mira este sitio en Un 2x3`,
         text: `Te recomiendo ${restaurant?.name}. Regístrate con mi código y participa en sorteos.`,
         url: shareUrl,
       }).catch(console.error);

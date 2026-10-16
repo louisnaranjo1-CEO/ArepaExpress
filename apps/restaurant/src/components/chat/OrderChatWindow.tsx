@@ -91,6 +91,18 @@ export default function OrderChatWindow({
   } | null>(null);
   const [isSavingPrice, setIsSavingPrice] = useState(false);
 
+  // ➕ Agregar Productos en Vivo (Comercio / Admin)
+  const [showAddProductsModal, setShowAddProductsModal] = useState(false);
+  const [addProductsSearch, setAddProductsSearch] = useState('');
+  const [addProductsCatalog, setAddProductsCatalog] = useState<any[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [selectedAddItems, setSelectedAddItems] = useState<{ [productId: string]: number }>({});
+  const [selectedExistingQty, setSelectedExistingQty] = useState<{ [itemId: string]: number }>({});
+
+  // 💱 Sincronización de Tasa Dinámica
+  const [showRateModal, setShowRateModal] = useState(false);
+  const [customRateInput, setCustomRateInput] = useState<string>('');
+
   // Preparation tool modal state (Store)
   const [showPrepTimeModal, setShowPrepTimeModal] = useState(false);
   const [customPrepMinutes, setCustomPrepMinutes] = useState(20);
@@ -145,7 +157,7 @@ export default function OrderChatWindow({
     }
   };
 
-  const isStoreRole = currentUserRole === 'restaurant' || (currentUserRole as string) === 'cashier';
+  const isStoreRole = currentUserRole === 'restaurant' || (currentUserRole as string) === 'cashier' || (currentUserRole as string) === 'cpanel';
 
   // Bidirectional audio alert & haptic feedback (Fase 2.2)
   const playNotificationChime = (type: 'message' | 'enter' = 'message') => {
@@ -1016,6 +1028,127 @@ export default function OrderChatWindow({
     }
   };
 
+  // ➕ Abrir buscador/selector rápido de productos para agregar o ajustar en vivo
+  const handleOpenAddProductsModal = async () => {
+    setShowAddProductsModal(true);
+    setLoadingCatalog(true);
+    setAddProductsSearch('');
+    setSelectedAddItems({});
+    const initialExisting: { [key: string]: number } = {};
+    (orderItems || []).forEach((it: any) => {
+      initialExisting[it.id] = Number(it.quantity) || 1;
+    });
+    setSelectedExistingQty(initialExisting);
+
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_available', true)
+        .order('name');
+      if (!error && data) {
+        setAddProductsCatalog(data);
+      }
+    } catch (err) {
+      console.error("Error loading products for add:", err);
+    } finally {
+      setLoadingCatalog(false);
+    }
+  };
+
+  // 🛒 Confirmar y agregar/ajustar productos del pedido en tiempo real
+  const handleConfirmAddProducts = async () => {
+    try {
+      let updatedItems = (orderItems || []).map((it: any) => ({
+        ...it,
+        quantity: selectedExistingQty[it.id] !== undefined ? selectedExistingQty[it.id] : (Number(it.quantity) || 1)
+      })).filter(it => it.quantity > 0);
+
+      Object.entries(selectedAddItems).forEach(([prodId, qty]) => {
+        if (qty > 0) {
+          const prod = addProductsCatalog.find(p => p.id === prodId);
+          if (prod) {
+            updatedItems.push({
+              id: `${prod.id}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+              name: prod.name,
+              price: Number(prod.price || 0),
+              quantity: qty,
+              image: prod.image || prod.image_url || '',
+              category: prod.category || '',
+              is_gift: false,
+              isGift: false,
+              addedBy: 'store'
+            });
+          }
+        }
+      });
+
+      if (updatedItems.length === 0) {
+        toast.error("El pedido no puede quedar sin productos.");
+        return;
+      }
+
+      const newSubtotal = updatedItems.reduce((sum, it) => sum + (Number(it.price || 0) * Number(it.quantity || 1)), 0);
+      const deliveryFee = Number(liveOrder?.deliveryFee || liveOrder?.delivery_fee || orderInfo?.deliveryFee || 0);
+      const newTotal = Number((newSubtotal + deliveryFee).toFixed(2));
+      const currentActiveRate = (liveOrder?.is_rate_overridden && liveOrder?.custom_exchange_rate)
+        ? Number(liveOrder.custom_exchange_rate)
+        : Number(liveOrder?.exchange_rate || bcvRate || 855.66);
+      const newTotalBs = Number((newTotal * currentActiveRate).toFixed(2));
+
+      const updates: any = {
+        items: updatedItems,
+        subtotal: newSubtotal,
+        total: newTotal,
+        total_bs: newTotalBs,
+        updated_at: new Date().toISOString()
+      };
+
+      await supabase.from('orders').update(updates).eq('id', orderId);
+
+      setOrderItems(updatedItems);
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        ...updates
+      }));
+      setShowAddProductsModal(false);
+
+      await handleSendMessage(`🛒 Se agregaron productos al pedido. Nuevo total actualizado en la interfaz: $${newTotal.toFixed(2)} USD (${newTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs).`);
+      toast.success("Productos agregados y total actualizado.");
+    } catch (err) {
+      console.error("Error updating order items:", err);
+      toast.error("Error al actualizar productos del pedido");
+    }
+  };
+
+  // 💱 Actualizar y sincronizar tasa cambiaria en la base de datos
+  const handleUpdateOrderRate = async (newRate: number) => {
+    if (!newRate || newRate <= 0) return;
+    try {
+      const totalUsd = orderDisplayTotal;
+      const totalBs = Number((totalUsd * newRate).toFixed(2));
+      const updates = {
+        exchange_rate: newRate,
+        custom_exchange_rate: newRate,
+        is_rate_overridden: true,
+        total_bs: totalBs,
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('orders').update(updates).eq('id', orderId);
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        ...updates
+      }));
+      setShowRateModal(false);
+      await handleSendMessage(`💱 *Tasa de cambio actualizada:* **${newRate.toFixed(2)} Bs/$**. Total en Bolívares actualizado en pantalla: **Bs. ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}**.`);
+      toast.success(`Tasa actualizada a ${newRate.toFixed(2)} Bs/$`);
+    } catch (e) {
+      console.error("Error updating rate:", e);
+      toast.error("Error al actualizar la tasa de cambio");
+    }
+  };
+
   const handleSendPagoMovilInfo = async () => {
     try {
       const { data: res } = await supabase.from('comercios').select('*').eq('id', restaurantId).maybeSingle();
@@ -1154,9 +1287,11 @@ export default function OrderChatWindow({
     }
 
     try {
-      const customRate = Number(liveOrder?.exchange_rate || liveOrder?.custom_exchange_rate || bcvRate || 855.66);
+      const currentRate = (liveOrder?.is_rate_overridden && liveOrder?.custom_exchange_rate)
+        ? Number(liveOrder.custom_exchange_rate)
+        : Number(liveOrder?.exchange_rate || bcvRate || 855.66);
       const totalUsd = orderDisplayTotal;
-      const totalBs = Number((totalUsd * customRate).toFixed(2));
+      const totalBs = Number((totalUsd * currentRate).toFixed(2));
 
       await supabase.from('orders').update({
         status: 'awaiting_payment',
@@ -1164,7 +1299,8 @@ export default function OrderChatWindow({
         stock_confirmed_at: new Date().toISOString(),
         total: totalUsd,
         total_bs: totalBs,
-        exchange_rate: customRate,
+        exchange_rate: currentRate,
+        custom_exchange_rate: currentRate,
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
@@ -1175,18 +1311,15 @@ export default function OrderChatWindow({
         stock_confirmed_at: new Date().toISOString(),
         total: totalUsd,
         total_bs: totalBs,
-        exchange_rate: customRate
+        exchange_rate: currentRate,
+        custom_exchange_rate: currentRate
       }));
 
+      // Requirement 4: Breve y limpia instrucción sin datos bancarios redundantes en el chat
       await handleSendMessage(
-        `✅ *¡STOCK Y MONTO FINAL CONFIRMADOS POR EL COMERCIO!*\n` +
-        `Todos los productos de tu pedido están disponibles y apartados.\n` +
-        `• Total a pagar: **$${totalUsd.toFixed(2)} USD** (${totalBs.toLocaleString('es-VE')} Bs)\n` +
-        `• Tasa oficial aplicada: **${customRate.toFixed(2)} Bs/$**\n\n` +
-        `Ya puedes realizar y reportar tu pago con total tranquilidad.`
+        "✅ Stock confirmado y monto actualizado en pantalla. Por favor presiona el botón 'Copiar datos' en la parte superior de tu interfaz para realizar el Pago Móvil exacto y luego adjunta tu capture o número de referencia."
       );
-      await handleSendPagoMovilInfo();
-      toast.success("Stock y monto final confirmados al cliente.");
+      toast.success("Stock confirmado al cliente.");
     } catch (e) {
       console.error(e);
       toast.error("Error al confirmar stock");
@@ -1194,7 +1327,10 @@ export default function OrderChatWindow({
   };
 
   // Financial and Qualification Calculations
-  const effectiveRate = Number(liveOrder?.exchange_rate || liveOrder?.custom_exchange_rate || bcvRate || 855.66);
+  const activeRate = (liveOrder?.is_rate_overridden && liveOrder?.custom_exchange_rate)
+    ? Number(liveOrder.custom_exchange_rate)
+    : Number(liveOrder?.exchange_rate || bcvRate || 855.66);
+  const effectiveRate = activeRate;
   const isPickupOrder = liveOrder?.delivery_method === 'pickup' || liveOrder?.deliveryMethod === 'pickup';
   const calculatedItemsTotal = (orderItems && orderItems.length > 0)
     ? orderItems.reduce((acc, it) => acc + (Number(it.price || 0) * Number(it.quantity || 1)), 0)
@@ -1510,8 +1646,19 @@ export default function OrderChatWindow({
         <div className="bg-white border-b-2 border-slate-200 p-3.5 space-y-2.5 shrink-0 max-h-56 overflow-y-auto shadow-sm">
           {/* Top Info: Client Name, Cédula and Delivery Method */}
           <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 text-xs">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="w-7 h-7 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              {(liveOrder?.user_photo || orderInfo?.userPhoto || (orderInfo as any)?.user_photo) ? (
+                <img 
+                  src={liveOrder?.user_photo || orderInfo?.userPhoto || (orderInfo as any)?.user_photo} 
+                  alt={liveOrder?.user_name || orderInfo?.userName || 'Cliente'} 
+                  className="w-8 h-8 rounded-full object-cover border border-primary/40 shadow-xs shrink-0"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                    (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                  }}
+                />
+              ) : null}
+              <div className={`w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 ${(liveOrder?.user_photo || orderInfo?.userPhoto || (orderInfo as any)?.user_photo) ? 'hidden' : ''}`}>
                 <User className="w-4 h-4 text-slate-600" />
               </div>
               <div className="min-w-0">
@@ -1642,14 +1789,25 @@ export default function OrderChatWindow({
               </span>
             </div>
 
-            {/* Quick stock confirm for store */}
-            {isStoreRole && !isStockConfirmed && (
-              <button
-                onClick={handleConfirmStoreStock}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-sm active:scale-95"
-              >
-                <CheckCircle className="w-3.5 h-3.5" /> Confirmar Stock
-              </button>
+            {/* Quick stock confirm & Add products for store */}
+            {isStoreRole && !isPaymentVerifiedByStore && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={handleOpenAddProductsModal}
+                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-black text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                  title="Agregar productos o ajustar cantidades en vivo"
+                >
+                  <Plus className="w-3.5 h-3.5" /> ➕ Agregar Productos
+                </button>
+                {!isStockConfirmed && (
+                  <button
+                    onClick={handleConfirmStoreStock}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-sm active:scale-95"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" /> Confirmar Stock
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -1842,11 +2000,18 @@ export default function OrderChatWindow({
         </div>
       )}
 
-      {/* ACTION BAR: Store / Cashier */}
+      {/* ACTION BAR: Store / Cashier / Admin */}
       {isStoreRole && (
         <div className="bg-white p-2.5 border-t border-slate-200 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide shadow-sm z-10 w-full shrink-0">
           {!isPaymentVerifiedByStore && (
             <>
+              <button
+                onClick={handleOpenAddProductsModal}
+                className="shrink-0 bg-amber-500 hover:bg-amber-600 px-3.5 py-1.5 rounded-xl text-xs font-black text-slate-950 active:scale-95 transition-all flex items-center gap-1.5 shadow-sm"
+                title="Agregar productos al pedido en vivo"
+              >
+                <Plus className="w-4 h-4" /> ➕ Agregar Productos
+              </button>
               {!isStockConfirmed && (
                 <button
                   onClick={handleConfirmStoreStock}
@@ -1855,6 +2020,16 @@ export default function OrderChatWindow({
                   <CheckCircle className="w-4 h-4" /> CONFIRMAR STOCK
                 </button>
               )}
+              <button
+                onClick={() => {
+                  setCustomRateInput(String(activeRate));
+                  setShowRateModal(true);
+                }}
+                className="shrink-0 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-black text-slate-800 active:scale-95 transition-all flex items-center gap-1"
+                title="Cambiar tasa del pedido"
+              >
+                💱 Tasa: {activeRate.toFixed(2)} Bs
+              </button>
               <button
                 onClick={handleSendPagoMovilInfo}
                 className="shrink-0 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl text-xs font-black text-blue-700 hover:bg-blue-100 active:scale-95 transition-all flex items-center gap-1"
@@ -2896,6 +3071,262 @@ export default function OrderChatWindow({
               >
                 {isSavingPrice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
                 Guardar Precio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ➕ Agregar / Modificar Productos del Pedido en Vivo (Comercio / Admin) */}
+      {showAddProductsModal && (
+        <div className="fixed inset-0 z-[250] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-950 flex items-center justify-center font-black">
+                  <Plus className="w-5 h-5 text-amber-700" />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-900 text-base">Modificar Carrito en Vivo</h4>
+                  <p className="text-[11px] text-slate-500 font-bold">Agrega productos o ajusta cantidades al pedido</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddProductsModal(false)}
+                className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              {/* Buscador de Productos */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar producto por nombre o categoría..."
+                  value={addProductsSearch}
+                  onChange={(e) => setAddProductsSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 outline-none focus:border-amber-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              {/* Sección 1: Productos Actuales en el Pedido */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Productos actuales en el pedido ({orderItems.length})
+                </p>
+                <div className="space-y-1.5">
+                  {orderItems.map((it: any) => {
+                    const currentQty = selectedExistingQty[it.id] !== undefined ? selectedExistingQty[it.id] : (Number(it.quantity) || 1);
+                    return (
+                      <div key={it.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-2xl border border-slate-100 gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-black truncate ${currentQty === 0 ? 'line-through text-slate-400' : 'text-slate-900'}`}>
+                            {it.name}
+                          </p>
+                          <p className="text-[10px] font-bold text-slate-500">
+                            ${Number(it.price || 0).toFixed(2)} USD c/u
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedExistingQty(prev => ({ ...prev, [it.id]: Math.max(0, currentQty - 1) }))}
+                            className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-xs font-black text-slate-700 active:scale-90"
+                          >
+                            -
+                          </button>
+                          <span className="w-6 text-center text-xs font-black text-slate-900">{currentQty}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedExistingQty(prev => ({ ...prev, [it.id]: currentQty + 1 }))}
+                            className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-xs font-black text-slate-700 active:scale-90"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Sección 2: Catálogo de la Tienda */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Catálogo disponible del negocio
+                </p>
+                {loadingCatalog ? (
+                  <div className="py-8 text-center">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-amber-500" />
+                    <p className="text-xs font-bold text-slate-400 mt-1">Cargando productos...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    {addProductsCatalog
+                      .filter(p => !addProductsSearch.trim() || p.name.toLowerCase().includes(addProductsSearch.toLowerCase()) || (p.category && p.category.toLowerCase().includes(addProductsSearch.toLowerCase())))
+                      .map((p) => {
+                        const qty = selectedAddItems[p.id] || 0;
+                        return (
+                          <div key={p.id} className="flex items-center justify-between p-2.5 bg-white rounded-2xl border border-slate-200/80 gap-2 hover:border-amber-300 transition-all">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              {(p.image || p.image_url) ? (
+                                <img src={p.image || p.image_url} alt={p.name} className="w-9 h-9 rounded-xl object-cover shrink-0 border border-slate-100" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                                  <Store className="w-4 h-4" />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-black text-slate-900 truncate">{p.name}</p>
+                                <p className="text-[11px] font-black text-emerald-600">${Number(p.price || 0).toFixed(2)} USD</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedAddItems(prev => ({ ...prev, [p.id]: Math.max(0, qty - 1) }))}
+                                className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 flex items-center justify-center text-xs font-black text-slate-700 active:scale-90"
+                              >
+                                -
+                              </button>
+                              <span className="w-6 text-center text-xs font-black text-slate-900">{qty}</span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedAddItems(prev => ({ ...prev, [p.id]: qty + 1 }))}
+                                className="w-6 h-6 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 flex items-center justify-center text-xs font-black active:scale-90"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer con Totales Recalculados */}
+            {(() => {
+              const previewExistingSubtotal = (orderItems || []).reduce((sum, it) => {
+                const q = selectedExistingQty[it.id] !== undefined ? selectedExistingQty[it.id] : (Number(it.quantity) || 1);
+                return sum + (Number(it.price || 0) * q);
+              }, 0);
+              const previewAddedSubtotal = Object.entries(selectedAddItems).reduce((sum, [pId, q]) => {
+                const prod = addProductsCatalog.find(p => p.id === pId);
+                return sum + (Number(prod?.price || 0) * q);
+              }, 0);
+              const deliveryFee = Number(liveOrder?.deliveryFee || liveOrder?.delivery_fee || orderInfo?.deliveryFee || 0);
+              const previewTotalUsd = previewExistingSubtotal + previewAddedSubtotal + deliveryFee;
+              const previewTotalBs = previewTotalUsd * activeRate;
+
+              return (
+                <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200/80 shrink-0 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nuevo Total Estimado</p>
+                      <p className="text-xl font-black text-slate-900">${previewTotalUsd.toFixed(2)} USD</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Equivalente en Bs ({activeRate.toFixed(2)} Bs/$)</p>
+                      <p className="text-lg font-black text-emerald-700">Bs. {previewTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddProductsModal(false)}
+                      className="px-4 py-3 rounded-2xl border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmAddProducts}
+                      className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+                    >
+                      <Check className="w-4 h-4" /> Confirmar y Actualizar Pedido
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: 💱 Modificar y Sincronizar Tasa de Cambio (Comercio / Admin) */}
+      {showRateModal && (
+        <div className="fixed inset-0 z-[250] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-primary/20 text-slate-900 flex items-center justify-center font-black">
+                  💱
+                </div>
+                <div>
+                  <h4 className="font-black text-sm text-slate-900">Ajustar Tasa de Cambio</h4>
+                  <p className="text-[10px] text-slate-500 font-bold">Se reflejará en vivo al cliente</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRateModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-black text-slate-700 block mb-1">
+                  Nueva Tasa de Cambio (Bs por 1 USD)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  value={customRateInput}
+                  onChange={(e) => setCustomRateInput(e.target.value)}
+                  placeholder={String(activeRate)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              {Number(customRateInput) > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs space-y-1">
+                  <div className="flex justify-between font-bold text-slate-600">
+                    <span>Total USD:</span>
+                    <span>${orderDisplayTotal.toFixed(2)} USD</span>
+                  </div>
+                  <div className="flex justify-between font-black text-emerald-800 text-sm pt-1 border-t border-emerald-200">
+                    <span>Nuevo Total Bs:</span>
+                    <span>Bs. {(orderDisplayTotal * Number(customRateInput)).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowRateModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!Number(customRateInput) || Number(customRateInput) <= 0}
+                onClick={() => handleUpdateOrderRate(Number(customRateInput))}
+                className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+              >
+                <Check className="w-4 h-4 text-primary" /> Guardar Tasa
               </button>
             </div>
           </div>

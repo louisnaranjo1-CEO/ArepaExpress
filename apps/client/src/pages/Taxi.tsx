@@ -350,7 +350,7 @@ export default function Taxi() {
                 let query = supabase
                     .from('transport_requests')
                     .select('*')
-                    .in('status', ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'])
+                    .in('status', ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress', 'completed'])
                     .order('created_at', { ascending: false })
                     .limit(5);
 
@@ -372,9 +372,16 @@ export default function Taxi() {
 
                 if (reqs && reqs.length > 0) {
                     const activeReq = reqs[0];
-                    setActiveService(activeReq);
-                    if (['accepted', 'arriving', 'in_progress'].includes(activeReq.status)) {
+                    const isPendingCompletion = activeReq.status === 'completed' && (!activeReq.driver_paid || activeReq.payment_status !== 'confirmed');
+                    
+                    if (isPendingCompletion || ['accepted', 'arriving', 'in_progress'].includes(activeReq.status)) {
+                        setActiveService(activeReq);
                         navigate(`/taxi/track/${activeReq.id}`);
+                        return;
+                    } else if (activeReq.status !== 'completed') {
+                        setActiveService(activeReq);
+                    } else {
+                        setActiveService(null);
                     }
                 } else {
                     setActiveService(null);

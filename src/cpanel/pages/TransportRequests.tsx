@@ -82,22 +82,83 @@ export default function TransportRequests() {
             const { data, error } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(100);
 
             if (!error && data) {
-                const mapped = data.map(d => ({
-                    ...d,
-                    id: d.id,
-                    createdAt: d.created_at,
-                    orderId: d.order_id || d.orderId,
-                    driverId: d.driver_id || d.driverId,
-                    driverName: d.driver_name || d.driverName,
-                    driverPayout: d.driver_payout || d.driverPayout,
-                    driverPaid: d.driver_paid !== undefined ? d.driver_paid : d.driverPaid,
-                    paymentProof: d.payment_proof || d.paymentProof,
-                    paymentProofUrl: d.payment_proof_url || d.paymentProofUrl,
-                    assignedDriverId: d.assigned_driver_id || d.assignedDriverId
-                }));
+                const userIds = Array.from(new Set(data.map(d => d.user_id || d.userId).filter(Boolean)));
+                const driverIds = Array.from(new Set(data.map(d => d.driver_id || d.driverId || d.assigned_driver_id || d.assignedDriverId).filter(Boolean)));
+
+                let profilesMap: Record<string, any> = {};
+                if (userIds.length > 0) {
+                    const { data: profs } = await supabase
+                        .from('profiles')
+                        .select('id, photo_url, avatar_url, full_name, phone, cedula')
+                        .in('id', userIds);
+                    if (profs) {
+                        profs.forEach((p: any) => {
+                            profilesMap[p.id] = p;
+                        });
+                    }
+                }
+
+                let driversMap: Record<string, any> = {};
+                if (driverIds.length > 0) {
+                    const { data: drvs } = await supabase
+                        .from('drivers')
+                        .select('id, full_name, photo_url, documents')
+                        .in('id', driverIds);
+                    if (drvs) {
+                        drvs.forEach((drv: any) => {
+                            driversMap[drv.id] = drv;
+                        });
+                    }
+
+                    const missingDrvs = driverIds.filter((id: string) => !driversMap[id]);
+                    if (missingDrvs.length > 0) {
+                        const { data: drvProfs } = await supabase
+                            .from('profiles')
+                            .select('id, full_name, photo_url, avatar_url')
+                            .in('id', missingDrvs);
+                        if (drvProfs) {
+                            drvProfs.forEach((dp: any) => {
+                                driversMap[dp.id] = { id: dp.id, full_name: dp.full_name, photo_url: dp.photo_url || dp.avatar_url };
+                            });
+                        }
+                    }
+                }
+
+                const mapped = data.map(d => {
+                    const uId = d.user_id || d.userId;
+                    const uProf = profilesMap[uId];
+                    const userPhoto = d.user_photo || d.userPhoto || uProf?.photo_url || uProf?.avatar_url || null;
+                    const userName = d.user_name || d.userName || uProf?.full_name || 'Cliente';
+
+                    const drvId = d.driver_id || d.driverId || d.assigned_driver_id || d.assignedDriverId;
+                    const drv = driversMap[drvId];
+                    const driverPhoto = d.driver_photo || d.driverPhoto || drv?.photo_url || drv?.documents?.selfie_url || drv?.documents?.selfie || drv?.documents?.photo_url || null;
+                    const driverName = d.driver_name || d.driverName || drv?.full_name || null;
+
+                    return {
+                        ...d,
+                        id: d.id,
+                        createdAt: d.created_at,
+                        orderId: d.order_id || d.orderId,
+                        userId: uId,
+                        userName,
+                        userPhoto,
+                        userPhone: d.user_phone || d.userPhone || uProf?.phone,
+                        userCedula: d.user_cedula || d.userCedula || uProf?.cedula,
+                        driverId: drvId,
+                        driverName,
+                        driverPhoto,
+                        driverPayout: d.driver_payout || d.driverPayout,
+                        driverPaid: d.driver_paid !== undefined ? d.driver_paid : d.driverPaid,
+                        paymentProof: d.payment_proof || d.paymentProof,
+                        paymentProofUrl: d.payment_proof_url || d.paymentProofUrl,
+                        assignedDriverId: d.assigned_driver_id || d.assignedDriverId
+                    };
+                });
                 setRequests(mapped);
             }
         } catch (err) {
@@ -217,14 +278,15 @@ export default function TransportRequests() {
 
     const filteredRequests = validRequests.filter(req => {
         if (!req) return false;
+        const reqStatus = (req.status || '').toLowerCase();
         if (filter !== 'all') {
             if (filter === 'muchacho_mandado') {
                 const isMandado = req.service_category === 'muchacho_mandado' || req.type === 'muchacho_mandado' || !!req.mandado_details;
                 if (!isMandado) return false;
             } else if (filter === 'in_progress') {
-                if (!['accepted', 'arriving', 'in_progress'].includes(req.status)) return false;
+                if (!['accepted', 'arriving', 'in_progress', 'delivering'].includes(reqStatus)) return false;
             } else {
-                if (req.status !== filter) return false;
+                if (reqStatus !== filter.toLowerCase()) return false;
             }
         }
 
@@ -233,7 +295,8 @@ export default function TransportRequests() {
             return (
                 req.userPhone?.toLowerCase().includes(term) ||
                 req.id?.toLowerCase().includes(term) ||
-                req.userName?.toLowerCase().includes(term)
+                req.userName?.toLowerCase().includes(term) ||
+                req.driverName?.toLowerCase().includes(term)
             );
         }
         return true;
@@ -287,14 +350,41 @@ export default function TransportRequests() {
     };
 
     const getStatusBadge = (status: string) => {
-        switch (status) {
-            case 'verifying_payment': return <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-full text-xs font-black animate-pulse">PAGO POR VERIFICAR</span>;
-            case 'searching': return <span className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-xs font-bold">Buscando Conductor</span>;
-            case 'accepted': return <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-xs font-bold">Conductor Asignado</span>;
-            case 'in_progress': return <span className="bg-emerald-100 text-emerald-800 px-3 py-1 rounded-full text-xs font-bold">En Viaje</span>;
-            case 'completed': return <span className="bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-bold">Completado</span>;
-            case 'cancelled': return <span className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-bold">Cancelado</span>;
-            default: return <span className="bg-slate-100 text-slate-800 px-3 py-1 rounded-full text-xs font-bold uppercase">{status}</span>;
+        const norm = (status || '').toUpperCase().trim();
+        switch (norm) {
+            case 'VERIFYING_PAYMENT':
+            case 'VERIFICANDO_PAGO':
+                return <span className="bg-purple-100 text-purple-800 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider animate-pulse shrink-0">PAGO POR VERIFICAR</span>;
+            case 'SEARCHING':
+            case 'BUSCANDO':
+            case 'BUSCANDO_PILOTO':
+                return <span className="bg-indigo-100 text-indigo-800 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">BUSCANDO CONDUCTOR</span>;
+            case 'ACCEPTED':
+            case 'ACEPTADO':
+                return <span className="bg-blue-100 text-blue-800 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">ACEPTADO</span>;
+            case 'ARRIVING':
+            case 'LLEGANDO':
+                return <span className="bg-amber-100 text-amber-800 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">CONDUCTOR EN SITIO</span>;
+            case 'IN_PROGRESS':
+            case 'EN_CURSO':
+            case 'DELIVERING':
+                return <span className="bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">EN CURSO</span>;
+            case 'COMPLETED':
+            case 'DELIVERED':
+            case 'COMPLETADO':
+                return <span className="bg-slate-900 text-white px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">COMPLETADO</span>;
+            case 'CANCELLED_BY_CLIENT':
+                return <span className="bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">CANCELADO POR CLIENTE</span>;
+            case 'CANCELLED':
+            case 'CANCELED':
+            case 'CANCELADO':
+            case 'REJECTED':
+                return <span className="bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">CANCELADO</span>;
+            case 'PENDING':
+            case 'PENDIENTE':
+                return <span className="bg-yellow-100 text-yellow-800 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">PENDIENTE</span>;
+            default:
+                return <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider shrink-0">{norm.replace(/_/g, ' ') || 'DESCONOCIDO'}</span>;
         }
     };
 
@@ -510,14 +600,27 @@ export default function TransportRequests() {
 
                                             {/* Client & Driver Details */}
                                             <div className="space-y-2">
-                                                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 text-xs">
-                                                    <User className="w-4 h-4 text-slate-400 shrink-0" />
+                                                <div className="flex items-center gap-2.5 bg-slate-50 px-3 py-2 rounded-2xl border border-slate-100 text-xs">
+                                                    {req.userPhoto ? (
+                                                        <img 
+                                                            src={req.userPhoto} 
+                                                            alt={req.userName || 'Cliente'} 
+                                                            className="w-9 h-9 rounded-full object-cover border border-slate-200 shrink-0 bg-white"
+                                                            onError={(e) => {
+                                                                (e.currentTarget as HTMLElement).style.display = 'none';
+                                                                (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                                            }}
+                                                        />
+                                                    ) : null}
+                                                    <div className={`w-9 h-9 rounded-full bg-slate-900 text-white flex items-center justify-center font-black text-xs shrink-0 ${req.userPhoto ? 'hidden' : ''}`}>
+                                                        {req.userName ? req.userName.slice(0, 2).toUpperCase() : <User className="w-4 h-4 text-slate-300" />}
+                                                    </div>
                                                     <div className="flex-1 min-w-0">
                                                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Cliente</span>
                                                         <span className="font-black text-slate-800 truncate block">{req.userName}</span>
                                                     </div>
                                                     {req.userCedula && (
-                                                        <span className="text-[10px] font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-500">
+                                                        <span className="text-[10px] font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-500 shrink-0">
                                                             C.I: {req.userCedula}
                                                         </span>
                                                     )}
@@ -534,8 +637,21 @@ export default function TransportRequests() {
                                                 </div>
 
                                                 {req.driverId ? (
-                                                    <div className="flex items-center gap-2 bg-primary/5 px-3 py-2 rounded-xl border border-primary/20 text-xs">
-                                                        {req.vehicleType === 'moto' ? <Bike className="w-4 h-4 text-primary shrink-0" /> : <Car className="w-4 h-4 text-primary shrink-0" />}
+                                                    <div className="flex items-center gap-2.5 bg-primary/5 px-3 py-2 rounded-2xl border border-primary/20 text-xs">
+                                                        {req.driverPhoto ? (
+                                                            <img 
+                                                                src={req.driverPhoto} 
+                                                                alt={req.driverName || 'Piloto'} 
+                                                                className="w-9 h-9 rounded-full object-cover border-2 border-primary/30 shrink-0 bg-white"
+                                                                onError={(e) => {
+                                                                    (e.currentTarget as HTMLElement).style.display = 'none';
+                                                                    (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                                                }}
+                                                            />
+                                                        ) : null}
+                                                        <div className={`w-9 h-9 rounded-full bg-primary/20 text-slate-900 flex items-center justify-center font-black text-xs shrink-0 ${req.driverPhoto ? 'hidden' : ''}`}>
+                                                            {req.vehicleType === 'moto' ? <Bike className="w-4 h-4 text-primary" /> : <Car className="w-4 h-4 text-primary" />}
+                                                        </div>
                                                         <div className="flex-1 min-w-0">
                                                             <span className="text-[10px] font-bold text-primary uppercase tracking-wider block">Piloto Asignado</span>
                                                             <span className="font-black text-slate-800 truncate block">{req.driverName || 'Desconocido'}</span>

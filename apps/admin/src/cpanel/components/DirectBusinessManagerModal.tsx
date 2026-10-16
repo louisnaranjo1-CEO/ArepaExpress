@@ -4,7 +4,7 @@ import {
     CreditCard, Settings, ExternalLink, Plus, Trash2, 
     Edit2, CheckCircle2, Clock, DollarSign, Phone, Mail, 
     Shield, Key, RefreshCw, AlertCircle, Save, Check, 
-    UserCheck, Loader2, Search, ArrowRight, User
+    UserCheck, Loader2, Search, ArrowRight, User, Megaphone, Calendar
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import RestaurantProductsManager from './RestaurantProductsManager';
@@ -33,7 +33,16 @@ interface Props {
 }
 
 export default function DirectBusinessManagerModal({ isOpen, onClose, business, onBusinessUpdated }: Props) {
-    const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'tables' | 'waiters' | 'cashiers' | 'settings'>('products');
+    const [activeTab, setActiveTab] = useState<'products' | 'orders' | 'tables' | 'waiters' | 'cashiers' | 'marketing' | 'settings'>('products');
+    
+    // Marketing state
+    const [marketingCampaigns, setMarketingCampaigns] = useState<any[]>([]);
+    const [loadingMarketing, setLoadingMarketing] = useState(false);
+    const [marketingView, setMarketingView] = useState<'active' | 'history'>('active');
+    const [rescheduleCamp, setRescheduleCamp] = useState<any | null>(null);
+    const [rescheduleDate, setRescheduleDate] = useState('');
+    const [rescheduleTime, setRescheduleTime] = useState('');
+    const [savingReschedule, setSavingReschedule] = useState(false);
     
     // Orders state
     const [orders, setOrders] = useState<any[]>([]);
@@ -95,6 +104,7 @@ export default function DirectBusinessManagerModal({ isOpen, onClose, business, 
         fetchTables();
         fetchWaiters();
         fetchCashiers();
+        fetchMarketingCampaigns();
 
         // Realtime orders listener
         const ordersChan = supabase
@@ -104,10 +114,94 @@ export default function DirectBusinessManagerModal({ isOpen, onClose, business, 
             })
             .subscribe();
 
+        const pushChan = supabase
+            .channel(`admin_direct_push_${business.id}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'push_campaigns', filter: `restaurant_id=eq.${business.id}` }, () => {
+                fetchMarketingCampaigns();
+            })
+            .subscribe();
+
         return () => {
             supabase.removeChannel(ordersChan);
+            supabase.removeChannel(pushChan);
         };
     }, [isOpen, business?.id]);
+
+    const fetchMarketingCampaigns = async () => {
+        if (!business?.id) return;
+        setLoadingMarketing(true);
+        try {
+            const { data } = await supabase
+                .from('push_campaigns')
+                .select('*')
+                .eq('restaurant_id', business.id)
+                .order('created_at', { ascending: false });
+            if (data) setMarketingCampaigns(data);
+        } catch (err) {
+            console.error("Error loading marketing campaigns:", err);
+        } finally {
+            setLoadingMarketing(false);
+        }
+    };
+
+    const handleOpenReschedule = (camp: any) => {
+        setRescheduleCamp(camp);
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        let dateStr = tomorrow.toISOString().split('T')[0];
+        let timeStr = '12:00';
+        if (camp.scheduled_at) {
+            try {
+                const d = new Date(camp.scheduled_at);
+                if (!isNaN(d.getTime())) {
+                    dateStr = d.toISOString().split('T')[0];
+                    const hh = String(d.getHours()).padStart(2, '0');
+                    const mm = String(d.getMinutes()).padStart(2, '0');
+                    timeStr = `${hh}:${mm}`;
+                }
+            } catch(e) {}
+        }
+        setRescheduleDate(dateStr);
+        setRescheduleTime(timeStr);
+    };
+
+    const handleConfirmReschedule = async () => {
+        if (!rescheduleCamp) return;
+        const newDateTime = new Date(`${rescheduleDate}T${rescheduleTime}`);
+        if (isNaN(newDateTime.getTime()) || newDateTime.getTime() <= Date.now()) {
+            toast.error("La nueva hora programada debe ser estrictamente en el futuro.");
+            return;
+        }
+
+        setSavingReschedule(true);
+        try {
+            const { error } = await supabase.from('push_campaigns').update({
+                scheduled_at: newDateTime.toISOString(),
+                was_rescheduled: true,
+                updated_at: new Date().toISOString()
+            }).eq('id', rescheduleCamp.id);
+
+            if (error) throw error;
+
+            const formatted = newDateTime.toLocaleString('es-VE');
+
+            await supabase.from('notifications').insert({
+                restaurant_id: business.id,
+                title: '🕒 Hora de Campaña Push Modificada por Super Admin',
+                body: `El Super Administrador actualizó la hora de lanzamiento de tu campaña "${rescheduleCamp.title}" para el ${formatted}.`,
+                read: false,
+                created_at: new Date().toISOString()
+            });
+
+            toast.success(`Campaña reprogramada para el ${formatted}`);
+            setRescheduleCamp(null);
+            fetchMarketingCampaigns();
+        } catch (e: any) {
+            toast.error("Error al reprogramar: " + (e.message || ""));
+        } finally {
+            setSavingReschedule(false);
+        }
+    };
 
     const fetchOrders = async () => {
         setLoadingOrders(true);
@@ -446,6 +540,7 @@ export default function DirectBusinessManagerModal({ isOpen, onClose, business, 
                         { id: 'tables', label: `Mesas (${tables.length})`, icon: CreditCard },
                         { id: 'waiters', label: `Meseros (${waiters.length})`, icon: UsersIcon },
                         { id: 'cashiers', label: `Cajeras (${cashiers.length})`, icon: UserCheck },
+                        { id: 'marketing', label: `Marketing Push (${marketingCampaigns.length})`, icon: Megaphone },
                         { id: 'settings', label: 'Configuración', icon: Settings },
                     ].map(tab => {
                         const Icon = tab.icon;
@@ -1038,6 +1133,208 @@ export default function DirectBusinessManagerModal({ isOpen, onClose, business, 
                                 </button>
                             </div>
                         </form>
+                    )}
+
+                    {/* Marketing Push Tab */}
+                    {activeTab === 'marketing' && (
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between flex-wrap gap-4 border-b border-slate-100 pb-4">
+                                <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-2xl w-fit">
+                                    <button
+                                        type="button"
+                                        onClick={() => setMarketingView('active')}
+                                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                                            marketingView === 'active' 
+                                                ? 'bg-white text-slate-900 shadow-sm' 
+                                                : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        <Megaphone className="w-3.5 h-3.5 text-primary" />
+                                        Activas & Programadas
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setMarketingView('history')}
+                                        className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2 ${
+                                            marketingView === 'history' 
+                                                ? 'bg-white text-slate-900 shadow-sm' 
+                                                : 'text-slate-500 hover:text-slate-800'
+                                        }`}
+                                    >
+                                        <Clock className="w-3.5 h-3.5 text-slate-600" />
+                                        Historial (Caducadas / Ejecutadas)
+                                    </button>
+                                </div>
+                                <span className="text-xs font-bold text-slate-500">
+                                    Total: {marketingCampaigns.length} avisos registrados
+                                </span>
+                            </div>
+
+                            {(() => {
+                                const activeCamps = marketingCampaigns.filter(c => 
+                                    !c.executed_at && 
+                                    !c.expired_at && 
+                                    c.status !== 'completed' && 
+                                    c.status !== 'expired' && 
+                                    c.status !== 'rejected_payment' && 
+                                    c.status !== 'rejected'
+                                );
+                                const historyCamps = marketingCampaigns.filter(c => 
+                                    !!c.executed_at || 
+                                    !!c.expired_at || 
+                                    c.status === 'completed' || 
+                                    c.status === 'expired' || 
+                                    c.status === 'rejected_payment' || 
+                                    c.status === 'rejected'
+                                );
+                                const list = marketingView === 'active' ? activeCamps : historyCamps;
+
+                                if (list.length === 0) {
+                                    return (
+                                        <div className="p-12 border-2 border-dashed border-slate-200 rounded-3xl text-center space-y-2">
+                                            <Megaphone className="w-10 h-10 text-slate-300 mx-auto" />
+                                            <p className="font-bold text-slate-700 text-sm">
+                                                {marketingView === 'active' ? 'No hay campañas activas ni programadas para este local.' : 'No hay historial de avisos caducados.'}
+                                            </p>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {list.map(camp => {
+                                            const sched = camp.scheduled_at ? new Date(camp.scheduled_at) : null;
+                                            const formattedDate = sched && !isNaN(sched.getTime()) ? sched.toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' }) : 'Sin fecha';
+                                            const isExecuted = !!camp.executed_at || camp.status === 'completed';
+                                            const canReschedule = !isExecuted && camp.status !== 'expired' && camp.status !== 'rejected_payment';
+
+                                            return (
+                                                <div key={camp.id} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col justify-between">
+                                                    <div>
+                                                        {camp.banner_url && (
+                                                            <img src={camp.banner_url} alt="Banner" className="w-full h-32 object-cover rounded-xl mb-3" />
+                                                        )}
+                                                        <div className="flex items-start justify-between gap-2 mb-1">
+                                                            <h4 className="font-black text-slate-900 text-sm line-clamp-1">{camp.title}</h4>
+                                                            <span className="text-[10px] font-black bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md">
+                                                                ${camp.price || 0} USD
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-slate-500 text-xs mb-3 line-clamp-2">{camp.subtitle}</p>
+
+                                                        <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-xs space-y-1.5 mb-3">
+                                                            <div className="flex items-center justify-between text-slate-600">
+                                                                <span className="font-bold flex items-center gap-1">
+                                                                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                                                    {isExecuted ? 'Enviada:' : 'Programada:'}
+                                                                </span>
+                                                                <span className="font-mono font-bold text-slate-800 text-[11px]">{formattedDate}</span>
+                                                            </div>
+                                                            {camp.was_auto_rescheduled && (
+                                                                <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded block">
+                                                                    📅 Reprogramada (+24h) auto
+                                                                </span>
+                                                            )}
+                                                            {camp.was_rescheduled && !camp.was_auto_rescheduled && (
+                                                                <span className="text-[10px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded block">
+                                                                    🕒 Hora modificada
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="pt-2 border-t border-slate-200 space-y-2">
+                                                        <span className={`py-1 px-2.5 rounded-xl text-[10px] font-black text-center w-full block ${
+                                                            isExecuted ? 'bg-slate-900 text-emerald-400' :
+                                                            camp.status === 'verifying_payment' ? 'bg-amber-100 text-amber-900' :
+                                                            camp.status === 'active' || camp.status === 'approved' ? 'bg-emerald-100 text-emerald-900' :
+                                                            'bg-slate-200 text-slate-700'
+                                                        }`}>
+                                                            {isExecuted ? '✓ Enviada & Caducada' :
+                                                             camp.status === 'verifying_payment' ? '⏳ Verificando Pago' :
+                                                             camp.status === 'active' || camp.status === 'approved' ? '🚀 Aprobada / Programada' :
+                                                             camp.status}
+                                                        </span>
+
+                                                        {canReschedule && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleOpenReschedule(camp)}
+                                                                className="w-full py-2 px-3 rounded-xl font-bold text-xs bg-white hover:bg-slate-100 text-slate-800 border border-slate-200 flex items-center justify-center gap-1.5 transition-all active:scale-98"
+                                                            >
+                                                                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                                                🕒 Cambiar Hora / Reprogramar
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Modal de Reprogramación Directa */}
+                            {rescheduleCamp && (
+                                <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+                                    <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4">
+                                        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                                            <div className="flex items-center gap-2">
+                                                <Clock className="w-5 h-5 text-amber-600" />
+                                                <h4 className="font-black text-slate-900 text-sm">Reprogramar Lanzamiento</h4>
+                                            </div>
+                                            <button onClick={() => setRescheduleCamp(null)} className="p-1 rounded-lg hover:bg-slate-100 text-slate-400">
+                                                <X className="w-4 h-4" />
+                                            </button>
+                                        </div>
+
+                                        <p className="text-xs text-slate-500">
+                                            Modifica la hora de emisión de "<strong>{rescheduleCamp.title}</strong>". Se notificará al negocio.
+                                        </p>
+
+                                        <div className="space-y-3">
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-700 block mb-1">Nueva Fecha</label>
+                                                <input 
+                                                    type="date"
+                                                    min={new Date().toISOString().split('T')[0]}
+                                                    value={rescheduleDate}
+                                                    onChange={e => setRescheduleDate(e.target.value)}
+                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-xs font-bold text-slate-700 block mb-1">Nueva Hora</label>
+                                                <input 
+                                                    type="time"
+                                                    value={rescheduleTime}
+                                                    onChange={e => setRescheduleTime(e.target.value)}
+                                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="flex gap-2 pt-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setRescheduleCamp(null)}
+                                                className="flex-1 py-2.5 rounded-xl border border-slate-200 font-bold text-xs text-slate-600 hover:bg-slate-50"
+                                            >
+                                                Cancelar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                disabled={savingReschedule}
+                                                onClick={handleConfirmReschedule}
+                                                className="flex-1 py-2.5 rounded-xl bg-slate-900 text-primary font-black text-xs hover:bg-slate-800 flex items-center justify-center gap-1.5"
+                                            >
+                                                {savingReschedule ? 'Guardando...' : 'Confirmar'}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

@@ -90,14 +90,14 @@ export default function WaiterLogin() {
             <div className="w-full max-w-sm mx-auto z-10">
                 <div className="text-center mb-10 mt-safe">
                     <div className="w-20 h-20 bg-white rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-slate-200/50 rotate-3 mb-6">
-                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" alt="Deliexpress" className="w-16 h-16 object-contain" />
+                        <img src="https://firebasestorage.googleapis.com/v0/b/arepa-express-ve-2026.firebasestorage.app/o/logo.png?alt=media&v=1.1" alt="Un 2x3" className="w-16 h-16 object-contain" />
                         {/* Fallback pattern if logo fails */}
                         <div className="absolute inset-0 flex items-center justify-center -rotate-3 -z-10 bg-slate-100 rounded-3xl overflow-hidden">
-                            <span className="font-black text-2xl text-slate-300">DE</span>
+                            <span className="font-black text-2xl text-slate-300">2x3</span>
                         </div>
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Acceso Personal</h1>
-                    <p className="font-bold text-slate-500 mt-2">Gestión de Pedidos Deliexpress</p>
+                    <p className="font-bold text-slate-500 mt-2">Gestión de Pedidos Un 2x3</p>
                 </div>
 
                 <motion.div
@@ -133,7 +133,7 @@ export default function WaiterLogin() {
                                 required
                                 value={waiterEmail}
                                 onChange={(e) => setWaiterEmail(e.target.value)}
-                                placeholder="mesero@deliexpress.app"
+                                placeholder="mesero@un2x3.com"
                                 className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-4 rounded-2xl outline-none font-bold text-slate-700 transition-all focus:bg-white"
                             />
                         </div>

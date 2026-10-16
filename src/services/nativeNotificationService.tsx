@@ -17,6 +17,40 @@ export interface NotificationOptions {
     onClick?: () => void;
 }
 
+export function getAppBrandingName(fallback: string = 'Un 2x3'): string {
+    if (typeof window === 'undefined') return fallback;
+    try {
+        const cached = localStorage.getItem('un2x3_app_branding_cache');
+        if (cached) {
+            const parsed = JSON.parse(cached);
+            return parsed.app_client_name || parsed.app_name || fallback;
+        }
+    } catch {
+        // fallback
+    }
+    return fallback;
+}
+
+export function sanitizeNotificationText(text?: string | null): string {
+    if (!text) return '';
+    let result = String(text);
+    return result
+        .replace(/\bsearching\b/gi, 'Buscando conductor')
+        .replace(/\bin_progress\b/gi, 'Viaje en curso')
+        .replace(/\baccepted\b/gi, 'Conductor en camino')
+        .replace(/\barrived\b/gi, 'Tu conductor ha llegado')
+        .replace(/\barriving\b/gi, 'Tu conductor ha llegado')
+        .replace(/\bcompleted\b/gi, 'Viaje finalizado')
+        .replace(/\b(canceled|cancelled)\b/gi, 'Viaje cancelado')
+        .replace(/\bpending\b/gi, 'Buscando conductor')
+        .replace(/\bfrom\s+Deliexpress\b/gi, 'de Un 2x3')
+        .replace(/\bfrom\s+Arepaexpress\b/gi, 'de Un 2x3')
+        .replace(/\bfrom\s+Un\s*2x3\b/gi, 'de Un 2x3')
+        .replace(/\bfrom\b/gi, 'de')
+        .replace(/\bDeliexpress\b/gi, 'Un 2x3')
+        .replace(/\bArepaExpress\b/gi, 'Un 2x3');
+}
+
 // Audio Context Singleton for synthesis
 function getAudioContext(): AudioContext | null {
     try {
@@ -162,7 +196,10 @@ export async function ensureNativeNotificationPermission(): Promise<boolean> {
  * 5. Display Native Notification in Device Status Bar (Android & iOS)
  */
 export async function postNativeNotification(options: NotificationOptions) {
-    const { title, body, icon = '/icons/icon-192x192.png', tag, data, vibratePattern } = options;
+    const appName = getAppBrandingName('Un 2x3');
+    const title = sanitizeNotificationText(options.title || `${appName} • Notificación`);
+    const body = sanitizeNotificationText(options.body || '');
+    const { icon = '/icons/icon-192x192.png', tag, data, vibratePattern } = options;
     
     try {
         if (typeof window !== 'undefined' && 'Notification' in window) {
@@ -208,6 +245,9 @@ export async function postNativeNotification(options: NotificationOptions) {
  */
 export function displayNotificationBanner(options: NotificationOptions) {
     const isDriver = options.soundType === 'driver';
+    const appName = getAppBrandingName('Un 2x3');
+    const cleanTitle = sanitizeNotificationText(options.title || appName);
+    const cleanBody = sanitizeNotificationText(options.body || '');
     
     toast.custom((t) => (
         <div
@@ -232,12 +272,12 @@ export function displayNotificationBanner(options: NotificationOptions) {
             <div className="flex-1 min-w-0 pr-1">
                 <div className="flex items-center justify-between gap-1">
                     <p className={`text-xs font-black uppercase tracking-wider truncate ${isDriver ? 'text-amber-400' : 'text-slate-900'}`}>
-                        {options.title}
+                        {cleanTitle}
                     </p>
                     <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">Ahora</span>
                 </div>
                 <p className={`text-xs font-semibold mt-0.5 leading-snug line-clamp-2 ${isDriver ? 'text-slate-200' : 'text-slate-600'}`}>
-                    {options.body}
+                    {cleanBody}
                 </p>
             </div>
             <button 
@@ -263,6 +303,12 @@ export function displayNotificationBanner(options: NotificationOptions) {
  */
 export async function sendAppNotification(options: NotificationOptions) {
     const soundType = options.soundType || 'client';
+    const appName = getAppBrandingName('Un 2x3');
+    const cleanOptions: NotificationOptions = {
+        ...options,
+        title: sanitizeNotificationText(options.title || `${appName} • Notificación`),
+        body: sanitizeNotificationText(options.body || '')
+    };
 
     // 1. Sound
     if (soundType === 'driver') {
@@ -275,8 +321,8 @@ export async function sendAppNotification(options: NotificationOptions) {
     triggerDeviceVibration(soundType, options.vibratePattern);
 
     // 3. Status Bar Notification (Android & iOS)
-    postNativeNotification(options);
+    postNativeNotification(cleanOptions);
 
     // 4. In-App Banner Pop-up
-    displayNotificationBanner(options);
+    displayNotificationBanner(cleanOptions);
 }

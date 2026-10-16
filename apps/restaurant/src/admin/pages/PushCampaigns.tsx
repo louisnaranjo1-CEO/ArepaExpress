@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { Megaphone, Plus, ImageIcon, Upload, X, MapPin, Flame, ShoppingBag, Sparkles, Tag, Check, AlertCircle, Store } from 'lucide-react';
+import { Megaphone, Plus, ImageIcon, Upload, X, MapPin, Flame, ShoppingBag, Sparkles, Tag, Check, AlertCircle, Store, Clock, Calendar, RefreshCw, History, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { VENEZUELA_DATA, VENEZUELA_STATES } from '../../lib/venezuelaData';
 import { useBranding } from '../../context/BrandingContext';
@@ -9,6 +9,7 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
     const { branding } = useBranding();
     const [campaigns, setCampaigns] = useState<any[]>([]);
     const [isCreating, setIsCreating] = useState(false);
+    const [campaignsView, setCampaignsView] = useState<'active' | 'history'>('active');
     
     // Config de marketing global
     const [prices, setPrices] = useState({ pushPriceCity: 5, pushPriceState: 10, pushPriceNational: 20 });
@@ -30,6 +31,8 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
     const [sex, setSex] = useState<'all' | 'male' | 'female'>('all');
     const [bannerImage, setBannerImage] = useState<File | null>(null);
     const [bannerImagePreview, setBannerImagePreview] = useState<string>('');
+    const [reusedCampaignBannerUrl, setReusedCampaignBannerUrl] = useState<string>('');
+    const [isReusing, setIsReusing] = useState(false);
     const [paymentRef, setPaymentRef] = useState('');
     const [paymentImage, setPaymentImage] = useState<File | null>(null);
     const [paymentImagePreview, setPaymentImagePreview] = useState<string>('');
@@ -45,10 +48,23 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
     const [newProdCategory, setNewProdCategory] = useState('Promociones');
     const [newProdDescription, setNewProdDescription] = useState('');
 
-    // Scheduled time
-    const [scheduledDate, setScheduledDate] = useState(new Date().toISOString().split('T')[0]);
+    // Helper fecha mañana
+    const getTomorrowDateStr = () => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().split('T')[0];
+    };
+
+    // Scheduled time (por defecto mañana a las 12:00)
+    const [scheduledDate, setScheduledDate] = useState(getTomorrowDateStr());
     const [scheduledTime, setScheduledTime] = useState('12:00');
     
+    // Modal de reprogramación
+    const [selectedCampForReschedule, setSelectedCampForReschedule] = useState<any | null>(null);
+    const [rescheduleDate, setRescheduleDate] = useState('');
+    const [rescheduleTime, setRescheduleTime] = useState('');
+    const [isRescheduling, setIsRescheduling] = useState(false);
+
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
@@ -121,32 +137,6 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
         loadRest();
 
         // Escuchar campañas mías
-        const fetchCampaigns = async () => {
-            const { data } = await supabase
-                .from('push_campaigns')
-                .select('*')
-                .eq('restaurant_id', restaurantId)
-                .order('created_at', { ascending: false });
-
-            if (data) {
-                setCampaigns(data.map(d => ({
-                    id: d.id,
-                    ...d,
-                    restaurantId: d.restaurant_id,
-                    restaurantName: d.restaurant_name,
-                    imageUrl: d.banner_url,
-                    paymentImage: d.payment_image_url,
-                    paymentRef: d.payment_ref,
-                    cities: d.selected_cities || [],
-                    states: d.selected_states || [],
-                    promoProductId: d.promo_product_id,
-                    promoPrice: d.promo_price,
-                    promoProductSnapshot: d.promo_product_snapshot,
-                    createdAt: d.created_at ? new Date(d.created_at) : new Date(),
-                    scheduledAt: d.scheduled_at ? new Date(d.scheduled_at) : new Date()
-                })));
-            }
-        };
         fetchCampaigns();
 
         const channel = supabase.channel(`push-campaigns:${restaurantId}`)
@@ -163,7 +153,155 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
         return () => {
             supabase.removeChannel(channel);
         };
+    }, [restaurantId, fetchCampaigns]);
+
+    const fetchCampaigns = useCallback(async () => {
+        if (!restaurantId) return;
+        const { data } = await supabase
+            .from('push_campaigns')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .order('created_at', { ascending: false });
+
+        if (data) {
+            setCampaigns(data.map(d => ({
+                id: d.id,
+                ...d,
+                restaurantId: d.restaurant_id,
+                restaurantName: d.restaurant_name,
+                imageUrl: d.banner_url,
+                paymentImage: d.payment_image_url,
+                paymentRef: d.payment_ref,
+                cities: d.selected_cities || [],
+                states: d.selected_states || [],
+                promoProductId: d.promo_product_id,
+                promoPrice: d.promo_price,
+                promoProductSnapshot: d.promo_product_snapshot,
+                createdAt: d.created_at ? new Date(d.created_at) : new Date(),
+                scheduledAt: d.scheduled_at ? new Date(d.scheduled_at) : new Date(),
+                executedAt: d.executed_at ? new Date(d.executed_at) : undefined,
+                expiredAt: d.expired_at ? new Date(d.expired_at) : undefined,
+                was_auto_rescheduled: d.was_auto_rescheduled,
+                was_rescheduled: d.was_rescheduled
+            })));
+        }
     }, [restaurantId]);
+
+    const handleOpenRescheduleModal = (camp: any) => {
+        setSelectedCampForReschedule(camp);
+        let initDate = getTomorrowDateStr();
+        let initTime = '12:00';
+
+        if (camp.scheduledAt) {
+            try {
+                const d = new Date(camp.scheduledAt);
+                if (!isNaN(d.getTime())) {
+                    initDate = d.toISOString().split('T')[0];
+                    const hh = String(d.getHours()).padStart(2, '0');
+                    const mm = String(d.getMinutes()).padStart(2, '0');
+                    initTime = `${hh}:${mm}`;
+                }
+            } catch(e) {}
+        }
+
+        setRescheduleDate(initDate);
+        setRescheduleTime(initTime);
+    };
+
+    const handleConfirmReschedule = async () => {
+        if (!selectedCampForReschedule) return;
+        const newDateTime = new Date(`${rescheduleDate}T${rescheduleTime}`);
+
+        if (isNaN(newDateTime.getTime()) || newDateTime.getTime() <= Date.now()) {
+            toast.error("La nueva hora programada debe ser en el futuro.");
+            return;
+        }
+
+        setIsRescheduling(true);
+        try {
+            const { error } = await supabase.from('push_campaigns').update({
+                scheduled_at: newDateTime.toISOString(),
+                was_rescheduled: true,
+                updated_at: new Date().toISOString()
+            }).eq('id', selectedCampForReschedule.id);
+
+            if (error) throw error;
+
+            const formatted = newDateTime.toLocaleString('es-VE');
+
+            // Notificación al Super Admin
+            await supabase.from('notifications').insert({
+                title: '🕒 Campaña Push Reprogramada por el Negocio',
+                body: `El negocio "${restaurantData?.name || 'Comercio'}" modificó la hora de su campaña "${selectedCampForReschedule.title}" para el ${formatted}.`,
+                read: false,
+                type: 'admin_marketing',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success(`Campaña reprogramada para el ${formatted}`);
+            setSelectedCampForReschedule(null);
+            fetchCampaigns();
+        } catch (e: any) {
+            toast.error("Error al reprogramar: " + (e.message || ""));
+        } finally {
+            setIsRescheduling(false);
+        }
+    };
+
+    const handleReuseCampaign = (camp: any) => {
+        setIsCreating(true);
+        setIsReusing(true);
+        setTitle(camp.title || '');
+        setSubtitle(camp.subtitle || '');
+
+        const existingBanner = camp.imageUrl || camp.banner_url || '';
+        setReusedCampaignBannerUrl(existingBanner);
+        setBannerImagePreview(existingBanner);
+        setBannerImage(null);
+
+        setLocationLevel(camp.location_level || 'city');
+        setSelectedStates(camp.selected_states || camp.states || []);
+        setSelectedCities(camp.selected_cities || camp.cities || []);
+        setMinAge(camp.min_age ?? 18);
+        setMaxAge(camp.max_age ?? 60);
+        setSex(camp.sex || 'all');
+
+        if (camp.promo_product_id || camp.promoProductId) {
+            setDestinationType('promo_product');
+            setProductMode('catalog');
+            setSelectedProductId(camp.promo_product_id || camp.promoProductId);
+            setPromoPrice(camp.promo_price || camp.promoPrice ? String(camp.promo_price || camp.promoPrice) : '');
+        } else {
+            setDestinationType('general_profile');
+            setSelectedProductId('');
+            setPromoPrice('');
+        }
+
+        // STRICTLY RESET PAYMENT - Nuevo pago obligatorio
+        setPaymentRef('');
+        setPaymentImage(null);
+        setPaymentImagePreview('');
+
+        // Fecha de mañana y hora original o 12:00
+        setScheduledDate(getTomorrowDateStr());
+        let defaultHour = '12:00';
+        if (camp.scheduledAt || camp.scheduled_at) {
+            try {
+                const d = new Date(camp.scheduledAt || camp.scheduled_at);
+                if (!isNaN(d.getTime())) {
+                    const hh = String(d.getHours()).padStart(2, '0');
+                    const mm = String(d.getMinutes()).padStart(2, '0');
+                    defaultHour = `${hh}:${mm}`;
+                }
+            } catch(e) {}
+        }
+        setScheduledTime(defaultHour);
+
+        toast('Aviso precargado. Por favor define la nueva fecha/hora y anexa el nuevo comprobante de pago.', {
+            icon: '🔄',
+            duration: 5000
+        });
+    };
 
     const getCurrentPrice = () => {
         if (locationLevel === 'city') return selectedCities.length * prices.pushPriceCity;
@@ -209,8 +347,23 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!title || !subtitle || !paymentRef) {
-            toast.error("Faltan datos obligatorios");
+        if (!title.trim() || !subtitle.trim()) {
+            toast.error("El título y subtítulo de la campaña son obligatorios.");
+            return;
+        }
+
+        if (!paymentRef.trim()) {
+            toast.error("Debes ingresar la referencia o últimos dígitos del nuevo pago.");
+            return;
+        }
+
+        if (!paymentImage) {
+            toast.error("Debes adjuntar el comprobante o captura de pantalla del nuevo pago.");
+            return;
+        }
+
+        if (!bannerImage && !reusedCampaignBannerUrl) {
+            toast.error("Debes añadir una imagen banner para la notificación emergente.");
             return;
         }
 
@@ -223,10 +376,17 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
             return;
         }
 
+        // Combinar fecha y hora para el scheduledAt
+        const scheduledDatetime = new Date(`${scheduledDate}T${scheduledTime}`);
+        if (isNaN(scheduledDatetime.getTime()) || scheduledDatetime.getTime() <= Date.now()) {
+            toast.error("La fecha y hora de lanzamiento debe ser en el futuro.");
+            return;
+        }
+
         setIsSubmitting(true);
         try {
             console.log("Iniciando subida de campaña push...");
-            let bannerUrl = '';
+            let bannerUrl = reusedCampaignBannerUrl || '';
             if (bannerImage) {
                 const bannerExt = bannerImage.name.split('.').pop() || 'jpg';
                 const bannerPath = `push_campaigns/${restaurantId}_${Date.now()}_banner.${bannerExt}`;
@@ -338,21 +498,25 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                 scheduled_at: scheduledDatetime.toISOString(),
                 promo_product_id: promoProdId,
                 promo_price: finalPromoPrice,
-                promo_product_snapshot: promoSnapshot
+                promo_product_snapshot: promoSnapshot,
+                created_at: new Date().toISOString()
             };
 
             console.log("Guardando en Supabase:", campaignData);
             const { error: insertErr } = await supabase.from('push_campaigns').insert(campaignData);
             if (insertErr) throw insertErr;
 
-            toast.success("Campaña subida con producto en promoción. Esperando verificación.");
+            toast.success("¡Solicitud enviada con éxito! Esperando verificación del pago por el Administrador.");
             setIsCreating(false);
+            setIsReusing(false);
+            setReusedCampaignBannerUrl('');
             
             // Clean up
             setTitle(''); setSubtitle(''); setBannerImage(null); setBannerImagePreview('');
             setPaymentImage(null); setPaymentImagePreview(''); setPaymentRef('');
             setSelectedProductId(''); setPromoPrice(''); setNewProdName('');
             setNewProdOriginalPrice(''); setNewProdDescription(''); setProductMode('catalog');
+            fetchCampaigns();
         } catch (error) {
             console.error("Error al publicar la campaña:", error);
             toast.error("Error al publicar la campaña. Verifica tu conexión.");
@@ -360,6 +524,30 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
             setIsSubmitting(false);
         }
     };
+
+    const activeCampaigns = campaigns.filter(c => 
+        !c.executedAt && 
+        !c.executed_at && 
+        !c.expiredAt && 
+        !c.expired_at && 
+        c.status !== 'completed' && 
+        c.status !== 'expired' && 
+        c.status !== 'rejected_payment' && 
+        c.status !== 'rejected'
+    );
+
+    const historyCampaigns = campaigns.filter(c => 
+        !!c.executedAt || 
+        !!c.executed_at || 
+        !!c.expiredAt || 
+        !!c.expired_at || 
+        c.status === 'completed' || 
+        c.status === 'expired' || 
+        c.status === 'rejected_payment' || 
+        c.status === 'rejected'
+    );
+
+    const displayedCampaigns = campaignsView === 'active' ? activeCampaigns : historyCampaigns;
 
     return (
         <div className="p-4 md:p-8">
@@ -375,7 +563,16 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                 </div>
                 {!isCreating && (
                     <button 
-                        onClick={() => setIsCreating(true)}
+                        onClick={() => {
+                            setIsReusing(false);
+                            setReusedCampaignBannerUrl('');
+                            setTitle(''); setSubtitle(''); setBannerImage(null); setBannerImagePreview('');
+                            setPaymentImage(null); setPaymentImagePreview(''); setPaymentRef('');
+                            setSelectedProductId(''); setPromoPrice(''); setNewProdName('');
+                            setScheduledDate(getTomorrowDateStr());
+                            setScheduledTime('12:00');
+                            setIsCreating(true);
+                        }}
                         className="bg-primary text-slate-900 px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-primary/90 mt-4 md:mt-0 shadow-md shadow-primary/20 active:scale-95 transition-all"
                     >
                         <Plus className="w-5 h-5" />
@@ -385,11 +582,43 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
             </div>
 
             {isCreating ? (
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 max-w-4xl">
-                    <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-                        <h2 className="text-xl font-black">Asistente de Nueva Campaña</h2>
-                        <button onClick={() => setIsCreating(false)} className="text-slate-400 hover:text-slate-600"><X className="w-6 h-6"/></button>
+                <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 max-w-4xl space-y-6">
+                    <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+                        <div>
+                            <h2 className="text-xl font-black text-slate-900">
+                                {isReusing ? 'Reutilizar Aviso (Nuevo Pago Requerido)' : 'Asistente de Nueva Campaña'}
+                            </h2>
+                            <p className="text-xs text-slate-500 font-medium mt-0.5">
+                                {isReusing 
+                                    ? 'Se han precargado los datos de tu aviso anterior. Programa la nueva hora y anexa tu nuevo comprobante.' 
+                                    : 'Configura el contenido, segmentación y programación de tu notificación emergente.'}
+                            </p>
+                        </div>
+                        <button 
+                            onClick={() => {
+                                setIsCreating(false);
+                                setIsReusing(false);
+                                setReusedCampaignBannerUrl('');
+                            }} 
+                            className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
+                        >
+                            <X className="w-6 h-6"/>
+                        </button>
                     </div>
+
+                    {isReusing && (
+                        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3">
+                            <RefreshCw className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                            <div>
+                                <h4 className="font-black text-amber-900 text-sm">
+                                    Aviso Precargado desde el Historial
+                                </h4>
+                                <p className="text-xs text-amber-800 mt-0.5 leading-relaxed">
+                                    Hemos conservado el título, subtítulo, imagen de banner, producto y segmentación de audiencia. Para volver a activarlo, <strong>selecciona la nueva fecha y hora futura</strong> y <strong>adjunta el nuevo comprobante de pago móvil</strong>.
+                                </p>
+                            </div>
+                        </div>
+                    )}
 
                     <form onSubmit={handleSubmit} className="space-y-8">
                         {/* Diseño de la Notificación */}
@@ -402,11 +631,26 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                                     <label className="block text-sm font-bold text-slate-700 mt-4 mb-2">Subtítulo (Detalle)</label>
                                     <textarea value={subtitle} onChange={e=>setSubtitle(e.target.value)} required placeholder="Lleva la 2da Pizza a mitad de precio por tiempo limitado..." maxLength={100} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 h-24 resize-none" />
                                 </div>
-                                <div className="border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center p-4 relative overflow-hidden bg-slate-50">
+                                <div className="border-2 border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center p-4 relative overflow-hidden bg-slate-50 min-h-48">
                                     {bannerImagePreview ? (
                                         <>
-                                            <img src={bannerImagePreview} alt="Preview" className="w-full h-full object-cover absolute inset-0 opacity-40" />
-                                            <button type="button" onClick={() => {setBannerImage(null); setBannerImagePreview('');}} className="z-10 bg-white/80 p-2 rounded-full absolute top-2 right-2 hover:bg-red-100"><X className="w-4 h-4 text-red-600"/></button>
+                                            <img src={bannerImagePreview} alt="Preview" className="w-full h-full object-cover absolute inset-0 opacity-50" />
+                                            <div className="z-10 bg-white/90 backdrop-blur-xs px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-sm border border-slate-200">
+                                                <span className="text-xs font-black text-slate-800">
+                                                    {bannerImage ? "✓ Nueva Imagen Adjunta" : "✓ Imagen de Campaña Reutilizada"}
+                                                </span>
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => {
+                                                        setBannerImage(null); 
+                                                        setBannerImagePreview('');
+                                                        setReusedCampaignBannerUrl('');
+                                                    }} 
+                                                    className="p-1 rounded-full hover:bg-red-100 text-red-600 transition-colors"
+                                                >
+                                                    <X className="w-4 h-4"/>
+                                                </button>
+                                            </div>
                                         </>
                                     ) : (
                                         <div className="text-center">
@@ -835,11 +1079,24 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-sm font-bold text-slate-700 mb-2">Fecha de Lanzamiento</label>
-                                        <input type="date" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3" />
+                                        <input 
+                                            type="date" 
+                                            min={new Date().toISOString().split('T')[0]} 
+                                            value={scheduledDate} 
+                                            onChange={e => setScheduledDate(e.target.value)} 
+                                            required 
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-800" 
+                                        />
                                     </div>
                                     <div>
                                         <label className="block text-sm font-bold text-slate-700 mb-2">Hora de Lanzamiento</label>
-                                        <input type="time" value={scheduledTime} onChange={e => setScheduledTime(e.target.value)} required className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3" />
+                                        <input 
+                                            type="time" 
+                                            value={scheduledTime} 
+                                            onChange={e => setScheduledTime(e.target.value)} 
+                                            required 
+                                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-bold text-slate-800" 
+                                        />
                                     </div>
                                 </div>
                                 <p className="text-xs text-slate-400 mt-2 italic">* La validación del pago puede tardar de 5 minutos a 24 horas. Programe con antelación.</p>
@@ -885,71 +1142,291 @@ export default function PushCampaigns({ restaurantId }: { restaurantId: string }
                     </form>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {campaigns.length === 0 && <p className="col-span-full text-slate-500 p-8 border-2 border-dashed border-slate-200 rounded-2xl text-center">No tienes campañas creadas.</p>}
-                    
-                    {campaigns.map(camp => (
-                        <div key={camp.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col">
-                           {camp.imageUrl ? (
-                               <img src={camp.imageUrl} alt="Banner" className="w-full h-40 object-cover rounded-xl mb-4" />
-                           ) : (
-                               <div className="w-full h-40 bg-slate-100 flex items-center justify-center rounded-xl mb-4"><ImageIcon className="text-slate-300 w-10 h-10"/></div>
-                           )}
-                           <h3 className="font-bold text-slate-900 text-lg mb-1 line-clamp-1">{camp.title}</h3>
-                           <p className="text-slate-500 text-sm mb-3 line-clamp-2 min-h-10">{camp.subtitle}</p>
+                <div className="space-y-6">
+                    {/* Selector de Pestañas: Activas vs Historial */}
+                    <div className="flex items-center gap-2 bg-slate-100 p-1.5 rounded-2xl w-fit">
+                        <button
+                            type="button"
+                            onClick={() => setCampaignsView('active')}
+                            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
+                                campaignsView === 'active' 
+                                    ? 'bg-white text-slate-900 shadow-sm' 
+                                    : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                        >
+                            <Megaphone className="w-4 h-4 text-primary" />
+                            Campañas Activas & Programadas
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+                                campaignsView === 'active' 
+                                    ? 'bg-primary text-slate-950 font-black' 
+                                    : 'bg-slate-200 text-slate-700 font-bold'
+                            }`}>
+                                {activeCampaigns.length}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setCampaignsView('history')}
+                            className={`px-4 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all flex items-center gap-2 ${
+                                campaignsView === 'history' 
+                                    ? 'bg-white text-slate-900 shadow-sm' 
+                                    : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                        >
+                            <History className="w-4 h-4 text-slate-600" />
+                            Historial de Marketing Push (Caducadas / Ejecutadas)
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+                                campaignsView === 'history' 
+                                    ? 'bg-slate-900 text-white font-black' 
+                                    : 'bg-slate-200 text-slate-700 font-bold'
+                            }`}>
+                                {historyCampaigns.length}
+                            </span>
+                        </button>
+                    </div>
 
-                           {camp.promoProductSnapshot && (
-                               <div className="mb-3 p-2.5 bg-amber-50 rounded-xl border border-amber-200/80 flex items-center gap-2.5">
-                                   <Flame className="w-4 h-4 text-amber-600 shrink-0" />
-                                   <div className="min-w-0 flex-1">
-                                       <p className="text-xs font-black text-slate-800 truncate">
-                                           {camp.promoProductSnapshot.name}
-                                       </p>
-                                       <p className="text-[11px] font-bold text-amber-700">
-                                           🔥 Oferta: ${camp.promoPrice || camp.promoProductSnapshot.promo_price}
-                                           {camp.promoProductSnapshot.price > (camp.promoPrice || camp.promoProductSnapshot.promo_price) && (
-                                               <span className="text-slate-400 line-through ml-1 font-normal text-[10px]">
-                                                   ${camp.promoProductSnapshot.price}
-                                               </span>
-                                           )}
-                                       </p>
-                                   </div>
-                               </div>
-                           )}
-
-                           <div className="flex justify-between items-center bg-slate-50 p-2 px-3 rounded-lg text-sm font-bold text-slate-700 mb-4 mt-auto">
-                               <span>Clics recibidos</span>
-                               <span className="bg-white px-2 rounded-md border border-slate-200">{camp.clicks || 0}</span>
-                           </div>
-                           
-                           {/* State badge */}
-                           {camp.status === 'verifying_payment' && <span className="bg-yellow-100 text-yellow-800 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Verificando Pago ($ {camp.price})</span>}
-                           {camp.status === 'active' && <span className="bg-green-100 text-green-800 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Campaña Enviada / Activa</span>}
-                           {camp.status === 'inactive' && <span className="bg-slate-100 text-slate-500 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Campaña Pausada / Desactivada</span>}
-                           {camp.status === 'rejected_payment' && <span className="bg-red-100 text-red-800 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">Pago Rechazado</span>}
- 
-                           {(camp.status === 'active' || camp.status === 'inactive') && (
-                               <button 
-                                   type="button"
-                                   onClick={async () => {
-                                       const newS = camp.status === 'active' ? 'inactive' : 'active';
-                                       if (!confirm(`¿Estás seguro de ${newS === 'active' ? 'VOLVER A ACTIVAR' : 'PAUSAR'} esta campaña?`)) return;
-                                        try {
-                                            const { error: updErr } = await supabase
-                                                .from('push_campaigns')
-                                                .update({ status: newS })
-                                                .eq('id', camp.id);
-                                            if (updErr) throw updErr;
-                                            toast.success("Estado cambiado correctamente");
-                                        } catch(e){ toast.error("Error al pausar/activar"); }
-                                   }}
-                                   className={`w-full mt-3 py-2 px-4 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${camp.status === 'active' ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-primary text-black hover:bg-primary/90 shadow-lg shadow-primary/20'}`}
-                               >
-                                   {camp.status === 'active' ? 'Pausar Publicidad' : 'Reactivar Publicidad'}
-                               </button>
-                           )}
+                    {displayedCampaigns.length === 0 ? (
+                        <div className="p-12 border-2 border-dashed border-slate-200 rounded-3xl text-center bg-white space-y-2">
+                            <Megaphone className="w-12 h-12 text-slate-300 mx-auto" />
+                            <p className="font-bold text-slate-700 text-base">
+                                {campaignsView === 'active' 
+                                    ? 'No tienes campañas activas ni programadas actualmente.' 
+                                    : 'No tienes campañas en el historial aún.'}
+                            </p>
+                            <p className="text-xs text-slate-400 max-w-md mx-auto">
+                                {campaignsView === 'active'
+                                    ? 'Crea una nueva campaña para hacer sonar ofertas y avisos directamente en los celulares de tus clientes.'
+                                    : 'Las campañas que ya fueron emitidas o cuyos comprobantes vencieron aparecerán aquí para que puedas reutilizarlas con un solo clic.'}
+                            </p>
                         </div>
-                    ))}
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {displayedCampaigns.map(camp => {
+                                const schedDate = camp.scheduledAt ? new Date(camp.scheduledAt) : null;
+                                const isSchedValid = schedDate && !isNaN(schedDate.getTime());
+                                const formattedDate = isSchedValid ? schedDate.toLocaleString('es-VE', { dateStyle: 'medium', timeStyle: 'short' }) : 'Sin fecha';
+                                
+                                const isExecuted = !!camp.executedAt || !!camp.executed_at || camp.status === 'completed';
+                                const isExpired = !!camp.expiredAt || !!camp.expired_at || camp.status === 'expired';
+                                const canReschedule = !isExecuted && !isExpired && camp.status !== 'rejected_payment' && camp.status !== 'rejected';
+
+                                return (
+                                    <div key={camp.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between hover:border-slate-300 transition-all">
+                                        <div>
+                                            {camp.imageUrl ? (
+                                                <img src={camp.imageUrl} alt="Banner" className="w-full h-40 object-cover rounded-xl mb-4" />
+                                            ) : (
+                                                <div className="w-full h-40 bg-slate-100 flex items-center justify-center rounded-xl mb-4">
+                                                    <ImageIcon className="text-slate-300 w-10 h-10" />
+                                                </div>
+                                            )}
+
+                                            <div className="flex items-start justify-between gap-2 mb-1">
+                                                <h3 className="font-black text-slate-900 text-base line-clamp-1 flex-1">
+                                                    {camp.title}
+                                                </h3>
+                                                <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200 shrink-0">
+                                                    ${camp.price || 0} USD
+                                                </span>
+                                            </div>
+                                            <p className="text-slate-500 text-xs mb-3 line-clamp-2 min-h-8">
+                                                {camp.subtitle}
+                                            </p>
+
+                                            {camp.promoProductSnapshot && (
+                                                <div className="mb-3 p-2.5 bg-amber-50 rounded-xl border border-amber-200/80 flex items-center gap-2.5">
+                                                    <Flame className="w-4 h-4 text-amber-600 shrink-0" />
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="text-xs font-black text-slate-800 truncate">
+                                                            {camp.promoProductSnapshot.name}
+                                                        </p>
+                                                        <p className="text-[11px] font-bold text-amber-700">
+                                                            🔥 Oferta: ${camp.promoPrice || camp.promoProductSnapshot.promo_price}
+                                                            {camp.promoProductSnapshot.price > (camp.promoPrice || camp.promoProductSnapshot.promo_price) && (
+                                                                <span className="text-slate-400 line-through ml-1 font-normal text-[10px]">
+                                                                    ${camp.promoProductSnapshot.price}
+                                                                </span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Info de Programación */}
+                                            <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 mb-3 space-y-1.5 text-xs">
+                                                <div className="flex items-center justify-between text-slate-600">
+                                                    <span className="flex items-center gap-1.5 font-bold">
+                                                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                                                        {isExecuted ? 'Enviada el:' : 'Programada:'}
+                                                    </span>
+                                                    <span className="font-mono font-bold text-slate-800 text-[11px]">
+                                                        {formattedDate}
+                                                    </span>
+                                                </div>
+
+                                                {camp.was_auto_rescheduled && (
+                                                    <div className="bg-amber-100/70 border border-amber-200 rounded-lg px-2 py-1 flex items-center gap-1.5 text-[10px] text-amber-900 font-bold">
+                                                        <Calendar className="w-3 h-3 text-amber-700 shrink-0" />
+                                                        <span>Reprogramada automáticamente (+24h) por Super Admin</span>
+                                                    </div>
+                                                )}
+
+                                                {camp.was_rescheduled && !camp.was_auto_rescheduled && (
+                                                    <div className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1 flex items-center gap-1.5 text-[10px] text-blue-900 font-bold">
+                                                        <Clock className="w-3 h-3 text-blue-700 shrink-0" />
+                                                        <span>Horario modificado previamente</span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="flex justify-between items-center bg-slate-50 p-2 px-3 rounded-lg text-xs font-bold text-slate-700 mb-3">
+                                                <span>Clics recibidos</span>
+                                                <span className="bg-white px-2 py-0.5 rounded-md border border-slate-200 font-mono">
+                                                    {camp.clicks || 0}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2 border-t border-slate-100 space-y-2">
+                                            {/* Status Badge */}
+                                            {camp.status === 'verifying_payment' && (
+                                                <span className="bg-amber-100 text-amber-900 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block border border-amber-200">
+                                                    ⏳ Verificando Pago Móvil (${camp.price || 0})
+                                                </span>
+                                            )}
+                                            {(camp.status === 'active' || camp.status === 'approved' || camp.status === 'scheduled') && !isExecuted && (
+                                                <span className="bg-emerald-100 text-emerald-900 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block border border-emerald-200">
+                                                    ✅ Campaña Aprobada / Programada
+                                                </span>
+                                            )}
+                                            {camp.status === 'inactive' && (
+                                                <span className="bg-slate-100 text-slate-600 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">
+                                                    ⏸️ Campaña Pausada
+                                                </span>
+                                            )}
+                                            {isExecuted && (
+                                                <span className="bg-slate-900 text-emerald-400 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full flex items-center justify-center gap-1.5">
+                                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                                    Aviso Enviado & Caducado
+                                                </span>
+                                            )}
+                                            {isExpired && !isExecuted && (
+                                                <span className="bg-slate-200 text-slate-700 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block">
+                                                    ⌛ Aviso Caducado
+                                                </span>
+                                            )}
+                                            {(camp.status === 'rejected_payment' || camp.status === 'rejected') && (
+                                                <span className="bg-red-100 text-red-800 py-1.5 px-3 rounded-xl text-xs font-black text-center w-full block border border-red-200">
+                                                    ❌ Pago No Aprobado
+                                                </span>
+                                            )}
+
+                                            {/* Botón Cambiar Hora / Reprogramar (Activas antes de enviarse) */}
+                                            {campaignsView === 'active' && canReschedule && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleOpenRescheduleModal(camp)}
+                                                    className="w-full py-2.5 px-3 rounded-xl font-bold text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 flex items-center justify-center gap-2 transition-all active:scale-98 border border-slate-200"
+                                                >
+                                                    <Clock className="w-3.5 h-3.5 text-amber-600" />
+                                                    🕒 Cambiar Hora / Reprogramar
+                                                </button>
+                                            )}
+
+                                            {/* Botón Volver a Usar este Aviso (Nuevo Pago) (Historial) */}
+                                            {campaignsView === 'history' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleReuseCampaign(camp)}
+                                                    className="w-full py-2.5 px-3 rounded-xl font-black text-xs bg-primary text-slate-950 hover:bg-primary/90 shadow-md shadow-primary/20 flex items-center justify-center gap-2 transition-all active:scale-98"
+                                                >
+                                                    <RefreshCw className="w-3.5 h-3.5" />
+                                                    🔄 Volver a Usar este Aviso (Nuevo Pago)
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Modal para Reprogramar Hora */}
+            {selectedCampForReschedule && (
+                <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center justify-between pb-4 border-b border-slate-100 mb-5">
+                            <div className="flex items-center gap-2">
+                                <span className="p-2 bg-amber-100 text-amber-700 rounded-xl">
+                                    <Clock className="w-5 h-5" />
+                                </span>
+                                <div>
+                                    <h3 className="font-black text-slate-900 text-base">Reprogramar Lanzamiento</h3>
+                                    <p className="text-xs text-slate-400 font-medium">Modifica la fecha y hora de emisión del Pop-Up</p>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={() => setSelectedCampForReschedule(null)}
+                                className="p-1 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            <div className="bg-amber-50 rounded-2xl p-3 border border-amber-200/70 text-xs text-amber-900 flex items-start gap-2">
+                                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                                <p>
+                                    Puedes cambiar la hora antes de que la notificación sea enviada a los usuarios. La nueva fecha y hora debe ser estrictamente en el futuro.
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1.5">
+                                    Nueva Fecha de Envío
+                                </label>
+                                <input 
+                                    type="date" 
+                                    value={rescheduleDate}
+                                    min={new Date().toISOString().split('T')[0]}
+                                    onChange={e => setRescheduleDate(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-black uppercase tracking-wider text-slate-600 mb-1.5">
+                                    Nueva Hora de Envío
+                                </label>
+                                <input 
+                                    type="time" 
+                                    value={rescheduleTime}
+                                    onChange={e => setRescheduleTime(e.target.value)}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800"
+                                />
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedCampForReschedule(null)}
+                                    className="flex-1 py-3 rounded-xl border border-slate-200 font-bold text-xs text-slate-600 hover:bg-slate-50"
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={isRescheduling}
+                                    onClick={handleConfirmReschedule}
+                                    className="flex-1 py-3 rounded-xl bg-slate-900 text-primary font-black text-xs hover:bg-slate-800 shadow-md shadow-slate-900/10 flex items-center justify-center gap-2"
+                                >
+                                    {isRescheduling ? 'Guardando...' : 'Confirmar Nueva Hora'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

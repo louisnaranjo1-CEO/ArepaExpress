@@ -84,7 +84,7 @@ export default function CashierLogin() {
                         <Shield className="w-10 h-10 text-slate-900" />
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Caja y Cobros</h1>
-                    <p className="font-bold text-slate-500 mt-2">Deliexpress Cashier Portal</p>
+                    <p className="font-bold text-slate-500 mt-2">Un 2x3 • Portal de Caja</p>
                 </div>
 
                 <motion.div

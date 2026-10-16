@@ -2951,57 +2951,68 @@ export default function TrackOrder() {
                             </div>
 
                             {/* Monto Destacado */}
-                            <div className="bg-gradient-to-br from-primary/20 via-primary/10 to-amber-50 rounded-2xl p-4 border-2 border-primary/30 text-center">
-                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Monto Exacto en Bolívares</p>
-                                <p className="text-3xl font-black text-slate-900">{(itemsTotal * bcvRate).toFixed(2)} Bs</p>
-                                <p className="text-xs font-bold text-slate-500 mt-1">Equivalente a ${itemsTotal.toFixed(2)} USD (Tasa BCV)</p>
-                            </div>
+                            {(() => {
+                                const activeRate = order?.is_rate_overridden && order?.custom_exchange_rate ? Number(order.custom_exchange_rate) : Number(order?.exchange_rate || bcvRate);
+                                const totalBs = (itemsTotal * activeRate).toFixed(2);
 
-                            {/* Campos Copiables */}
-                            {pagoMovilMethod ? (
-                                <div className="space-y-2.5">
-                                    {[
-                                        { label: 'Banco', val: pagoMovilMethod.bank },
-                                        { label: 'Teléfono', val: pagoMovilMethod.phone },
-                                        { label: 'Cédula / RIF', val: pagoMovilMethod.rif },
-                                        { label: 'Titular', val: pagoMovilMethod.owner },
-                                    ].map((f, idx) => (
-                                        <div
-                                            key={idx}
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(f.val);
-                                                toast.success(`${f.label} copiado`);
-                                            }}
-                                            className="group bg-slate-50 hover:bg-primary/5 active:scale-98 transition-all p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between cursor-pointer"
-                                        >
-                                            <div>
-                                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">{f.label}</span>
-                                                <span className="text-sm font-black text-slate-800">{f.val}</span>
-                                            </div>
-                                            <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-200 group-hover:border-primary text-slate-500 group-hover:text-slate-900 transition-colors">
-                                                <Copy className="w-4 h-4" />
-                                            </div>
+                                return (
+                                    <>
+                                        <div className="bg-gradient-to-br from-primary/20 via-primary/10 to-amber-50 rounded-2xl p-4 border-2 border-primary/30 text-center">
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1">Monto Exacto en Bolívares</p>
+                                            <p className="text-3xl font-black text-slate-900">{totalBs} Bs</p>
+                                            <p className="text-xs font-bold text-slate-500 mt-1">
+                                                Equivalente a ${itemsTotal.toFixed(2)} USD {order?.is_rate_overridden ? `(Tasa aplicada: ${activeRate.toFixed(2)} Bs/$)` : '(Tasa BCV)'}
+                                            </p>
                                         </div>
-                                    ))}
 
-                                    {/* Botón Maestro Copiar Todos los Datos */}
-                                    <button
-                                        onClick={() => {
-                                            const bsAmount = (itemsTotal * bcvRate).toFixed(2);
-                                            const fullText = `Banco: ${pagoMovilMethod.bank}\nTeléfono: ${pagoMovilMethod.phone}\nCédula/RIF: ${pagoMovilMethod.rif}\nTitular: ${pagoMovilMethod.owner}\nMonto: ${bsAmount} Bs`;
-                                            navigator.clipboard.writeText(fullText);
-                                            toast.success('¡Todos los datos copiados! Pégalos en tu banco.', { duration: 4000 });
-                                        }}
-                                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-2 mt-4 text-sm"
-                                    >
-                                        <Copy className="w-4 h-4 text-primary" /> Copiar Todos los Datos para el Banco
-                                    </button>
-                                </div>
-                            ) : (
-                                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-center">
-                                    <p className="text-sm font-bold text-amber-700">El negocio no tiene configurado Pago Móvil automático. Usa el chat para solicitar los datos directamente.</p>
-                                </div>
-                            )}
+                                        {/* Campos Copiables */}
+                                        {pagoMovilMethod ? (
+                                            <div className="space-y-2.5">
+                                                {[
+                                                    { label: 'Banco', val: pagoMovilMethod.bank },
+                                                    { label: 'Teléfono', val: pagoMovilMethod.phone },
+                                                    { label: 'Cédula / RIF', val: pagoMovilMethod.rif },
+                                                    { label: 'Titular', val: pagoMovilMethod.owner },
+                                                ].map((f, idx) => (
+                                                    <div
+                                                        key={idx}
+                                                        onClick={() => {
+                                                            navigator.clipboard.writeText(f.val);
+                                                            toast.success(`${f.label} copiado`);
+                                                        }}
+                                                        className="group bg-slate-50 hover:bg-primary/5 active:scale-98 transition-all p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between cursor-pointer"
+                                                    >
+                                                        <div>
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">{f.label}</span>
+                                                            <span className="text-sm font-black text-slate-800">{f.val}</span>
+                                                        </div>
+                                                        <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shadow-xs border border-slate-200 group-hover:border-primary text-slate-500 group-hover:text-slate-900 transition-colors">
+                                                            <Copy className="w-4 h-4" />
+                                                        </div>
+                                                    </div>
+                                                ))}
+
+                                                {/* Botón Maestro Copiar Todos los Datos */}
+                                                <button
+                                                    onClick={() => {
+                                                        const fullText = `Banco: ${pagoMovilMethod.bank}\nTeléfono: ${pagoMovilMethod.phone}\nCédula/RIF: ${pagoMovilMethod.rif}\nTitular: ${pagoMovilMethod.owner}\nMonto: ${totalBs} Bs` +
+                                                            (order?.is_rate_overridden ? `\n(Tasa aplicada: ${activeRate.toFixed(2)} Bs/$)` : '');
+                                                        navigator.clipboard.writeText(fullText);
+                                                        toast.success('¡Todos los datos copiados! Pégalos en tu banco.', { duration: 4000 });
+                                                    }}
+                                                    className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl hover:bg-slate-800 active:scale-95 transition-all shadow-xl shadow-slate-900/20 flex items-center justify-center gap-2 mt-4 text-sm"
+                                                >
+                                                    <Copy className="w-4 h-4 text-primary" /> Copiar Todos los Datos para el Banco
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-center">
+                                                <p className="text-sm font-bold text-amber-700">El negocio no tiene configurado Pago Móvil automático. Usa el chat para solicitar los datos directamente.</p>
+                                            </div>
+                                        )}
+                                    </>
+                                );
+                            })()}
                         </motion.div>
                     </div>
                 )}

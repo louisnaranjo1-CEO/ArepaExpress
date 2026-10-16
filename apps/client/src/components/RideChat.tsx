@@ -32,6 +32,7 @@ interface ChatProps {
     driverPhone?: string;
     clientPhone?: string;
     isDriver?: boolean;
+    allowChatOnCompleted?: boolean;
 }
 
 // In-Bubble Audio Player Component
@@ -140,7 +141,8 @@ export default function RideChat({
     onStartCall,
     driverPhone,
     clientPhone,
-    isDriver = false
+    isDriver = false,
+    allowChatOnCompleted = false
 }: ChatProps) {
     const { user } = useAuth();
     const [messages, setMessages] = useState<any[]>([]);
@@ -169,12 +171,13 @@ export default function RideChat({
     const isEmergencyExhausted = Boolean(emergencyResolvedMsg);
 
     // Audio 3: En viajes/pedidos completados el chat está cerrado por defecto (modo solo lectura),
-    // a menos que se active la emergencia por objeto olvidado (que solo puede usarse 1 vez).
+    // a menos que se active la emergencia por objeto olvidado (que solo puede usarse 1 vez),
+    // o que se esté en proceso de pago/conciliación (allowChatOnCompleted).
     const isCompleted = requestStatus === 'completed' || requestStatus === 'delivered';
     const completedTimestamp = completedAt ? new Date(completedAt).getTime() : Date.now();
     const hoursSinceCompletion = isCompleted ? (Date.now() - completedTimestamp) / (1000 * 60 * 60) : 0;
     const isExpired = isCompleted && hoursSinceCompletion > 48;
-    const isChatLocked = readOnly || (isCompleted && !isEmergencyActive);
+    const isChatLocked = readOnly || (isCompleted && !isEmergencyActive && !allowChatOnCompleted);
 
     // Vehicle Category Meta
     const getVehicleMeta = () => {

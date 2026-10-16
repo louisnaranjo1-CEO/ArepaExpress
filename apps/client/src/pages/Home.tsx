@@ -21,6 +21,7 @@ import { useBranding } from '../context/BrandingContext';
 import DualPrice from '../components/DualPrice';
 import { DEMO_RESTAURANTS } from '../lib/demoData';
 import ActiveTasksWidget from '../components/ActiveTasksWidget';
+import PendingPaymentTripBanner from '../components/PendingPaymentTripBanner';
 import AvailableStoresRow from '../components/AvailableStoresRow';
 import HomePromotionCard, { CardBannerItem } from '../components/HomePromotionCard';
 import BannerDetailModal from '../components/BannerDetailModal';
@@ -966,6 +967,9 @@ export default function Home() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* 1.5. Persistent Pending Payment Trip Banner (Shown if trip completed and unconfirmed) */}
+      <PendingPaymentTripBanner />
 
       {/* 2. Persistent Active Tasks Widget (Prominent at top so user never loses track of active food or ride service - hidden if empty) */}
       <ActiveTasksWidget />

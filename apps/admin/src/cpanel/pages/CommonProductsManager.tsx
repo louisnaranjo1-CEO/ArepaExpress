@@ -18,7 +18,9 @@ import {
     CheckCircle2,
     ZoomIn,
     ZoomOut,
-    RotateCcw
+    RotateCcw,
+    LayoutGrid,
+    List
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
@@ -70,6 +72,7 @@ export default function CommonProductsManager() {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('Todos');
+    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
     // Modal state
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -392,16 +395,47 @@ export default function CommonProductsManager() {
             </div>
 
             {/* Filter & Search Bar */}
-            <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
-                <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Buscar por nombre, descripción o código de barras..."
-                        className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-2xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary"
-                    />
+            <div className="bg-white p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xs space-y-3">
+                <div className="flex flex-col sm:flex-row gap-2.5 sm:items-center justify-between">
+                    <div className="relative flex-1">
+                        <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                            type="text"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            placeholder="Buscar por nombre, descripción o código de barras..."
+                            className="w-full bg-slate-50 border border-slate-200 pl-10 pr-4 py-2.5 rounded-xl sm:rounded-2xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                    </div>
+                    {/* View Switcher: Cuadrícula / Lista */}
+                    <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl self-end sm:self-auto border border-slate-200/60 shrink-0">
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('grid')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                viewMode === 'grid'
+                                    ? 'bg-white text-slate-900 shadow-xs font-black'
+                                    : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                            title="Vista Cuadrícula (2 columnas en móvil)"
+                        >
+                            <LayoutGrid className="w-3.5 h-3.5" />
+                            <span>Cuadrícula</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setViewMode('list')}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                                viewMode === 'list'
+                                    ? 'bg-white text-slate-900 shadow-xs font-black'
+                                    : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                            title="Vista Lista compacta"
+                        >
+                            <List className="w-3.5 h-3.5" />
+                            <span>Lista</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
@@ -421,7 +455,7 @@ export default function CommonProductsManager() {
                 </div>
             </div>
 
-            {/* Products Grid */}
+            {/* Products Grid or List */}
             {loading ? (
                 <div className="py-20 flex flex-col items-center justify-center gap-3">
                     <Loader2 className="w-8 h-8 text-primary animate-spin" />
@@ -441,17 +475,17 @@ export default function CommonProductsManager() {
                         <Plus className="w-3.5 h-3.5 text-primary" /> Crear Producto
                     </button>
                 </div>
-            ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            ) : viewMode === 'grid' ? (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 sm:gap-4">
                     {filteredProducts.map(p => (
                         <div
                             key={p.id}
-                            className="bg-white rounded-3xl border border-slate-200/80 p-4 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
+                            className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 p-2.5 sm:p-3.5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between group"
                         >
-                            <div className="space-y-3">
-                                {/* Image & Category */}
+                            <div className="space-y-2">
+                                {/* Image Contained & Category */}
                                 <div 
-                                    className={`relative aspect-square w-full rounded-2xl overflow-hidden bg-slate-100 border border-slate-100 ${
+                                    className={`relative h-28 w-full rounded-xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center p-2 ${
                                         p.image_url ? 'cursor-zoom-in' : ''
                                     }`}
                                     onClick={() => {
@@ -460,35 +494,35 @@ export default function CommonProductsManager() {
                                             setImageZoomScale(1);
                                         }
                                     }}
-                                    title={p.image_url ? "Clic para ampliar y ver detalles de la imagen" : undefined}
+                                    title={p.image_url ? "Clic para ampliar imagen" : undefined}
                                 >
                                     {p.image_url ? (
                                         <>
-                                            <img src={p.image_url} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                                            <img src={p.image_url} alt={p.name} className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300" />
                                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                                <span className="p-2 bg-white/95 backdrop-blur-md rounded-full text-slate-800 shadow-md">
-                                                    <ZoomIn className="w-4 h-4" />
+                                                <span className="p-1.5 bg-white/95 backdrop-blur-md rounded-full text-slate-800 shadow-md">
+                                                    <ZoomIn className="w-3.5 h-3.5" />
                                                 </span>
                                             </div>
                                         </>
                                     ) : (
                                         <div className="w-full h-full flex flex-col items-center justify-center text-slate-300">
-                                            <ImageIcon className="w-10 h-10" />
-                                            <span className="text-[10px] font-bold mt-1">Sin Imagen</span>
+                                            <ImageIcon className="w-8 h-8" />
+                                            <span className="text-[9px] font-bold mt-0.5">Sin Imagen</span>
                                         </div>
                                     )}
-                                    <span className="absolute top-2 left-2 bg-slate-950/70 backdrop-blur-md text-white text-[10px] font-black px-2 py-0.5 rounded-lg z-10">
+                                    <span className="absolute top-1.5 left-1.5 bg-slate-950/75 backdrop-blur-xs text-white text-[9px] font-black px-1.5 py-0.5 rounded-md z-10 truncate max-w-[85%]">
                                         {p.category}
                                     </span>
                                 </div>
 
                                 {/* Details */}
                                 <div>
-                                    <h3 className="font-black text-slate-900 text-sm leading-tight line-clamp-1">
+                                    <h3 className="font-black text-slate-900 text-xs sm:text-sm leading-tight line-clamp-2 min-h-[2rem]">
                                         {p.name}
                                     </h3>
                                     {p.description && (
-                                        <p className="text-[11px] text-slate-500 font-medium line-clamp-2 mt-1 leading-snug">
+                                        <p className="text-[10px] sm:text-[11px] text-slate-500 font-medium line-clamp-1 mt-0.5">
                                             {p.description}
                                         </p>
                                     )}
@@ -496,25 +530,30 @@ export default function CommonProductsManager() {
 
                                 {/* Variants Pills */}
                                 <div>
-                                    <p className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
-                                        Presentaciones ({Array.isArray(p.variants) ? p.variants.length : 0}):
+                                    <p className="text-[8px] sm:text-[9px] font-black uppercase tracking-wider text-slate-400 mb-0.5">
+                                        Pres. ({Array.isArray(p.variants) ? p.variants.length : 0}):
                                     </p>
                                     <div className="flex flex-wrap gap-1">
-                                        {Array.isArray(p.variants) && p.variants.map((v, i) => (
+                                        {Array.isArray(p.variants) && p.variants.slice(0, 2).map((v, i) => (
                                             <span
                                                 key={i}
-                                                className="bg-slate-100 text-slate-700 text-[10px] font-bold px-2 py-0.5 rounded-md border border-slate-200"
+                                                className="bg-slate-100 text-slate-700 text-[9px] font-bold px-1.5 py-0.5 rounded border border-slate-200/60 truncate max-w-[100px]"
                                             >
                                                 {v.name}
                                             </span>
                                         ))}
+                                        {Array.isArray(p.variants) && p.variants.length > 2 && (
+                                            <span className="text-[9px] font-bold text-slate-400 self-center">
+                                                +{p.variants.length - 2}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
                             </div>
 
                             {/* Actions */}
-                            <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100">
-                                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                            <div className="flex items-center justify-between pt-2 mt-2 border-t border-slate-100">
+                                <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
                                     p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'
                                 }`}>
                                     {p.is_active ? 'Activo' : 'Inactivo'}
@@ -522,19 +561,88 @@ export default function CommonProductsManager() {
                                 <div className="flex items-center gap-1">
                                     <button
                                         onClick={() => openEditModal(p)}
-                                        className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors"
+                                        className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors"
                                         title="Editar"
                                     >
-                                        <Edit2 className="w-3.5 h-3.5" />
+                                        <Edit2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                     </button>
                                     <button
                                         onClick={() => handleDelete(p.id, p.name)}
-                                        className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center transition-colors"
+                                        className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center transition-colors"
                                         title="Eliminar"
                                     >
-                                        <Trash2 className="w-3.5 h-3.5" />
+                                        <Trash2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
                                     </button>
                                 </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    {filteredProducts.map(p => (
+                        <div
+                            key={p.id}
+                            className="bg-white rounded-2xl border border-slate-200/80 p-2.5 sm:p-3 shadow-2xs hover:shadow-sm transition-all flex items-center justify-between gap-3"
+                        >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                <div 
+                                    onClick={() => {
+                                        if (p.image_url) {
+                                            setPreviewingProductImage({ url: p.image_url, name: p.name });
+                                            setImageZoomScale(1);
+                                        }
+                                    }}
+                                    className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 p-1 flex items-center justify-center shrink-0 cursor-pointer overflow-hidden"
+                                    title={p.image_url ? "Clic para ampliar" : undefined}
+                                >
+                                    {p.image_url ? (
+                                        <img src={p.image_url} alt={p.name} className="w-full h-full object-contain" />
+                                    ) : (
+                                        <ImageIcon className="w-5 h-5 text-slate-300" />
+                                    )}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <h4 className="font-black text-slate-900 text-xs sm:text-sm truncate max-w-[200px] sm:max-w-md">{p.name}</h4>
+                                        <span className="text-[9px] font-black bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md shrink-0">
+                                            {p.category}
+                                        </span>
+                                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+                                            p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-400'
+                                        }`}>
+                                            {p.is_active ? 'Activo' : 'Inactivo'}
+                                        </span>
+                                    </div>
+                                    {Array.isArray(p.variants) && p.variants.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 mt-1">
+                                            {p.variants.slice(0, 4).map((v, i) => (
+                                                <span key={i} className="text-[9px] font-bold text-slate-500 bg-slate-50 border border-slate-200/60 px-1.5 py-0.5 rounded">
+                                                    {v.name}
+                                                </span>
+                                            ))}
+                                            {p.variants.length > 4 && (
+                                                <span className="text-[9px] font-bold text-slate-400">+{p.variants.length - 4}</span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                    onClick={() => openEditModal(p)}
+                                    className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-center transition-colors"
+                                    title="Editar"
+                                >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                    onClick={() => handleDelete(p.id, p.name)}
+                                    className="w-8 h-8 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center transition-colors"
+                                    title="Eliminar"
+                                >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                             </div>
                         </div>
                     ))}

@@ -831,7 +831,7 @@ export default function RestaurantProfile() {
                                 Comercio Verificado Oficialmente ✓
                             </h4>
                             <p className="text-xs text-emerald-800 font-medium">
-                                Tu negocio cuenta con la certificación oficial de Encontrado en un 2x3 / Deliexpress. Puedes alternar la visibilidad de tu tienda arriba cuando lo desees.
+                                Tu negocio cuenta con la certificación oficial de Un 2x3. Puedes alternar la visibilidad de tu tienda arriba cuando lo desees.
                             </p>
                         </div>
                     </div>
@@ -988,7 +988,7 @@ export default function RestaurantProfile() {
                                         value={name}
                                         onChange={(e) => setName(e.target.value)}
                                         className={`w-full bg-slate-50 border-2 border-transparent focus:border-primary focus:bg-white p-4 rounded-2xl outline-none transition-all font-bold text-slate-800 ${isVerified ? 'opacity-75 bg-slate-100 cursor-not-allowed pr-10' : ''}`}
-                                        placeholder="Ej: Deliexpress Gourmet"
+                                        placeholder="Ej: Un 2x3 Gourmet"
                                     />
                                     {isVerified && (
                                         <Lock className="w-5 h-5 text-slate-400 absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none" />

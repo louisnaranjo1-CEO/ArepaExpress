@@ -101,7 +101,7 @@ export default function LockScreen() {
                 </button>
 
                 <div className="flex flex-col items-center gap-4 w-full">
-                    <p className="text-[10px] uppercase tracking-[0.3em] font-black text-slate-800/60">Powered by Deliexpress Biometrics</p>
+                    <p className="text-[10px] uppercase tracking-[0.3em] font-black text-slate-800/60">Protegido por Biometría Un 2x3</p>
                     
                     <button 
                         onClick={async () => {

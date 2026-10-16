@@ -119,6 +119,21 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                         localStorage.setItem('seen_campaigns', JSON.stringify(Array.from(seenCampaigns.current)));
                     } catch(e) {}
 
+                    // Caducar inmediatamente el token/aviso en Supabase para que no vuelva a ejecutarse
+                    supabase
+                        .from('push_campaigns')
+                        .update({
+                            status: 'completed',
+                            executed_at: new Date().toISOString(),
+                            expired_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString()
+                        })
+                        .eq('id', cid)
+                        .is('executed_at', null)
+                        .then(({ error }: any) => {
+                            if (error) console.error("Error expiring campaign token:", error);
+                        });
+
                     if (audioRef.current) {
                         audioRef.current.currentTime = 0;
                         audioRef.current.play().catch(()=>{});
@@ -257,7 +272,8 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                 const { data, error } = await supabase
                     .from('push_campaigns')
                     .select('*')
-                    .eq('status', 'active');
+                    .in('status', ['active', 'approved', 'scheduled'])
+                    .is('executed_at', null);
 
                 if (error) throw error;
                 if (data) processCampaigns(data);

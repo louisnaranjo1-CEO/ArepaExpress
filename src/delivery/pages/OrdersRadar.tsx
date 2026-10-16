@@ -72,6 +72,73 @@ export default function OrdersRadar() {
         distanceKm?: number;
     } | null>(null);
 
+    // Foto de perfil real del cliente obtenida desde profiles (photo_url / avatar_url)
+    const [clientPhotoUrl, setClientPhotoUrl] = useState<string | null>(null);
+
+    // Helper centralizado para identificar solicitudes de Transporte Rápido / Mandado / Precio abierto
+    const isQuickTransport = (item: any) => {
+        if (!item) return false;
+        const notes = String(item.notes || '');
+        const cat = String(item.service_category || item.serviceCategory || item.type || '').toLowerCase();
+        const dest = item.destination?.address || item.destinationAddress || '';
+        const price = Number(item.price || item.fare || item.total || 0);
+        return Boolean(
+            item.is_quick_transport ||
+            cat === 'express' ||
+            cat === 'mandado' ||
+            cat === 'muchacho_mandado' ||
+            notes.includes('Transporte Rápido') ||
+            ((price <= 0.50 || !price) && (!dest || dest === 'Por convenir'))
+        );
+    };
+
+    const getClientInitials = (name?: string) => {
+        if (!name) return 'CL';
+        const parts = name.trim().split(/\s+/);
+        if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    };
+
+    // Sincronizar foto de perfil real del cliente desde profiles
+    useEffect(() => {
+        let isMounted = true;
+        const targetUserId = activeTransport?.user_id || activeTransport?.userId || activeOrder?.user_id || activeOrder?.userId;
+
+        if (!targetUserId || targetUserId === 'pos_customer') {
+            setClientPhotoUrl(activeTransport?.user_photo || null);
+            return;
+        }
+
+        const fetchClientPhoto = async () => {
+            try {
+                const { data } = await supabase
+                    .from('profiles')
+                    .select('photo_url, avatar_url')
+                    .eq('id', targetUserId)
+                    .maybeSingle();
+
+                if (isMounted) {
+                    if (data?.photo_url || data?.avatar_url) {
+                        setClientPhotoUrl(data.photo_url || data.avatar_url);
+                    } else if (activeTransport?.user_photo) {
+                        setClientPhotoUrl(activeTransport.user_photo);
+                    } else {
+                        setClientPhotoUrl(null);
+                    }
+                }
+            } catch (err) {
+                console.warn("Could not fetch client profile photo:", err);
+                if (isMounted) setClientPhotoUrl(activeTransport?.user_photo || null);
+            }
+        };
+
+        fetchClientPhoto();
+
+        return () => {
+            isMounted = false;
+        };
+    }, [activeTransport?.user_id, activeTransport?.userId, activeTransport?.user_photo, activeOrder?.user_id, activeOrder?.userId]);
+
     // Edge Case 6.3: Driver Offline Storage Cache for transit connectivity loss
     const [isNetworkOffline, setIsNetworkOffline] = useState(!navigator.onLine);
     const [offlineTripData, setOfflineTripData] = useState<any>(() => {
@@ -1145,6 +1212,22 @@ export default function OrdersRadar() {
             }
 
             setActiveOrder(null);
+            // Asegurar que el conductor permanezca en línea y activo para nuevos pedidos
+            try {
+                await supabase.from('drivers').update({
+                    availability: 'active',
+                    is_online: true,
+                    updated_at: new Date().toISOString()
+                }).eq('id', user!.uid);
+                setDriverProfile((prev: any) => prev ? {
+                    ...prev,
+                    availability: 'active',
+                    is_online: true,
+                    isOnline: true
+                } : prev);
+            } catch (availErr) {
+                console.warn("Error updating driver availability on deliver:", availErr);
+            }
         } finally {
             setProcessingAction(null);
         }
@@ -1359,10 +1442,10 @@ export default function OrdersRadar() {
     // Sincronizar campo de tarifa rápida cuando cambia el viaje activo
     useEffect(() => {
         if (activeTransport) {
-            const isQuick = Boolean(activeTransport.notes?.includes('Transporte Rápido') || activeTransport.is_quick_transport);
+            const isQuick = isQuickTransport(activeTransport);
             if (isQuick) {
                 const currentPrice = Number(activeTransport.price || activeTransport.total || 0);
-                if (currentPrice > 0 && !quickFareInput) {
+                if (currentPrice > 0.50 && !quickFareInput) {
                     setQuickFareInput(currentPrice.toFixed(2));
                 }
             }
@@ -1373,7 +1456,71 @@ export default function OrdersRadar() {
         }
     }, [activeTransport?.id]);
 
-    const handleQuickDestinationSelect = (destData: { name: string; lat: number; lng: number; reference: string }) => {
+    // Opción 1: Entrada manual de tarifa acordada
+    const handleSaveManualFare = async (overrideFare?: number) => {
+        if (!activeTransport || processingAction) return;
+        const fareNum = overrideFare ?? parseFloat(quickFareInput);
+        if (isNaN(fareNum) || fareNum <= 0) {
+            toast.error("Por favor ingresa un monto válido");
+            return;
+        }
+
+        setProcessingAction('save_fare');
+        try {
+            const cat = activeTransport.service_category || activeTransport.vehicle_type || 'mototaxi';
+            let comm = Number(activeTransport.commission_amount || 0);
+            if (!comm) {
+                comm = getCommissionForCategory(cat);
+            }
+            const payout = Math.max(0, fareNum - comm);
+
+            const updatePayload = {
+                price: fareNum,
+                fare: fareNum,
+                total: fareNum,
+                driver_payout: payout,
+                updated_at: new Date().toISOString()
+            };
+
+            const { error } = await supabase
+                .from('transport_requests')
+                .update(updatePayload)
+                .eq('id', activeTransport.id);
+
+            if (error) throw error;
+
+            // Transmitir evento fare_updated en tiempo real para el cliente
+            try {
+                const notifyChannel = supabase.channel(`call_${activeTransport.id}`);
+                notifyChannel.subscribe((subStatus) => {
+                    if (subStatus === 'SUBSCRIBED') {
+                        notifyChannel.send({
+                            type: 'broadcast',
+                            event: 'fare_updated',
+                            payload: { fare: fareNum, price: fareNum, total: fareNum }
+                        });
+                    }
+                });
+            } catch (bErr) {
+                console.warn("Could not broadcast fare_updated event:", bErr);
+            }
+
+            setActiveTransport((prev: any) => ({
+                ...prev,
+                ...updatePayload
+            }));
+
+            toast.success(`¡Tarifa acordada de $${fareNum.toFixed(2)} USD fijada y sincronizada!`, { icon: '💰' });
+        } catch (err: any) {
+            console.error("Error al guardar tarifa manual:", err);
+            toast.error("Error al guardar tarifa: " + (err?.message || 'Intente nuevamente'));
+        } finally {
+            setProcessingAction(null);
+        }
+    };
+
+    // Opción 2: Cálculo en Mapa / Fijar Destino
+    const handleQuickDestinationSelect = async (destData: { name: string; lat: number; lng: number; reference: string }) => {
         setShowQuickDestinationPicker(false);
         if (!activeTransport) return;
 
@@ -1425,15 +1572,81 @@ export default function OrdersRadar() {
             }
         }
 
-        setQuickFareInput(calculatedFare.toFixed(2));
-        setQuickSelectedDestination({
-            ...destData,
-            distanceKm: Number(distKm.toFixed(1))
-        });
-        toast.success(`Destino marcado (${distKm.toFixed(1)} km). Tarifa sugerida: $${calculatedFare.toFixed(2)} USD`, {
-            icon: '📍',
-            duration: 4000
-        });
+        const cat = activeTransport.service_category || activeTransport.vehicle_type || 'mototaxi';
+        let comm = Number(activeTransport.commission_amount || 0);
+        if (!comm) comm = getCommissionForCategory(cat);
+        const payout = Math.max(0, calculatedFare - comm);
+
+        const newDestination = {
+            lat: destData.lat,
+            lng: destData.lng,
+            address: destData.reference ? `${destData.name} (${destData.reference})` : destData.name
+        };
+
+        const updatePayload: any = {
+            destination: newDestination,
+            route: {
+                ...(activeTransport.route || {}),
+                distance: Number(distKm.toFixed(1))
+            },
+            price: calculatedFare,
+            fare: calculatedFare,
+            total: calculatedFare,
+            driver_payout: payout,
+            updated_at: new Date().toISOString()
+        };
+
+        setProcessingAction('map_destination');
+        try {
+            const { error } = await supabase
+                .from('transport_requests')
+                .update(updatePayload)
+                .eq('id', activeTransport.id);
+
+            if (error) throw error;
+
+            // Transmitir evento fare_updated en tiempo real para el cliente
+            try {
+                const notifyChannel = supabase.channel(`call_${activeTransport.id}`);
+                notifyChannel.subscribe((subStatus) => {
+                    if (subStatus === 'SUBSCRIBED') {
+                        notifyChannel.send({
+                            type: 'broadcast',
+                            event: 'fare_updated',
+                            payload: {
+                                fare: calculatedFare,
+                                price: calculatedFare,
+                                total: calculatedFare,
+                                destination: newDestination
+                            }
+                        });
+                    }
+                });
+            } catch (bErr) {
+                console.warn("Could not broadcast fare_updated event:", bErr);
+            }
+
+            setActiveTransport((prev: any) => ({
+                ...prev,
+                ...updatePayload
+            }));
+
+            setQuickFareInput(calculatedFare.toFixed(2));
+            setQuickSelectedDestination({
+                ...destData,
+                distanceKm: Number(distKm.toFixed(1))
+            });
+
+            toast.success(`¡Destino y tarifa ($${calculatedFare.toFixed(2)} USD • ${distKm.toFixed(1)} km) fijados en mapa y sincronizados!`, {
+                icon: '📍',
+                duration: 5000
+            });
+        } catch (err: any) {
+            console.error("Error al fijar destino y tarifa en mapa:", err);
+            toast.error("Error al actualizar destino en mapa: " + (err?.message || 'Intente nuevamente'));
+        } finally {
+            setProcessingAction(null);
+        }
     };
 
     const handleConfirmQuickFareAndStart = async () => {
@@ -1559,19 +1772,29 @@ export default function OrdersRadar() {
                 }
             }
 
-            // Liberar disponibilidad del chofer de inmediato para nuevas carreras
+            // Liberar disponibilidad del chofer de inmediato y asegurar que permanezca ACTIVO Y ONLINE
             try {
                 await supabase.from('drivers').update({
-                    availability: 'available'
+                    availability: 'active',
+                    is_online: true,
+                    updated_at: new Date().toISOString()
                 }).eq('id', user!.uid);
             } catch (availErr) {
                 console.warn("Error updating driver availability:", availErr);
             }
 
+            // Actualizar driverProfile localmente para que el header y el radar sigan activos
+            setDriverProfile((prev: any) => prev ? {
+                ...prev,
+                availability: 'active',
+                is_online: true,
+                isOnline: true
+            } : prev);
+
             // Inmediatamente limpiar el transporte activo para liberar la pantalla de navegación
             setActiveTransport(null);
             fetchActiveTransport();
-            toast.success(`¡Viaje finalizado con éxito! Quedas disponible para nuevas carreras.`, { icon: '🚀', duration: 4000 });
+            toast.success(`¡Viaje finalizado con éxito! Sigues en línea y disponible para nuevas carreras.`, { icon: '🚀', duration: 4000 });
         } finally {
             setProcessingAction(null);
         }
@@ -1801,547 +2024,538 @@ export default function OrdersRadar() {
                             <span className="font-black text-yellow-300 text-sm">
                                 {offlineTripData.fletePagadoPor === 'negocio' 
                                     ? 'Flete pagado por el comercio ($0 al cliente)' 
-                                    : `$${offlineTripData.amountToCollect.toFixed(2)} USD`}
+                                    : `$${offlineTripData.totalCobrar || 0}`}
                             </span>
                         </div>
                     </div>
                 </div>
             )}
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
-                <div className="bg-primary/5 border border-primary/10 p-5 rounded-[2.5rem] mb-4 flex items-center gap-4">
-                    <div className="w-12 h-12 bg-primary/10 rounded-2xl flex items-center justify-center text-slate-900">
-                        {isFoodDeliveryTransport ? <Bike className="w-6 h-6 animate-pulse" /> : activeTransport.type === 'package_delivery' ? <Package className="w-6 h-6 animate-pulse" /> : <Navigation className="w-6 h-6 animate-pulse" />}
+
+            {/* ── REDISEÑO INTEGRADO DEL CENTRO DE COMANDAS (ESTILO APPS/CLIENT) ── */}
+            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
+                {/* 1. PARTE SUPERIOR: EL MAPA INTERACTIVO EN VIVO */}
+                <div className="relative w-full rounded-[2.5rem] overflow-hidden border border-slate-200/90 shadow-xl bg-slate-950">
+                    <div className={`w-full transition-all duration-300 ${isDriverMapExpanded ? 'h-[65vh]' : 'h-64'}`}>
+                        <LiveTripMap
+                            origin={activeTransport.origin}
+                            destination={activeTransport.destination}
+                            driverLocation={driverGps}
+                            vehicleType={driverProfile?.vehicleType || activeTransport.service_category || 'moto'}
+                            driverName={driverProfile?.name || 'Mi Vehículo'}
+                            isExpanded={isDriverMapExpanded}
+                            onToggleExpand={() => setIsDriverMapExpanded(prev => !prev)}
+                            showControls={true}
+                        />
                     </div>
-                    <div>
-                        <div className="text-slate-900 font-black text-sm uppercase tracking-wider">
-                            {isFoodDeliveryTransport ? 'DELIVERY EN CURSO' : activeTransport.type === 'package_delivery' ? 'Entrega de Paquete' : 'Viaje en Curso'}
+
+                    {/* Controles Flotantes Superiores en el Mapa */}
+                    <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
+                        {/* Status Pill Flotante con Indicador Pulsante */}
+                        <div className="bg-slate-950/85 backdrop-blur-md text-white px-3.5 py-1.5 rounded-full border border-white/20 shadow-lg flex items-center gap-2 pointer-events-auto">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span className="text-[11px] font-black tracking-wide uppercase">
+                                {activeTransport.status === 'accepted' && (isFoodDeliveryTransport ? 'En camino a retirar' : 'En camino a recoger')}
+                                {activeTransport.status === 'arriving' && (isFoodDeliveryTransport ? 'Retirando pedido' : 'Esperando al pasajero')}
+                                {activeTransport.status === 'in_progress' && (isFoodDeliveryTransport ? 'En camino a entregar' : 'En viaje al destino')}
+                                {activeTransport.status === 'completed' && 'Esperando confirmación'}
+                            </span>
                         </div>
-                        <p className="text-slate-500 text-[10px] font-bold">
-                            {isFoodDeliveryTransport ? 'Retira el pedido en el local y entrégalo al cliente.' : activeTransport.type === 'package_delivery' ? 'Lleva el paquete a su destino de forma segura.' : 'Lleva al pasajero de forma segura.'}
-                        </p>
+
+                        {/* Timer de Servicio y Botón de Pantalla Completa */}
+                        <div className="flex items-center gap-2 pointer-events-auto">
+                            {(activeTransport.status === 'accepted' || activeTransport.status === 'arriving') && (activeTransport.driver_assigned_at || activeTransport.driverAssignedAt) && (
+                                <div className="bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 text-white text-[11px] font-black shadow-lg">
+                                    <ServiceTimer 
+                                        startTime={activeTransport.driver_assigned_at || activeTransport.driverAssignedAt} 
+                                        mode={activeTransport.status === 'accepted' ? 'countdown' : 'stopwatch'} 
+                                    />
+                                </div>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setIsDriverMapExpanded(prev => !prev)}
+                                className="w-9 h-9 rounded-full bg-slate-950/85 backdrop-blur-md text-white border border-white/20 flex items-center justify-center text-xs font-black shadow-lg hover:bg-slate-900 active:scale-95 transition-all"
+                                title={isDriverMapExpanded ? "Reducir mapa" : "Expandir mapa"}
+                            >
+                                {isDriverMapExpanded ? "▼" : "▲"}
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 space-y-6 relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16"></div>
+                {/* 2. CABECERA / TARJETA PRINCIPAL DEL CLIENTE INTEGRADA */}
+                {(() => {
+                    const isQuick = isQuickTransport(activeTransport);
+                    const clientName = activeTransport.user_name || activeTransport.userName || activeTransport.passenger_name || (isFoodDeliveryTransport ? 'Cliente' : 'Pasajero');
+                    const clientPhone = activeTransport.user_phone || activeTransport.userPhone || activeTransport.passenger_phone || activeTransport.client_phone;
 
-                    <div className="relative">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Estado Actual</span>
-                        <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                            {activeTransport.status === 'accepted' && (isFoodDeliveryTransport ? 'En camino al local a retirar' : 'En camino a recoger')}
-                            {activeTransport.status === 'arriving' && (isFoodDeliveryTransport ? 'En el local retirando pedido' : 'Esperando al pasajero')}
-                            {activeTransport.status === 'in_progress' && (isFoodDeliveryTransport ? 'En camino a entregar al cliente' : 'En viaje al destino')}
-                            {activeTransport.status === 'completed' && 'En espera de confirmación de pago'}
-                        </h2>
-                    </div>
+                    return (
+                        <div className="bg-white p-5 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 space-y-4 relative overflow-hidden">
+                            <div className="flex items-center gap-3.5">
+                                {/* Foto de perfil real del cliente (con fallback a avatar con iniciales) */}
+                                <div className="relative shrink-0">
+                                    {clientPhotoUrl ? (
+                                        <img
+                                            src={clientPhotoUrl}
+                                            alt={clientName}
+                                            onError={(e: any) => { e.currentTarget.style.display = 'none'; }}
+                                            className="w-14 h-14 rounded-2xl object-cover border-2 border-amber-400/50 shadow-md bg-slate-100"
+                                        />
+                                    ) : null}
+                                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-400 via-amber-300 to-yellow-300 text-slate-950 font-black text-lg flex items-center justify-center border-2 border-amber-300 shadow-md ${clientPhotoUrl ? 'hidden' : 'flex'}`}>
+                                        {getClientInitials(clientName)}
+                                    </div>
+                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white" title="Cliente activo" />
+                                </div>
 
-                    {(activeTransport.status === 'accepted' || activeTransport.status === 'arriving') && (activeTransport.driver_assigned_at || activeTransport.driverAssignedAt) && (
-                        <div className="pt-2">
-                            <ServiceTimer 
-                                startTime={activeTransport.driver_assigned_at || activeTransport.driverAssignedAt} 
-                                mode={activeTransport.status === 'accepted' ? 'countdown' : 'stopwatch'} 
-                            />
-                        </div>
-                    )}
-
-                    {/* Live Trip Map with 3D animated vehicle and full/half screen slider */}
-                    <div className="space-y-2 pt-2">
-                        <div className={`w-full rounded-2xl overflow-hidden border border-slate-200 shadow-inner transition-all duration-300 ${
-                            isDriverMapExpanded ? 'h-[70vh]' : 'h-64'
-                        }`}>
-                            <LiveTripMap
-                                origin={activeTransport.origin}
-                                destination={activeTransport.destination}
-                                driverLocation={driverGps}
-                                vehicleType={driverProfile?.vehicleType || activeTransport.service_category || 'moto'}
-                                driverName={driverProfile?.name || 'Mi Vehículo'}
-                                isExpanded={isDriverMapExpanded}
-                                onToggleExpand={() => setIsDriverMapExpanded(prev => !prev)}
-                                showControls={true}
-                            />
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setIsDriverMapExpanded(prev => !prev)}
-                            className="w-full py-2 bg-slate-100 hover:bg-amber-100 text-slate-700 hover:text-amber-900 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-98"
-                        >
-                            {isDriverMapExpanded ? "▼ Reducir mapa a la mitad" : "▲ Desplegar mapa en pantalla completa"}
-                        </button>
-                    </div>
-
-                    <div className="space-y-4 relative">
-                        {/* Passenger Details */}
-                        <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-blue-50 text-blue-500 rounded-2xl flex items-center justify-center shrink-0 border border-blue-100 shadow-inner">
-                                <UserIcon className="w-6" />
-                            </div>
-                            <div className="flex-1 flex justify-between items-center gap-2">
-                                <div>
-                                    <h3 className="text-xs font-black text-blue-500 uppercase tracking-widest">
-                                        {isFoodDeliveryTransport ? 'Pedido a nombre de:' : (activeTransport.type === 'food_delivery' ? 'Pedido a nombre de:' : (activeTransport.type === 'package_delivery' ? 'Remitente:' : 'Pasajero:'))}
-                                    </h3>
-                                    <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.user_name || activeTransport.userName || (isFoodDeliveryTransport ? 'Cliente' : 'Pasajero')}</p>
+                                {/* Nombre Completo y Datos del Cliente */}
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 bg-amber-100/90 px-2.5 py-0.5 rounded-full border border-amber-200">
+                                            {isFoodDeliveryTransport ? 'Delivery de Comida' : activeTransport.type === 'package_delivery' ? 'Encomienda' : isQuick ? 'Transporte Rápido' : 'Pasajero'}
+                                        </span>
+                                    </div>
+                                    <h2 className="text-base font-black text-slate-900 truncate mt-0.5 leading-snug">
+                                        {clientName}
+                                    </h2>
                                     {(activeTransport.user_cedula || activeTransport.userCedula) && (
-                                        <div className="text-xs text-slate-500 font-medium mt-0.5 space-y-0.5 pb-2">
-                                            <p>C.I: {activeTransport.user_cedula || activeTransport.userCedula}</p>
-                                        </div>
+                                        <p className="text-[11px] font-bold text-slate-500">
+                                            C.I: {activeTransport.user_cedula || activeTransport.userCedula}
+                                        </p>
                                     )}
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    {(activeTransport.user_phone || activeTransport.userPhone) && (
+
+                                {/* Botones de Comunicación Directa (Chat de App prioritario + Llamada) */}
+                                <div className="flex items-center gap-2 shrink-0">
+                                    {/* Botón de Mensajería Interna (Chat de la App con contador de no leídos) */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setShowChat(true);
+                                            setUnreadChatCount(0);
+                                        }}
+                                        className="relative px-3.5 py-2.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 rounded-2xl shadow-md shadow-amber-400/20 active:scale-95 transition-all flex items-center gap-1.5 font-black text-xs"
+                                        title="Abrir Chat Interno con el Cliente"
+                                    >
+                                        <MessageSquare className="w-4 h-4 fill-slate-950/20" />
+                                        <span>Chat</span>
+                                        {unreadChatCount > 0 && (
+                                            <span className="min-w-5 h-5 px-1 bg-red-600 text-white text-[10px] font-black rounded-full border-2 border-white flex items-center justify-center shadow-md animate-bounce">
+                                                {unreadChatCount}
+                                            </span>
+                                        )}
+                                    </button>
+
+                                    {/* Botón de Llamar (Llamada in-app prioritario) */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowOutgoingCall(true)}
+                                        className="p-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl shadow-md shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center font-black"
+                                        title="Llamada en la App"
+                                    >
+                                        <Phone className="w-4 h-4 fill-white/20" />
+                                    </button>
+
+                                    {clientPhone && (
                                         <a
-                                            href={`tel:${activeTransport.user_phone || activeTransport.userPhone}`}
-                                            className="w-10 h-10 bg-slate-100 text-slate-700 rounded-xl flex items-center justify-center active:scale-95 transition-transform"
-                                            title="Llamada Normal"
+                                            href={`tel:${clientPhone}`}
+                                            className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl active:scale-95 transition-all flex items-center justify-center"
+                                            title={`Llamada telefónica directa: ${clientPhone}`}
                                         >
-                                            <Phone className="w-4 h-4" />
+                                            <Phone className="w-4 h-4 text-slate-600" />
                                         </a>
                                     )}
-                                    <button
-                                        onClick={() => setShowOutgoingCall(true)}
-                                        className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 shadow-sm active:scale-95 transition-all hover:bg-emerald-100"
-                                        title={isFoodDeliveryTransport ? 'Llamar Cliente por App' : 'Llamar Pasajero por App'}
-                                    >
-                                        <Phone className="w-4 h-4 fill-emerald-600/20" />
-                                    </button>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
-
-                        {activeTransport.type === 'package_delivery' && (() => {
-                            const sName = activeTransport.mandado_details?.sender_name || activeTransport.sender_name || activeTransport.user_name || activeTransport.userName || 'Remitente';
-                            const sPhone = activeTransport.mandado_details?.sender_phone || activeTransport.sender_phone || activeTransport.user_phone || activeTransport.userPhone;
-                            const rName = activeTransport.mandado_details?.receiver_name || activeTransport.receiver_name || (activeTransport as any).recipient_name || 'Destinatario';
-                            const rPhone = activeTransport.mandado_details?.receiver_phone || activeTransport.receiver_phone || (activeTransport as any).recipient_phone;
-                            const pkgDesc = activeTransport.mandado_details?.package_notes || activeTransport.package_description || activeTransport.packageDescription;
-
-                            return (
-                                <div className="bg-amber-50/80 border border-amber-200 rounded-3xl p-4 space-y-3 shadow-xs">
-                                    <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-amber-900 border-b border-amber-200/60 pb-2">
-                                        <div className="flex items-center gap-2">
-                                            <Package className="w-4 h-4 text-amber-600" />
-                                            <span>Ficha de Encomienda / Paquete</span>
-                                        </div>
+                            {/* Origen y Destino */}
+                            <div className="bg-slate-50/90 rounded-2xl p-3.5 border border-slate-200/70 space-y-2.5 text-xs">
+                                {/* Recogida */}
+                                <div className="flex items-start gap-3">
+                                    <div className="w-7 h-7 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5 font-black">
+                                        <Navigation className="w-3.5 h-3.5" />
                                     </div>
-
-                                    {/* Destinatario Info (Quién Recibe - Obligatorio para Entrega) */}
-                                    <div className="p-3 bg-emerald-50 rounded-2xl border-2 border-emerald-300 space-y-2">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest block">Destinatario (Quién Recibe):</span>
-                                                <span className="font-black text-slate-900 text-sm block mt-0.5">{rName}</span>
-                                                {rPhone ? (
-                                                    <span className="text-xs text-emerald-700 font-mono font-black block mt-0.5">{rPhone}</span>
-                                                ) : (
-                                                    <span className="text-[11px] text-slate-400 italic block mt-0.5">Sin teléfono registrado</span>
-                                                )}
-                                            </div>
-                                            <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                                                <UserIcon className="w-5 h-5" />
-                                            </div>
-                                        </div>
-
-                                        {rPhone && (
-                                            <div className="flex gap-2 pt-1">
-                                                <a
-                                                    href={`tel:${rPhone}`}
-                                                    className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all"
-                                                >
-                                                    <Phone className="w-3.5 h-3.5" /> Llamar al Destinatario
-                                                </a>
-                                                <a
-                                                    href={`https://wa.me/${rPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hola ${rName}, soy tu conductor de Un 2x3 con tu entrega de encomienda.`)}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="px-3 py-2.5 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-black text-xs rounded-xl flex items-center justify-center gap-1 active:scale-95 transition-all"
-                                                >
-                                                    <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
-                                                </a>
-                                            </div>
-                                        )}
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                                            {isFoodDeliveryTransport ? 'Retirar en comercio:' : 'Punto de Recogida:'}
+                                        </span>
+                                        <p className="font-bold text-slate-800 leading-snug mt-0.5">
+                                            {activeTransport.origin?.address || 'Ubicación de partida'}
+                                        </p>
                                     </div>
-
-                                    {/* Remitente Info */}
-                                    <div className="p-3 bg-white rounded-2xl border border-amber-100 flex items-center justify-between">
-                                        <div>
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Remite (Entrega el paquete):</span>
-                                            <span className="font-bold text-slate-800 text-xs">{sName}</span>
-                                            {sPhone && <span className="text-[11px] text-slate-500 font-mono block mt-0.5">{sPhone}</span>}
-                                        </div>
-                                        {sPhone && (
-                                            <a
-                                                href={`tel:${sPhone}`}
-                                                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1 active:scale-95 transition-all"
-                                            >
-                                                <Phone className="w-3.5 h-3.5" /> Llamar Remitente
-                                            </a>
-                                        )}
-                                    </div>
-
-                                    {/* Contenido / Descripción del Paquete */}
-                                    {pkgDesc && (
-                                        <div className="p-3 bg-white rounded-2xl border border-amber-100 text-xs">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Contenido del Paquete:</span>
-                                            <p className="font-bold text-slate-800 mt-1 leading-relaxed">{pkgDesc}</p>
-                                        </div>
-                                    )}
-
-                                    {activeTransport.b2b_merchant && (
-                                        <div className="p-2.5 bg-blue-50/70 border border-blue-200 rounded-xl text-xs text-blue-900">
-                                            <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest block">Nota Comercial / B2B:</span>
-                                            <p className="font-medium mt-0.5">{activeTransport.b2b_merchant}</p>
-                                        </div>
-                                    )}
                                 </div>
-                            );
-                        })()}
 
-                        <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-slate-50 text-slate-400 rounded-2xl flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
-                                {(activeTransport.vehicle_type || activeTransport.vehicleType) === 'moto' ? <Bike className="w-6" /> : <Car className="w-6" />}
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">
-                                    {isFoodDeliveryTransport ? 'Retirar en el local:' : 'Recoger en:'}
-                                </h3>
-                                <p className="font-bold text-slate-700 leading-tight mt-0.5">{activeTransport.origin?.address}</p>
-                            </div>
-                        </div>
+                                <div className="ml-3.5 border-l-2 border-dashed border-slate-200 h-3" />
 
-                        <div className="w-px h-8 bg-dashed bg-slate-200 ml-6"></div>
-
-                        <div className="flex gap-4">
-                            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0 border border-emerald-100 shadow-inner">
-                                <MapPin className="w-6" />
-                            </div>
-                            <div className="flex-1">
-                                <h3 className="text-xs font-black text-emerald-600 uppercase tracking-widest">
-                                    {isFoodDeliveryTransport ? 'Entregar al cliente en:' : 'Destino final:'}
-                                </h3>
-                                <p className="font-bold text-slate-700 leading-tight mt-0.5">
-                                    {quickSelectedDestination 
-                                        ? `${quickSelectedDestination.name} ${quickSelectedDestination.reference ? `(${quickSelectedDestination.reference})` : ''}`
-                                        : (activeTransport.destination?.address || 'Por convenir')}
-                                </p>
-                            </div>
-                        </div>
-
-                        {/* Tarifa del Viaje */}
-                        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 flex items-center justify-between">
-                            <div>
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">
-                                    {Boolean(activeTransport.notes?.includes('Transporte Rápido') || activeTransport.is_quick_transport) && (activeTransport.status === 'accepted' || activeTransport.status === 'arriving')
-                                        ? 'Tarifa Inicial (A convenir al llegar)'
-                                        : isFoodDeliveryTransport ? 'Tarifa de Delivery' : 'Tarifa del Viaje'}
-                                </span>
-                                <span className="text-xl font-black text-slate-900">
-                                    ${Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0).toFixed(2)} USD
-                                </span>
-                            </div>
-                            {bcvRate > 0 && (
-                                <div className="text-right">
-                                    <span className="text-[10px] font-bold text-slate-400 block">Tasa BCV</span>
-                                    <span className="text-xs font-black text-emerald-600">
-                                        {(Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0) * bcvRate).toFixed(2)} Bs
-                                    </span>
+                                {/* Destino */}
+                                <div className="flex items-start gap-3">
+                                    <div className="w-7 h-7 rounded-full bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 mt-0.5 font-black">
+                                        <MapPin className="w-3.5 h-3.5" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                                            {isFoodDeliveryTransport ? 'Entregar a cliente en:' : 'Destino:'}
+                                        </span>
+                                        <p className="font-bold text-slate-800 leading-snug mt-0.5">
+                                            {quickSelectedDestination
+                                                ? `${quickSelectedDestination.name} ${quickSelectedDestination.reference ? `(${quickSelectedDestination.reference})` : ''}`
+                                                : (activeTransport.destination?.address || (isQuick ? 'A convenir / Por fijar en mapa' : 'Destino'))}
+                                        </p>
+                                    </div>
                                 </div>
-                            )}
-                        </div>
-                    </div>
+                            </div>
 
-                    <div className="pt-2 grid gap-3">
-                        {activeTransport.status === 'accepted' && (
-                            <button
-                                onClick={handleTransportArriving}
-                                disabled={processingAction !== null}
-                                className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
-                            >
-                                {processingAction === 'arriving' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isFoodDeliveryTransport ? 'Llegué al comercio a retirar' : 'Llegué al punto')}
-                            </button>
-                        )}
-                        {activeTransport.status === 'arriving' && (() => {
-                            const isQuick = Boolean(activeTransport.notes?.includes('Transporte Rápido') || activeTransport.is_quick_transport);
-                            if (isQuick) {
+                            {/* Ficha de Encomienda / Paquete (si aplica) */}
+                            {activeTransport.type === 'package_delivery' && (() => {
+                                const sName = activeTransport.mandado_details?.sender_name || activeTransport.sender_name || activeTransport.user_name || activeTransport.userName || 'Remitente';
+                                const sPhone = activeTransport.mandado_details?.sender_phone || activeTransport.sender_phone || activeTransport.user_phone || activeTransport.userPhone;
+                                const rName = activeTransport.mandado_details?.receiver_name || activeTransport.receiver_name || (activeTransport as any).recipient_name || 'Destinatario';
+                                const rPhone = activeTransport.mandado_details?.receiver_phone || activeTransport.receiver_phone || (activeTransport as any).recipient_phone;
+                                const pkgDesc = activeTransport.mandado_details?.package_notes || activeTransport.package_description || activeTransport.packageDescription;
+
                                 return (
-                                    <div className="bg-amber-50/95 border-2 border-amber-300 rounded-3xl p-5 space-y-4 shadow-sm animate-in fade-in">
-                                        <div className="flex items-center justify-between">
+                                    <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 space-y-3">
+                                        <div className="flex items-center justify-between text-xs font-black uppercase tracking-wider text-amber-900 border-b border-amber-200/60 pb-2">
                                             <div className="flex items-center gap-2">
-                                                <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
-                                                    ⚡
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-xs font-black uppercase tracking-wider text-amber-950">Transporte Rápido</h4>
-                                                    <p className="text-[11px] font-bold text-amber-800">Fijar Tarifa con el Pasajero</p>
-                                                </div>
+                                                <Package className="w-4 h-4 text-amber-600" />
+                                                <span>Ficha de Encomienda</span>
                                             </div>
-                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-200/90 text-amber-950 border border-amber-300">
-                                                En el Punto
+                                        </div>
+
+                                        <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 space-y-1.5">
+                                            <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest block">Destinatario (Quién Recibe):</span>
+                                            <span className="font-black text-slate-900 text-sm block">{rName}</span>
+                                            {rPhone ? (
+                                                <div className="flex items-center gap-2 pt-1">
+                                                    <a
+                                                        href={`tel:${rPhone}`}
+                                                        className="px-3 py-1.5 bg-emerald-600 text-white font-black text-xs rounded-lg flex items-center gap-1 active:scale-95 transition-all"
+                                                    >
+                                                        <Phone className="w-3.5 h-3.5" /> Llamar: {rPhone}
+                                                    </a>
+                                                </div>
+                                            ) : (
+                                                <span className="text-[11px] text-slate-400 italic block">Sin teléfono registrado</span>
+                                            )}
+                                        </div>
+
+                                        <div className="p-3 bg-white rounded-xl border border-amber-100 flex items-center justify-between text-xs">
+                                            <div>
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Remite:</span>
+                                                <span className="font-bold text-slate-800">{sName}</span>
+                                                {sPhone && <span className="text-[11px] text-slate-500 font-mono block">{sPhone}</span>}
+                                            </div>
+                                            {sPhone && (
+                                                <a
+                                                    href={`tel:${sPhone}`}
+                                                    className="px-3 py-1 bg-slate-100 text-slate-700 font-bold text-xs rounded-lg flex items-center gap-1 active:scale-95"
+                                                >
+                                                    <Phone className="w-3.5 h-3.5" /> Llamar
+                                                </a>
+                                            )}
+                                        </div>
+
+                                        {pkgDesc && (
+                                            <div className="p-3 bg-white rounded-xl border border-amber-100 text-xs">
+                                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Contenido del Paquete:</span>
+                                                <p className="font-bold text-slate-800 mt-1 leading-relaxed">{pkgDesc}</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+
+                            {/* Tarifa del Viaje */}
+                            <div className="bg-gradient-to-br from-slate-900 to-slate-950 text-white rounded-2xl p-4 border border-slate-800 shadow-inner flex items-center justify-between">
+                                <div>
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90 block">
+                                        {isQuick ? 'Tarifa del Servicio' : isFoodDeliveryTransport ? 'Tarifa de Delivery' : 'Tarifa del Viaje'}
+                                    </span>
+                                    {isQuick && (Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0) <= 0.50) ? (
+                                        <div className="inline-flex items-center gap-2 mt-1">
+                                            <span className="px-3 py-1 bg-amber-400 text-slate-950 rounded-xl font-black text-sm uppercase tracking-wider">
+                                                A convenir
+                                            </span>
+                                            <span className="text-[11px] text-slate-300 font-medium">
+                                                (Acuerda con el cliente o usa el mapa)
                                             </span>
                                         </div>
+                                    ) : (
+                                        <div className="flex items-baseline gap-2 mt-0.5">
+                                            <span className="text-2xl font-black text-amber-400">
+                                                ${Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0).toFixed(2)} USD
+                                            </span>
+                                            {isQuick && (
+                                                <span className="text-[10px] font-bold bg-amber-400/20 text-amber-300 px-2 py-0.5 rounded-md border border-amber-400/30">
+                                                    Tarifa acordada
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                                {bcvRate > 0 && Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0) > 0.50 && (
+                                    <div className="text-right">
+                                        <span className="text-[10px] font-bold text-slate-400 block uppercase tracking-wider">Tasa BCV</span>
+                                        <span className="text-sm font-black text-emerald-400">
+                                            {(Number(activeTransport.fare || activeTransport.price || activeTransport.total || 0) * bcvRate).toFixed(2)} Bs
+                                        </span>
+                                    </div>
+                                )}
+                            </div>
 
-                                        <p className="text-xs text-amber-900 font-medium leading-relaxed bg-white/80 p-3 rounded-2xl border border-amber-200/60">
-                                            Acuerda el precio final en persona con el pasajero o marca el destino en el mapa para calcularlo automáticamente con tus tarifas configuradas.
-                                        </p>
-
-                                        {/* Destino marcado en mapa */}
-                                        {quickSelectedDestination && (
-                                            <div className="p-3 bg-white rounded-2xl border border-amber-200 flex items-start gap-2.5">
-                                                <MapPin className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                                                <div className="flex-1">
-                                                    <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest block">Destino Marcado</span>
-                                                    <p className="text-xs font-bold text-slate-900 leading-tight mt-0.5">
-                                                        {quickSelectedDestination.name} {quickSelectedDestination.reference ? `(${quickSelectedDestination.reference})` : ''}
-                                                    </p>
-                                                    {quickSelectedDestination.distanceKm && (
-                                                        <span className="text-[11px] font-mono font-bold text-slate-500 block mt-0.5">
-                                                            Distancia calculada: {quickSelectedDestination.distanceKm} km
-                                                        </span>
-                                                    )}
-                                                </div>
+                            {/* ── PANEL TRANSPORTE RÁPIDO (A CONVENIR + MAPA AUTOMÁTICO) ── */}
+                            {isQuick && (activeTransport.status === 'accepted' || activeTransport.status === 'arriving' || activeTransport.status === 'in_progress') && (
+                                <div className="bg-amber-50/90 border-2 border-amber-300 rounded-3xl p-4.5 space-y-3.5 shadow-sm">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-8 h-8 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black">
+                                                ⚡
                                             </div>
-                                        )}
-
-                                        {/* Input de Monto Acordado */}
-                                        <div className="bg-white rounded-2xl p-4 border border-amber-200 space-y-2">
-                                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
-                                                Monto Final a Cobrar ($ USD)
-                                            </label>
-                                            <div className="flex items-center gap-3">
-                                                <div className="relative flex-1">
-                                                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-lg font-black text-slate-400">$</span>
-                                                    <input
-                                                        type="number"
-                                                        step="0.10"
-                                                        min="0.50"
-                                                        placeholder="0.00"
-                                                        value={quickFareInput}
-                                                        onChange={(e) => setQuickFareInput(e.target.value)}
-                                                        className="w-full pl-8 pr-4 py-3 bg-slate-50 border-2 border-slate-200 focus:border-amber-400 focus:bg-white rounded-xl outline-none font-black text-xl text-slate-900 transition-all"
-                                                    />
-                                                </div>
-                                                {bcvRate > 0 && Number(quickFareInput) > 0 && (
-                                                    <div className="text-right shrink-0">
-                                                        <span className="text-[10px] font-bold text-slate-400 block">En Bolívares (BCV)</span>
-                                                        <span className="text-sm font-black text-emerald-600">
-                                                            {(Number(quickFareInput) * bcvRate).toFixed(2)} Bs
-                                                        </span>
-                                                    </div>
-                                                )}
+                                            <div>
+                                                <h4 className="text-xs font-black uppercase tracking-wider text-amber-950">Transporte Rápido</h4>
+                                                <p className="text-[11px] font-bold text-amber-800">Fijar Monto Acordado o Calcular en Mapa</p>
                                             </div>
                                         </div>
+                                        <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-200/90 text-amber-950 border border-amber-300">
+                                            Tarifa Libre
+                                        </span>
+                                    </div>
 
-                                        {/* Botón Marcar Destino en el Mapa */}
+                                    {/* Opción 2: Botón Prominente Calcular en Mapa / Fijar Destino */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowQuickDestinationPicker(true)}
+                                        disabled={processingAction !== null}
+                                        className="w-full py-3.5 bg-gradient-to-r from-amber-400 to-yellow-400 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-md shadow-amber-400/20 flex items-center justify-center gap-2 active:scale-98 transition-all disabled:opacity-50"
+                                    >
+                                        <MapPin className="w-4 h-4 text-slate-950" />
+                                        <span>{quickSelectedDestination ? 'Cambiar Destino en Mapa' : '📍 Calcular en Mapa / Fijar Destino'}</span>
+                                    </button>
+
+                                    {/* Opción 1: Entrada manual de monto acordado */}
+                                    <div className="bg-white rounded-2xl p-3 border border-amber-200/80 space-y-2">
+                                        <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">
+                                            Opción Manual: Monto acordado con el cliente ($ USD)
+                                        </label>
+                                        <div className="flex items-center gap-2">
+                                            <div className="relative flex-1">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-black text-slate-400">$</span>
+                                                <input
+                                                    type="number"
+                                                    step="0.10"
+                                                    min="0.50"
+                                                    placeholder="0.00"
+                                                    value={quickFareInput}
+                                                    onChange={(e) => setQuickFareInput(e.target.value)}
+                                                    className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 focus:border-amber-400 focus:bg-white rounded-xl outline-none font-black text-lg text-slate-900 transition-all"
+                                                />
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => handleSaveManualFare()}
+                                                disabled={processingAction !== null || !quickFareInput || Number(quickFareInput) <= 0}
+                                                className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-xl shadow-sm active:scale-95 transition-all disabled:opacity-50 shrink-0"
+                                            >
+                                                {processingAction === 'save_fare' ? (
+                                                    <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin" />
+                                                ) : (
+                                                    'Fijar Monto'
+                                                )}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Botones de Acción de Estado */}
+                            <div className="pt-2 grid gap-2.5">
+                                {activeTransport.status === 'accepted' && (
+                                    <button
+                                        onClick={handleTransportArriving}
+                                        disabled={processingAction !== null}
+                                        className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70 text-sm"
+                                    >
+                                        {processingAction === 'arriving' ? (
+                                            <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            isFoodDeliveryTransport ? 'Llegué al comercio a retirar' : 'Llegué al punto de recogida'
+                                        )}
+                                    </button>
+                                )}
+
+                                {activeTransport.status === 'arriving' && (
+                                    <button
+                                        onClick={isQuick ? handleConfirmQuickFareAndStart : handleTransportStart}
+                                        disabled={processingAction !== null || (isQuick && (!quickFareInput || Number(quickFareInput) <= 0))}
+                                        className="w-full bg-primary hover:bg-amber-400 text-slate-950 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-60 text-sm"
+                                    >
+                                        {processingAction === 'start' || processingAction === 'start_quick' ? (
+                                            <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                                        ) : isQuick ? (
+                                            `Iniciar Viaje con Tarifa ($${Number(quickFareInput || activeTransport.price || 0).toFixed(2)})`
+                                        ) : (
+                                            isFoodDeliveryTransport ? 'Pedido retirado • En camino al cliente' : 'Iniciar Viaje con Pasajero'
+                                        )}
+                                    </button>
+                                )}
+
+                                {activeTransport.status === 'in_progress' && (
+                                    <button
+                                        onClick={handleTransportComplete}
+                                        disabled={processingAction !== null}
+                                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70 text-sm"
+                                    >
+                                        {processingAction === 'complete' ? (
+                                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                            isFoodDeliveryTransport ? 'Entregar Pedido al Cliente' : 'Finalizar Viaje'
+                                        )}
+                                    </button>
+                                )}
+
+                                {activeTransport.status !== 'completed' && (
+                                    <a
+                                        href={
+                                            activeTransport.status === 'in_progress'
+                                                ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeTransport.destination?.address || '')}`
+                                                : `https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(activeTransport.origin?.address || '')}&destination=${encodeURIComponent(activeTransport.destination?.address || '')}`
+                                        }
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all text-xs"
+                                    >
+                                        <Navigation className="w-4 h-4 text-slate-600" /> Abrir Navegación GPS Externa
+                                    </a>
+                                )}
+
+                                {(activeTransport.status === 'accepted' || activeTransport.status === 'arriving') && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (window.confirm("¿Seguro que deseas cancelar este viaje? Regresará al radar para que lo tome otro compañero.")) {
+                                                handleDriverCancelTransport();
+                                            }
+                                        }}
+                                        disabled={processingAction !== null}
+                                        className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-rose-200 active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                                    >
+                                        <X className="w-3.5 h-3.5" />
+                                        <span>No puedo realizar este viaje (Liberar para otro chofer)</span>
+                                    </button>
+                                )}
+                            </div>
+
+                            {/* Panel de Conciliación de Pago cuando status === 'completed' */}
+                            {activeTransport.status === 'completed' && (
+                                <div className="bg-amber-50/80 border-2 border-amber-300 rounded-3xl p-5 space-y-4 shadow-sm animate-in fade-in duration-300">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                                            <DollarSign className="w-4 h-4 text-amber-600" />
+                                            Conciliación y Cobro
+                                        </span>
+                                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                            activeTransport.payment_status === 'disputed'
+                                                ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                                                : activeTransport.payment_status === 'payment_reported'
+                                                ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                        }`}>
+                                            {activeTransport.payment_status === 'disputed'
+                                                ? 'En Disputa'
+                                                : activeTransport.payment_status === 'payment_reported'
+                                                ? 'Comprobante Enviado'
+                                                : 'Esperando Pago'}
+                                        </span>
+                                    </div>
+
+                                    {/* Garantía */}
+                                    <div className="bg-white/90 border border-amber-200/80 rounded-2xl p-3 flex items-start gap-2.5 shadow-sm text-xs text-amber-950 leading-relaxed">
+                                        <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                        <p>
+                                            <strong>Garantía {branding.app_client_name || 'Un 2x3'}:</strong> Si el usuario no realiza el pago en un lapso de 48 horas, Grupo {branding.app_client_name || 'Un 2x3'} asumirá el pago correspondiente del servicio y aplicará las sanciones a la cuenta del usuario.
+                                        </p>
+                                    </div>
+
+                                    {/* Monto del viaje */}
+                                    <div className="bg-white rounded-2xl p-4 border border-slate-100 flex items-center justify-between">
+                                        <div>
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Tarifa Acordada</span>
+                                            <span className="text-2xl font-black text-slate-900">${Number(activeTransport.fare || activeTransport.price || 0).toFixed(2)} USD</span>
+                                        </div>
+                                        {bcvRate > 0 && (
+                                            <div className="text-right">
+                                                <span className="text-[10px] font-bold text-slate-400 block">Tasa BCV</span>
+                                                <span className="text-sm font-black text-slate-700">{(Number(activeTransport.fare || activeTransport.price || 0) * bcvRate).toFixed(2)} Bs</span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Comprobante de pago si existe */}
+                                    {activeTransport.payment_proof_url ? (
+                                        <div className="bg-white rounded-2xl p-4 border border-slate-100 space-y-3">
+                                            <span className="text-xs font-black text-slate-800 block">Comprobante de Pago Móvil / Transferencia:</span>
+                                            <div 
+                                                className="relative group cursor-pointer overflow-hidden rounded-xl border border-slate-200 max-h-48 flex justify-center bg-slate-950" 
+                                                onClick={() => setPreviewProofUrl(activeTransport.payment_proof_url)}
+                                            >
+                                                <img 
+                                                    src={activeTransport.payment_proof_url} 
+                                                    alt="Comprobante" 
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                    className="max-h-48 object-contain hover:scale-105 transition-transform" 
+                                                />
+                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
+                                                    Toca para ver en grande
+                                                </div>
+                                            </div>
+                                            {activeTransport.payment_ref && (
+                                                <div className="p-2.5 bg-slate-50 rounded-xl text-xs font-mono font-bold text-slate-700 border border-slate-200">
+                                                    Referencia: <span className="text-slate-950 font-black">{activeTransport.payment_ref}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="bg-amber-100/60 rounded-2xl p-3.5 text-center text-xs text-amber-900 font-medium">
+                                            El pasajero aún no ha adjuntado captura digital. Si ya recibiste el pago en efectivo o transferencia directa, confirma a continuación.
+                                        </div>
+                                    )}
+
+                                    {/* Botones de Acción de Pago */}
+                                    <div className="space-y-2 pt-1">
                                         <button
                                             type="button"
-                                            onClick={() => setShowQuickDestinationPicker(true)}
-                                            className="w-full py-3 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl border border-slate-200 flex items-center justify-center gap-2 active:scale-95 transition-all shadow-xs"
+                                            onClick={handleConfirmPayment}
+                                            disabled={processingAction !== null}
+                                            className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
                                         >
-                                            <MapPin className="w-4 h-4 text-amber-500" />
-                                            <span>{quickSelectedDestination ? 'Cambiar destino en el mapa' : '📍 Marcar destino en mapa (Calcular con mis tarifas)'}</span>
-                                        </button>
-
-                                        {/* Botón Confirmar Tarifa e Iniciar Viaje */}
-                                        <button
-                                            type="button"
-                                            onClick={handleConfirmQuickFareAndStart}
-                                            disabled={processingAction !== null || !quickFareInput || Number(quickFareInput) <= 0}
-                                            className="w-full bg-primary hover:bg-amber-400 text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-50"
-                                        >
-                                            {processingAction === 'start_quick' ? (
-                                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                                            {processingAction === 'confirm_payment' ? (
+                                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                                             ) : (
                                                 <>
-                                                    <Check className="w-5 h-5" />
-                                                    <span>Confirmar Tarifa e Iniciar Viaje (${Number(quickFareInput || 0).toFixed(2)})</span>
+                                                    <CheckCircle2 className="w-5 h-5" />
+                                                    <span>Confirmar y Conciliar Pago Recibido</span>
                                                 </>
                                             )}
                                         </button>
-                                    </div>
-                                );
-                            }
 
-                            return (
-                                <button
-                                    onClick={handleTransportStart}
-                                    disabled={processingAction !== null}
-                                    className="w-full bg-primary text-slate-900 font-black py-4 rounded-2xl shadow-lg shadow-primary/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
-                                >
-                                    {processingAction === 'start' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isFoodDeliveryTransport ? 'Pedido retirado • En camino al cliente' : 'Iniciar Viaje')}
-                                </button>
-                            );
-                        })()}
-
-                        {(activeTransport.status === 'accepted' || activeTransport.status === 'arriving') && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (window.confirm("¿Seguro que deseas cancelar este viaje? Regresará al radar para que lo tome otro compañero.")) {
-                                        handleDriverCancelTransport();
-                                    }
-                                }}
-                                disabled={processingAction !== null}
-                                className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-rose-200 active:scale-98 transition-all flex items-center justify-center gap-1.5"
-                            >
-                                <X className="w-3.5 h-3.5" />
-                                <span>No puedo realizar este viaje (Liberar para otro chofer)</span>
-                            </button>
-                        )}
-                        {activeTransport.status === 'in_progress' && (
-                            <button
-                                onClick={handleTransportComplete}
-                                disabled={processingAction !== null}
-                                className="w-full bg-emerald-500 text-white font-black py-4 rounded-2xl shadow-lg shadow-emerald-500/30 active:scale-95 transition-all flex items-center justify-center gap-2 h-16 disabled:opacity-70"
-                            >
-                                {processingAction === 'complete' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> : (isFoodDeliveryTransport ? 'Entregar Pedido al Cliente' : 'Finalizar Viaje')}
-                            </button>
-                        )}
-
-                        {/* Panel de Conciliación de Pago cuando status === 'completed' */}
-                        {activeTransport.status === 'completed' && (
-                            <div className="bg-amber-50/80 border-2 border-amber-300 rounded-3xl p-5 space-y-4 shadow-sm animate-in fade-in duration-300">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-xs font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-                                        <DollarSign className="w-4 h-4 text-amber-600" />
-                                        Conciliación y Cobro
-                                    </span>
-                                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                        activeTransport.payment_status === 'disputed'
-                                            ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                                            : activeTransport.payment_status === 'payment_reported'
-                                            ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                            : 'bg-amber-100 text-amber-800 border border-amber-200'
-                                    }`}>
-                                        {activeTransport.payment_status === 'disputed'
-                                            ? 'En Disputa'
-                                            : activeTransport.payment_status === 'payment_reported'
-                                            ? 'Comprobante Enviado'
-                                            : 'Esperando Pago'}
-                                    </span>
-                                </div>
-
-                                {/* 48-Hour Guarantee Notice */}
-                                <div className="bg-white/90 border border-amber-200/80 rounded-2xl p-3 flex items-start gap-2.5 shadow-sm text-xs text-amber-950 leading-relaxed">
-                                    <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-                                    <p>
-                                        <strong>Garantía Un 2x3:</strong> Si el usuario no realiza el pago en un lapso de 48 horas, Grupo Un 2x3 asumirá el pago correspondiente del servicio y aplicará las sanciones y penalizaciones a la cuenta del usuario.
-                                    </p>
-                                </div>
-
-                                {/* Monto del viaje */}
-                                <div className="bg-white rounded-2xl p-4 border border-slate-100 flex items-center justify-between">
-                                    <div>
-                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Tarifa Acordada</span>
-                                        <span className="text-2xl font-black text-slate-900">${Number(activeTransport.fare || activeTransport.price || 0).toFixed(2)} USD</span>
-                                    </div>
-                                    {bcvRate && (
-                                        <div className="text-right">
-                                            <span className="text-[10px] font-bold text-slate-400 block">Tasa BCV</span>
-                                            <span className="text-sm font-black text-slate-700">{(Number(activeTransport.fare || activeTransport.price || 0) * bcvRate).toFixed(2)} Bs</span>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Comprobante de pago si existe */}
-                                {activeTransport.payment_proof_url ? (
-                                    <div className="bg-white rounded-2xl p-4 border border-slate-100 space-y-3">
-                                        <span className="text-xs font-black text-slate-800 block">Comprobante de Pago Móvil / Transferencia:</span>
-                                        <div 
-                                            className="relative group cursor-pointer overflow-hidden rounded-xl border border-slate-200 max-h-48 flex justify-center bg-slate-950" 
-                                            onClick={() => setPreviewProofUrl(activeTransport.payment_proof_url)}
-                                        >
-                                            <img 
-                                                src={activeTransport.payment_proof_url} 
-                                                alt="Comprobante" 
-                                                loading="lazy"
-                                                decoding="async"
-                                                className="max-h-48 object-contain hover:scale-105 transition-transform" 
-                                            />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-bold transition-opacity">
-                                                Toca para ver en grande
-                                            </div>
-                                        </div>
-                                        {activeTransport.payment_ref && (
-                                            <div className="p-2.5 bg-slate-50 rounded-xl text-xs font-mono font-bold text-slate-700 border border-slate-200">
-                                                Referencia: <span className="text-slate-950 font-black">{activeTransport.payment_ref}</span>
-                                            </div>
+                                        {activeTransport.payment_status !== 'disputed' && (
+                                            <button
+                                                type="button"
+                                                onClick={handleDisputePayment}
+                                                disabled={processingAction !== null}
+                                                className="w-full py-2.5 text-xs font-bold text-rose-500 hover:bg-rose-50 rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                                            >
+                                                <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+                                                <span>No reconozco el pago / Marcar en disputa</span>
+                                            </button>
                                         )}
                                     </div>
-                                ) : (
-                                    <div className="bg-amber-100/60 rounded-2xl p-3.5 text-center text-xs text-amber-900 font-medium">
-                                        El pasajero aún no ha adjuntado captura digital. Si ya recibiste el pago en efectivo o transferencia directa, confirma a continuación.
-                                    </div>
-                                )}
-
-                                {/* Botones de Acción de Pago */}
-                                <div className="space-y-2 pt-1">
-                                    <button
-                                        type="button"
-                                        onClick={handleConfirmPayment}
-                                        disabled={processingAction !== null}
-                                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
-                                    >
-                                        {processingAction === 'confirm_payment' ? (
-                                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        ) : (
-                                            <>
-                                                <CheckCircle2 className="w-5 h-5" />
-                                                <span>Confirmar y Conciliar Pago Recibido</span>
-                                            </>
-                                        )}
-                                    </button>
-
-                                    {activeTransport.payment_status !== 'disputed' && (
-                                        <button
-                                            type="button"
-                                            onClick={handleDisputePayment}
-                                            disabled={processingAction !== null}
-                                            className="w-full py-2.5 text-xs font-bold text-rose-500 hover:bg-rose-50 rounded-xl transition-colors flex items-center justify-center gap-1.5"
-                                        >
-                                            <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
-                                            <span>No reconozco el pago / Marcar en disputa</span>
-                                        </button>
-                                    )}
                                 </div>
-                            </div>
-                        )}
-
-                        {activeTransport.status !== 'completed' && (
-                            <a
-                                href={
-                                    activeTransport.status === 'in_progress'
-                                        ? `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(activeTransport.destination?.address || '')}`
-                                        : `https://www.google.com/maps/dir/?api=1&waypoints=${encodeURIComponent(activeTransport.origin?.address || '')}&destination=${encodeURIComponent(activeTransport.destination?.address || '')}`
-                                }
-                                target="_blank"
-                                className="w-full bg-slate-100 text-slate-600 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all"
-                            >
-                                <Navigation className="w-5 h-5" /> Abrir GPS
-                            </a>
-                        )}
-                        <button
-                            onClick={() => setShowChat(true)}
-                            className="w-full mt-2 bg-emerald-50 text-emerald-700 font-bold py-4 rounded-2xl flex justify-center items-center gap-2 active:scale-95 transition-all relative overflow-hidden"
-                        >
-                            <MessageSquare className="w-5 h-5" /> 
-                            Ver Chat
-                            {unreadChatCount > 0 && (
-                                <motion.div 
-                                    initial={{ scale: 0 }} 
-                                    animate={{ scale: 1 }} 
-                                    className="absolute top-3 right-4 bg-primary text-slate-900 text-[10px] font-black w-6 h-6 rounded-full flex items-center justify-center border-2 border-emerald-50 shadow-sm"
-                                >
-                                    {unreadChatCount}
-                                </motion.div>
                             )}
-                            {unreadChatCount > 0 && (
-                                <div className="absolute inset-0 bg-primary/5 animate-pulse pointer-events-none"></div>
-                            )}
-                        </button>
-                    </div>
-                </div>
+                        </div>
+                    );
+                })()}
             </motion.div>
 
             {/* Modal de Chat Integrado */}
@@ -2770,7 +2984,9 @@ export default function OrdersRadar() {
                             {/* Encabezado con tipo de viaje y temporizador */}
                             <div className="flex items-center justify-between pt-1">
                                 <div className="flex items-center gap-2 px-3 py-1 bg-amber-400/10 border border-amber-400/30 text-amber-400 rounded-full text-[11px] font-black uppercase tracking-wider">
-                                    {incomingDispatch.restaurantName || incomingDispatch.service_category === 'food_delivery' || incomingDispatch.type === 'food_delivery' || incomingDispatch.order_id ? (
+                                    {isQuickTransport(incomingDispatch) ? (
+                                        <><Sparkles className="w-3.5 h-3.5 text-amber-400" /> Transporte Express (A Convenir)</>
+                                    ) : incomingDispatch.restaurantName || incomingDispatch.service_category === 'food_delivery' || incomingDispatch.type === 'food_delivery' || incomingDispatch.order_id ? (
                                         <><Bike className="w-3.5 h-3.5" /> DELIVERY</>
                                     ) : (incomingDispatch.service_category === 'mandado' || incomingDispatch.type === 'muchacho_mandado') ? (
                                         <><Package className="w-3.5 h-3.5" /> Muchacho e' Mandado</>
@@ -2790,48 +3006,73 @@ export default function OrdersRadar() {
 
                             {/* Ganancia Bruta, Comisión Un 2x3 y Neto */}
                             {(() => {
+                                const isQuick = isQuickTransport(incomingDispatch);
                                 const gross = Number(
                                     incomingDispatch.price ||
                                     incomingDispatch.total ||
+                                    incomingDispatch.fare ||
                                     incomingDispatch.deliveryFee ||
                                     incomingDispatch.driverPayout ||
                                     0
                                 );
+                                const isPendingAgreedFare = isQuick && (gross <= 0.50 || !gross);
                                 const catKey = incomingDispatch.service_category || incomingDispatch.serviceCategory || incomingDispatch.vehicle_type || incomingDispatch.vehicleType || (incomingDispatch.restaurantName ? 'delivery' : 'mototaxi');
                                 const platformComm = Number(incomingDispatch.commission_amount || getCommissionForCategory(catKey));
                                 const net = Math.max(0, gross - platformComm);
                                 const originGps = incomingDispatch.restaurantName || incomingDispatch.origin?.address || incomingDispatch.originAddress || '';
                                 const destGps = incomingDispatch.shippingAddress?.address || incomingDispatch.destination?.address || incomingDispatch.destinationAddress || '';
-                                const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originGps)}&destination=${encodeURIComponent(destGps)}`;
+                                const destLabel = destGps || (isQuick ? 'A convenir con el cliente / Por fijar en mapa' : 'Ubicación de destino');
+                                const mapsUrl = destGps 
+                                    ? `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originGps)}&destination=${encodeURIComponent(destGps)}`
+                                    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(originGps || 'Venezuela')}`;
 
                                 return (
                                     <div className="space-y-3">
                                         <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/40 rounded-3xl p-5 border border-amber-500/20 shadow-inner">
-                                            <div className="flex items-center justify-between">
+                                            {isPendingAgreedFare ? (
                                                 <div>
-                                                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90">Ganancia Bruta</span>
-                                                    <div className="text-4xl font-black text-amber-400">
-                                                        ${gross.toFixed(2)}
+                                                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90">Tarifa del Servicio</span>
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="px-3.5 py-1.5 bg-amber-400 text-slate-950 rounded-xl text-sm font-black tracking-wide shadow-md">
+                                                            A convenir
+                                                        </span>
+                                                        <span className="text-[11px] font-bold text-amber-200">
+                                                            Monto acordado o en mapa
+                                                        </span>
                                                     </div>
+                                                    <p className="text-[11px] text-slate-400 mt-2">
+                                                        Al aceptar, podrás ingresar el monto acordado o fijar el destino en el mapa para el cálculo automático de tarifa y km.
+                                                    </p>
                                                 </div>
-                                                {bcvRate > 0 && (
-                                                    <div className="text-right">
-                                                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tasa BCV</span>
-                                                        <div className="text-sm font-black text-slate-200">
-                                                            Bs. {(gross * bcvRate).toFixed(2)}
+                                            ) : (
+                                                <>
+                                                    <div className="flex items-center justify-between">
+                                                        <div>
+                                                            <span className="text-[10px] font-black uppercase tracking-widest text-amber-400/90">Ganancia Bruta</span>
+                                                            <div className="text-4xl font-black text-amber-400">
+                                                                ${gross.toFixed(2)}
+                                                            </div>
                                                         </div>
+                                                        {bcvRate > 0 && (
+                                                            <div className="text-right">
+                                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tasa BCV</span>
+                                                                <div className="text-sm font-black text-slate-200">
+                                                                    Bs. {(gross * bcvRate).toFixed(2)}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                )}
-                                            </div>
 
-                                            <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
-                                                <span className="text-slate-400 font-medium flex items-center gap-1">
-                                                    Tarifa Un 2x3: <strong className="text-rose-400 font-bold">-${platformComm.toFixed(2)}</strong>
-                                                </span>
-                                                <span className="text-emerald-400 font-black bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl">
-                                                    Neto libre: ${net.toFixed(2)}
-                                                </span>
-                                            </div>
+                                                    <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs">
+                                                        <span className="text-slate-400 font-medium flex items-center gap-1">
+                                                            Tarifa Un 2x3: <strong className="text-rose-400 font-bold">-${platformComm.toFixed(2)}</strong>
+                                                        </span>
+                                                        <span className="text-emerald-400 font-black bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 rounded-xl">
+                                                            Neto libre: ${net.toFixed(2)}
+                                                        </span>
+                                                    </div>
+                                                </>
+                                            )}
                                         </div>
 
                                         {/* Chip informativo de fecha límite de corte */}
@@ -2872,7 +3113,7 @@ export default function OrdersRadar() {
                                                 <div className="flex-1 min-w-0">
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Destino</p>
                                                     <p className="text-xs font-bold text-slate-200 truncate">
-                                                        {destGps || 'Ubicación de destino'}
+                                                        {destLabel}
                                                     </p>
                                                 </div>
                                             </div>
@@ -3646,10 +3887,16 @@ export default function OrdersRadar() {
                                         <div className="flex justify-between items-center mb-6 relative">
                                             <div className="flex items-center gap-2 px-3 py-1 bg-primary text-slate-900 rounded-full text-[10px] font-black uppercase tracking-wider shadow-lg shadow-primary/20">
                                                 {req.vehicleType === 'moto' || req.service_category === 'food_delivery' ? <Bike className="w-3.5 h-3.5" /> : <Car className="w-3.5 h-3.5" />}
-                                                {req.service_category === 'food_delivery' || req.type === 'food_delivery' || req.order_id ? 'SOLICITUD DELIVERY' : req.scheduled ? 'VIAJE PROGRAMADO' : (req.vehicleType === 'moto' ? 'SOLICITUD MOTOTAXI' : 'SOLICITUD TAXI')}
+                                                {isQuickTransport(req) ? 'TRANSPORTE RÁPIDO' : req.service_category === 'food_delivery' || req.type === 'food_delivery' || req.order_id ? 'SOLICITUD DELIVERY' : req.scheduled ? 'VIAJE PROGRAMADO' : (req.vehicleType === 'moto' ? 'SOLICITUD MOTOTAXI' : 'SOLICITUD TAXI')}
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                                {isQuickTransport(req) && (Number(req.price || 0) <= 0.50 || !req.price) ? (
+                                                    <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-black tracking-wide shadow-sm">
+                                                        A convenir
+                                                    </span>
+                                                ) : (
+                                                    <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDismissRequest(req.id)}
@@ -3702,7 +3949,9 @@ export default function OrdersRadar() {
                                                         )}
                                                     </p>
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
-                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
+                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">
+                                                        {req.destination?.address || (isQuickTransport(req) ? 'A convenir con el cliente / Fijar en mapa' : 'Por definir')}
+                                                    </p>
                                                 </div>
                                             </div>
 
@@ -3805,7 +4054,13 @@ export default function OrdersRadar() {
                                                 ENVÍO DE PAQUETE
                                             </div>
                                             <div className="flex items-center gap-2">
-                                                <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                                {isQuickTransport(req) && (Number(req.price || 0) <= 0.50 || !req.price) ? (
+                                                    <span className="px-3 py-1 bg-amber-100 text-amber-900 border border-amber-300 rounded-full text-xs font-black tracking-wide shadow-sm">
+                                                        A convenir
+                                                    </span>
+                                                ) : (
+                                                    <div className="text-2xl font-black text-emerald-600">${(req.price || 0).toFixed(2)}</div>
+                                                )}
                                                 <button
                                                     type="button"
                                                     onClick={() => handleDismissRequest(req.id)}
@@ -3842,7 +4097,9 @@ export default function OrdersRadar() {
                                                         )}
                                                     </p>
                                                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Destino:</p>
-                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">{req.destination?.address}</p>
+                                                    <p className="font-bold text-slate-700 leading-tight mt-0.5 line-clamp-2">
+                                                        {req.destination?.address || (isQuickTransport(req) ? 'A convenir con el cliente / Fijar en mapa' : 'Por definir')}
+                                                    </p>
                                                     {req.packageDescription && (
                                                         <div className="mt-2 p-3 bg-amber-50 rounded-xl border border-amber-200">
                                                             <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Descripción del paquete:</p>

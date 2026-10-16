@@ -97,7 +97,7 @@ export default function CashierLogin() {
                         )}
                     </div>
                     <h1 className="text-3xl font-black text-slate-900 tracking-tight">Caja y Cobros</h1>
-                    <p className="font-bold text-slate-500 mt-2">{branding.app_client_name || 'Un 2x3'} Cashier Portal</p>
+                    <p className="font-bold text-slate-500 mt-2">{branding.app_client_name || 'Un 2x3'} • Portal de Caja</p>
                 </div>
 
                 <motion.div

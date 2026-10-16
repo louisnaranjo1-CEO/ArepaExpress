@@ -141,17 +141,31 @@ export default function Rewards() {
                     console.warn("Could not fetch restaurant rewards:", e);
                 }
 
-                // 4. Fetch share config
-                const { data: configData } = await supabase
+                // 4. Fetch share config ('share_config' prioritario, con fallback a 'fidelization')
+                let configData: any = null;
+                const { data: shareData } = await supabase
                     .from('system_configs')
                     .select('*')
-                    .eq('id', 'fidelization')
+                    .eq('id', 'share_config')
                     .maybeSingle();
 
+                if (shareData) {
+                    configData = shareData;
+                } else {
+                    const { data: fidData } = await supabase
+                        .from('system_configs')
+                        .select('*')
+                        .eq('id', 'fidelization')
+                        .maybeSingle();
+                    configData = fidData;
+                }
+
                 if (configData) {
+                    const fetchedMessage = configData.share_message || configData.sharemessage || configData.shareMessage || configData.data?.share_message || configData.data?.shareMessage;
+                    const fetchedUrl = configData.share_url || configData.shareurl || configData.shareUrl || configData.data?.share_url || configData.data?.shareUrl;
                     setShareConfig(prev => ({
-                        message: configData.shareMessage || prev.message,
-                        url: configData.shareUrl || prev.url
+                        message: fetchedMessage || prev.message,
+                        url: fetchedUrl || prev.url
                     }));
                 }
 
@@ -197,20 +211,39 @@ export default function Rewards() {
     };
 
     const handleShare = async () => {
-        if (navigator.share) {
+        const appName = branding.app_client_name || 'Un 2x3';
+        const baseUrl = (shareConfig.url || window.location.origin).replace(/\/$/, '');
+        const targetUrl = `${baseUrl}/auth?ref=${referralCode}`;
+        const baseMsg = shareConfig.message || `¡Únete a ${appName} y disfruta del mejor delivery!`;
+        const fullMessage = `${baseMsg}\n\nCódigo de invitación: ${referralCode}\n${targetUrl}`;
+
+        // 1. Intentar disparo real de compartir mediante navigator.share (Web Share API nativa)
+        if (typeof navigator !== 'undefined' && navigator.share) {
             try {
-                const finalUrl = `${shareConfig.url.replace(/\/$/, '')}/auth?ref=${referralCode}`;
                 await navigator.share({
-                    title: `¡Acompáñame en ${branding.app_client_name || 'Un 2x3'}!`,
-                    text: `${shareConfig.message}\nMi código es: ${referralCode}`,
-                    url: finalUrl
+                    title: appName,
+                    text: fullMessage,
+                    url: targetUrl
                 });
-            } catch (err) {
-                console.log('Error sharing:', err);
+                return;
+            } catch (err: any) {
+                // Si el usuario canceló el diálogo nativo (AbortError), no forzamos redirección
+                if (err?.name === 'AbortError') return;
+                console.warn('navigator.share no pudo completarse o fue cancelado, usando fallback:', err);
             }
-        } else {
+        }
+
+        // 2. Fallback para Android WebView / Navegadores de escritorio sin Web Share:
+        // Copiar al portapapeles y abrir WhatsApp
+        try {
+            await navigator.clipboard.writeText(fullMessage);
+            toast.success("¡Enlace y código de invitación copiados al portapapeles!", { icon: '📋' });
+        } catch (e) {
             handleCopyCode();
         }
+
+        const waUrl = `https://wa.me/?text=${encodeURIComponent(fullMessage)}`;
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
     };
 
     const handleRedeemClick = (prize: any) => {

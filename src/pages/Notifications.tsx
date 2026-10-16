@@ -28,7 +28,7 @@ export default function Notifications() {
                 body: d.body,
                 read: d.read ?? false,
                 restaurantId: d.restaurant_id || d.restaurantId,
-                restaurantName: d.restaurant_name || d.restaurantName || 'Deliexpress',
+                restaurantName: d.restaurant_name || d.restaurantName || 'Un 2x3',
                 createdAt: d.created_at || d.createdAt
             }));
 

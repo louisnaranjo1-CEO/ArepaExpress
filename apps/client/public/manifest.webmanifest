@@ -1,7 +1,7 @@
 {
-  "name": "Deliexpress",
-  "short_name": "Deliexpress",
-  "description": "Pide comida, envíos y transporte en un 2x3 con Deliexpress",
+  "name": "Un 2x3",
+  "short_name": "Un 2x3",
+  "description": "Pide comida, envíos y transporte en un 2x3",
   "start_url": "/",
   "id": "/",
   "scope": "/",

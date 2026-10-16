@@ -55,7 +55,7 @@ export default function Rewards() {
     };
 
     const [shareConfig, setShareConfig] = useState({
-        message: '¡Usa Deliexpress y obtén recompensas!',
+        message: '¡Usa Un 2x3 y obtén recompensas!',
         url: window.location.origin
     });
 
@@ -77,16 +77,31 @@ export default function Rewards() {
                 setRaffles(rafflesData || []);
 
                 // Fetch share config
-                const { data: configData } = await supabase
+                // Fetch share config
+                let configData: any = null;
+                const { data: shareData } = await supabase
                     .from('system_configs')
                     .select('*')
-                    .eq('id', 'fidelization')
+                    .eq('id', 'share_config')
                     .maybeSingle();
 
+                if (shareData) {
+                    configData = shareData;
+                } else {
+                    const { data: fidData } = await supabase
+                        .from('system_configs')
+                        .select('*')
+                        .eq('id', 'fidelization')
+                        .maybeSingle();
+                    configData = fidData;
+                }
+
                 if (configData) {
+                    const fetchedMessage = configData.share_message || configData.sharemessage || configData.shareMessage || configData.data?.share_message || configData.data?.shareMessage;
+                    const fetchedUrl = configData.share_url || configData.shareurl || configData.shareUrl || configData.data?.share_url || configData.data?.shareUrl;
                     setShareConfig(prev => ({
-                        message: configData.shareMessage || prev.message,
-                        url: configData.shareUrl || prev.url
+                        message: fetchedMessage || prev.message,
+                        url: fetchedUrl || prev.url
                     }));
                 }
 
@@ -131,20 +146,36 @@ export default function Rewards() {
     };
 
     const handleShare = async () => {
-        if (navigator.share) {
+        const appName = 'Un 2x3';
+        const baseUrl = (shareConfig.url || window.location.origin).replace(/\/$/, '');
+        const targetUrl = `${baseUrl}/auth?ref=${referralCode}`;
+        const baseMsg = shareConfig.message || `¡Únete a ${appName} y disfruta del mejor delivery!`;
+        const fullMessage = `${baseMsg}\n\nCódigo de invitación: ${referralCode}\n${targetUrl}`;
+
+        // 1. Intentar compartir de forma nativa mediante navigator.share
+        if (typeof navigator !== 'undefined' && navigator.share) {
             try {
-                const finalUrl = `${shareConfig.url.replace(/\/$/, '')}/auth?ref=${referralCode}`;
                 await navigator.share({
-                    title: '¡Acompáñame en Deliexpress!',
-                    text: `${shareConfig.message}\nMi código es: ${referralCode}`,
-                    url: finalUrl
+                    title: appName,
+                    text: fullMessage,
+                    url: targetUrl
                 });
-            } catch (err) {
-                console.log('Error sharing:', err);
+                return;
+            } catch (err: any) {
+                if (err?.name === 'AbortError') return;
+                console.warn('navigator.share no pudo completarse, usando fallback:', err);
             }
-        } else {
+        }
+
+        // 2. Fallback WhatsApp y portapapeles
+        try {
+            await navigator.clipboard.writeText(fullMessage);
+        } catch (e) {
             handleCopyCode();
         }
+
+        const waUrl = `https://wa.me/?text=${encodeURIComponent(fullMessage)}`;
+        window.open(waUrl, '_blank', 'noopener,noreferrer');
     };
 
     return (

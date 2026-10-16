@@ -144,7 +144,7 @@ public class LocationHelperPlugin extends Plugin {
             PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
             if (pm != null) {
                 if (wakeLock == null) {
-                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "ArepaExpress:DriverWakeLock");
+                    wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Un2x3:DriverWakeLock");
                 }
                 if (!wakeLock.isHeld()) {
                     wakeLock.acquire(2 * 60 * 60 * 1000L); // Max 2 hours continuous lock per renewal
@@ -176,10 +176,20 @@ public class LocationHelperPlugin extends Plugin {
     public void postNotification(PluginCall call) {
         try {
             Context context = getContext();
-            String title = call.getString("title", "Alerta Un 2x3");
-            String body = call.getString("body", "Tienes una nueva actualización");
+            String title = call.getString("title", "Un 2x3 • Viaje en curso");
+            String body = call.getString("body", "Seguimiento activo en tiempo real");
             String channelId = call.getString("channelId", "un_2x3_high_priority");
             int notifId = call.getInt("id", (int) (System.currentTimeMillis() % Integer.MAX_VALUE));
+            boolean ongoing = call.getBoolean("ongoing", false);
+
+            if (title == null || title.trim().isEmpty() || title.toLowerCase().contains("from") || title.equalsIgnoreCase("running") || title.equalsIgnoreCase("tracking")) {
+                title = "Un 2x3 • Viaje en curso";
+            }
+            if (body == null || body.trim().isEmpty() || body.toLowerCase().contains("from") || body.equalsIgnoreCase("running") || body.equalsIgnoreCase("tracking")) {
+                body = "Seguimiento activo en tiempo real";
+            }
+            title = title.replace("DeliExpress", "Un 2x3").replace("deliexpress", "Un 2x3").replace("ArepaExpress", "Un 2x3");
+            body = body.replace("DeliExpress", "Un 2x3").replace("deliexpress", "Un 2x3").replace("ArepaExpress", "Un 2x3");
 
             Intent launchIntent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
             PendingIntent pendingIntent = null;
@@ -198,16 +208,19 @@ public class LocationHelperPlugin extends Plugin {
                 .setContentText(body)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
                 .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setCategory(ongoing ? NotificationCompat.CATEGORY_SERVICE : NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setAutoCancel(true);
+                .setOngoing(ongoing)
+                .setAutoCancel(!ongoing);
 
             if (pendingIntent != null) {
                 builder.setContentIntent(pendingIntent);
             }
 
             // High vibration pattern
-            builder.setVibrate(new long[]{0, 400, 200, 400});
+            if (!ongoing) {
+                builder.setVibrate(new long[]{0, 400, 200, 400});
+            }
 
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm != null) {
@@ -220,6 +233,64 @@ public class LocationHelperPlugin extends Plugin {
             call.resolve(ret);
         } catch (Exception ex) {
             call.reject("Error posting native notification", ex);
+        }
+    }
+
+    @PluginMethod
+    public void postTripNotification(PluginCall call) {
+        try {
+            Context context = getContext();
+            String title = call.getString("title", "Un 2x3 • Viaje en curso");
+            String body = call.getString("body", "Seguimiento activo en tiempo real");
+            String channelId = call.getString("channelId", "un_2x3_high_priority");
+            int notifId = call.getInt("id", 8888);
+
+            if (title == null || title.trim().isEmpty() || title.toLowerCase().contains("from") || title.equalsIgnoreCase("running") || title.equalsIgnoreCase("tracking")) {
+                title = "Un 2x3 • Viaje en curso";
+            }
+            if (body == null || body.trim().isEmpty() || body.toLowerCase().contains("from") || body.equalsIgnoreCase("running") || body.equalsIgnoreCase("tracking")) {
+                body = "Seguimiento activo en tiempo real";
+            }
+            title = title.replace("DeliExpress", "Un 2x3").replace("deliexpress", "Un 2x3").replace("ArepaExpress", "Un 2x3");
+            body = body.replace("DeliExpress", "Un 2x3").replace("deliexpress", "Un 2x3").replace("ArepaExpress", "Un 2x3");
+
+            Intent launchIntent = context.getPackageManager().getLaunchIntentForPackage(context.getPackageName());
+            PendingIntent pendingIntent = null;
+            if (launchIntent != null) {
+                launchIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    flags |= PendingIntent.FLAG_IMMUTABLE;
+                }
+                pendingIntent = PendingIntent.getActivity(context, notifId, launchIntent, flags);
+            }
+
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(context.getApplicationInfo().icon)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setOngoing(call.getBoolean("ongoing", true))
+                .setAutoCancel(false);
+
+            if (pendingIntent != null) {
+                builder.setContentIntent(pendingIntent);
+            }
+
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) {
+                nm.notify(notifId, builder.build());
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("posted", true);
+            ret.put("id", notifId);
+            call.resolve(ret);
+        } catch (Exception ex) {
+            call.reject("Error posting trip notification", ex);
         }
     }
 }

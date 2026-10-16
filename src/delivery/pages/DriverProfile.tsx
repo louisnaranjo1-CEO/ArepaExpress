@@ -22,7 +22,7 @@ export default function DriverProfile() {
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
     const [updatingLocation, setUpdatingLocation] = useState(false);
     const [activeRaffle, setActiveRaffle] = useState<any>(null);
-    const [footerText, setFooterText] = useState('Deliexpress Driver v2.0 · Estilo Yango');
+    const [footerText, setFooterText] = useState('Un 2x3 Conductor v2.0 · Estilo Yango');
     const [warningModalConfig, setWarningModalConfig] = useState<{
         title: string;
         description: string;

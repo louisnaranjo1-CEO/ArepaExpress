@@ -38,6 +38,7 @@ interface Order {
     deliveryFee?: number;
     tip?: number;
     exchange_rate?: number;
+    custom_exchange_rate?: number;
     is_rate_overridden?: boolean;
     total_bs?: number;
     status: 'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected';
@@ -50,6 +51,8 @@ interface Order {
     paymentProofUrl?: string;
     userName?: string;
     userPhone?: string;
+    userPhoto?: string;
+    user_photo?: string;
     source?: string;
     waiterId?: string;
     waiterName?: string;
@@ -462,42 +465,67 @@ export default function Orders() {
             (historyData || []).forEach(o => combinedMap.set(o.id, o));
             const data = Array.from(combinedMap.values()).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
-            const items: Order[] = (data || []).map((o: any) => ({
-                id: o.id,
-                userId: o.user_id,
-                items: o.items || [],
-                total: Number(o.total) || 0,
-                subtotal: Number(o.subtotal) || Number(o.total) || 0,
-                deliveryFee: Number(o.delivery_fee) || 0,
-                tip: Number(o.tip) || 0,
-                status: o.status,
-                paymentStatus: o.payment_status || 'not_sold',
-                createdAt: o.created_at ? { toDate: () => new Date(o.created_at) } : { toDate: () => new Date() },
-                deliveryAddress: o.delivery_address || (typeof o.shipping_address === 'string' ? o.shipping_address : o.shipping_address?.address || ''),
-                deliveryCoords: o.delivery_coords || (o.shipping_address?.lat ? { lat: Number(o.shipping_address.lat), lng: Number(o.shipping_address.lng) } : null),
-                paymentMethod: o.payment_method || '',
-                paymentReference: o.payment_reference || '',
-                paymentProofUrl: o.payment_proof_url || '',
-                userName: o.user_name || '',
-                userPhone: o.user_phone || '',
-                source: o.source || '',
-                waiterId: o.waiter_id || '',
-                waiterName: o.waiter_name || '',
-                tableNumber: o.table_number || '',
-                orderType: o.order_type || o.delivery_method || '',
-                notes: o.notes || o.order_note || '',
-                orderNote: o.order_note || o.notes || '',
-                clientDNI: o.client_dni || o.user_cedula || '',
-                preferred_driver_id: o.preferred_driver_id,
-                preferred_driver_name: o.preferred_driver_name,
-                preferred_driver_expires_at: o.preferred_driver_expires_at,
-                driver_id: o.driver_id || o.delivery_driver_id,
-                driver_name: o.driver_name,
-                driverName: o.driver_name,
-                delivery_driver_id: o.delivery_driver_id,
-                dispatched_at: o.dispatched_at,
-                updated_at: o.updated_at
-            }));
+            // Obtener fotos y perfiles de clientes para los pedidos
+            const userIds = Array.from(new Set((data || []).map((o: any) => o.user_id).filter(Boolean)));
+            const profileMap = new Map<string, any>();
+            if (userIds.length > 0) {
+                const { data: profs } = await supabase
+                    .from('profiles')
+                    .select('id, photo_url, avatar_url, full_name, cedula, phone')
+                    .in('id', userIds);
+                if (profs) {
+                    profs.forEach((p: any) => profileMap.set(p.id, p));
+                }
+            }
+
+            const items: Order[] = (data || []).map((o: any) => {
+                const prof = profileMap.get(o.user_id);
+                const userPhoto = o.user_photo || o.userPhoto || prof?.photo_url || prof?.avatar_url || '';
+
+                return {
+                    id: o.id,
+                    userId: o.user_id,
+                    items: o.items || [],
+                    total: Number(o.total) || 0,
+                    subtotal: Number(o.subtotal) || Number(o.total) || 0,
+                    deliveryFee: Number(o.delivery_fee) || 0,
+                    tip: Number(o.tip) || 0,
+                    exchange_rate: o.exchange_rate ? Number(o.exchange_rate) : undefined,
+                    custom_exchange_rate: o.custom_exchange_rate ? Number(o.custom_exchange_rate) : undefined,
+                    is_rate_overridden: Boolean(o.is_rate_overridden),
+                    total_bs: o.total_bs ? Number(o.total_bs) : undefined,
+                    status: o.status,
+                    paymentStatus: o.payment_status || 'not_sold',
+                    createdAt: o.created_at ? { toDate: () => new Date(o.created_at) } : { toDate: () => new Date() },
+                    deliveryAddress: o.delivery_address || (typeof o.shipping_address === 'string' ? o.shipping_address : o.shipping_address?.address || ''),
+                    deliveryCoords: o.delivery_coords || (o.shipping_address?.lat ? { lat: Number(o.shipping_address.lat), lng: Number(o.shipping_address.lng) } : null),
+                    paymentMethod: o.payment_method || '',
+                    paymentReference: o.payment_reference || '',
+                    paymentProofUrl: o.payment_proof_url || '',
+                    userName: o.user_name || prof?.full_name || '',
+                    userPhone: o.user_phone || prof?.phone || '',
+                    userPhoto: userPhoto,
+                    user_photo: userPhoto,
+                    source: o.source || '',
+                    waiterId: o.waiter_id || '',
+                    waiterName: o.waiter_name || '',
+                    tableNumber: o.table_number || '',
+                    orderType: o.order_type || o.delivery_method || '',
+                    notes: o.notes || o.order_note || '',
+                    orderNote: o.order_note || o.notes || '',
+                    clientDNI: o.client_dni || o.user_cedula || prof?.cedula || '',
+                    stockConfirmed: Boolean(o.stock_confirmed || o.stockConfirmed),
+                    preferred_driver_id: o.preferred_driver_id,
+                    preferred_driver_name: o.preferred_driver_name,
+                    preferred_driver_expires_at: o.preferred_driver_expires_at,
+                    driver_id: o.driver_id || o.delivery_driver_id,
+                    driver_name: o.driver_name,
+                    driverName: o.driver_name,
+                    delivery_driver_id: o.delivery_driver_id,
+                    dispatched_at: o.dispatched_at,
+                    updated_at: o.updated_at
+                };
+            });
 
             // 24h Auto-Close Check for delivering/delivered orders awaiting customer rating
             const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -1403,11 +1431,16 @@ export default function Orders() {
             const newSubtotal = updatedItems.reduce((acc, item) => acc + (Number(item.price) * Number(item.quantity)), 0);
             const deliveryFee = Number(targetOrderForAddProd.deliveryFee || 0);
             const newTotal = Number((newSubtotal + deliveryFee).toFixed(2));
+            const activeRate = (targetOrderForAddProd.is_rate_overridden) && (targetOrderForAddProd.custom_exchange_rate)
+                ? Number(targetOrderForAddProd.custom_exchange_rate)
+                : Number(targetOrderForAddProd.exchange_rate || bcvRate || 855.66);
+            const newTotalBs = Number((newTotal * activeRate).toFixed(2));
 
             const updates: any = {
                 items: updatedItems,
                 subtotal: newSubtotal,
                 total: newTotal,
+                total_bs: newTotalBs,
                 updated_at: new Date().toISOString()
             };
 
@@ -1416,7 +1449,7 @@ export default function Orders() {
             // Mensaje de auditoría en el chat
             const auditText = addProdTab === 'gift' 
                 ? `🎁 *¡Obsequio del Comercio!* Se agregó *${finalName}* (${addProdQty}x) como cortesía ($0.00).`
-                : `➕ *Producto agregado por el comercio:* Se agregó *${finalName}* (${addProdQty}x) a **$${finalPrice.toFixed(2)} c/u**${addProdNote ? ` (${addProdNote})` : ''}. Total actualizado: **$${newTotal.toFixed(2)} USD**.`;
+                : `🛒 Se agregaron productos al pedido. Nuevo total actualizado en la interfaz: $${newTotal.toFixed(2)} USD (${newTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs).`;
 
             await supabase.from('messages').insert({
                 order_id: targetOrderForAddProd.id,
@@ -1426,6 +1459,9 @@ export default function Orders() {
                 sender_role: 'restaurant',
                 created_at: new Date().toISOString()
             });
+
+            setOrders(prev => prev.map(o => o.id === targetOrderForAddProd.id ? { ...o, ...updates } : o));
+            setSelectedOrderForDetail((prev: any) => prev?.id === targetOrderForAddProd.id ? { ...prev, ...updates } : prev);
 
             toast.success(addProdTab === 'gift' ? 'Obsequio agregado a la orden' : 'Producto agregado al pedido');
             setShowAddProdModal(false);
@@ -1578,35 +1614,60 @@ export default function Orders() {
                 updated_at: new Date().toISOString()
             }).eq('id', orderId);
 
-            // Enviar mensaje de pago
-            const { data: restaurantData } = await supabase.from('comercios').select('*').eq('id', rid).single();
-            
-            if (restaurantData) {
-                const methods = restaurantData.payment_methods || [];
-                let paymentMsg = `✅ *Stock confirmado.* Ya puedes realizar tu pago:\n\n*Total a pagar:* $${orderTemp.total.toFixed(2)} USD • ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs\n(Tasa de cambio: ${customRate.toFixed(2)} Bs/$)\n\n`;
-                if (methods.length > 0) {
-                    methods.forEach((m: any) => {
-                        paymentMsg += `*${m.type}:*\n${m.bank ? 'Banco: ' + m.bank + '\n' : ''}${m.phone ? 'Tlf: ' + m.phone + '\n' : ''}${m.rif ? 'RIF/CI: ' + m.rif + '\n' : ''}${m.owner ? 'Titular: ' + m.owner + '\n' : ''}${m.email ? 'Correo: ' + m.email + '\n' : ''}\n`;
-                    });
-                    paymentMsg += "Favor enviar el capture y la referencia por este medio.\n\n_Hemos verificado tu pedido, puedes proceder a realizar el pago._";
-                } else {
-                    paymentMsg += "Por favor contacta con el restaurante para los métodos de pago.";
-                }
+            // Mensaje limpio y sin datos bancarios redundantes (Instrucción de pulsar "Copiar datos")
+            const cleanInstruction = `✅ Stock confirmado y monto actualizado en pantalla. Por favor presiona el botón 'Copiar datos' en la parte superior de tu interfaz para realizar el Pago Móvil exacto y luego adjunta tu capture o número de referencia.`;
 
-                await supabase.from('messages').insert({
-                    order_id: orderId,
-                    text: paymentMsg,
-                    sender_id: user?.uid,
-                    sender_name: 'Restaurante',
-                    sender_role: 'restaurant',
-                    created_at: new Date().toISOString()
-                });
-            }
+            await supabase.from('messages').insert({
+                order_id: orderId,
+                text: cleanInstruction,
+                sender_id: user?.uid,
+                sender_name: 'Restaurante',
+                sender_role: 'restaurant',
+                created_at: new Date().toISOString()
+            });
+
             toast.success("Stock confirmado. El cliente ahora puede pagar.");
             fetchOrders();
         } catch (error) {
             console.error("Error confirming stock:", error);
             toast.error("Error al confirmar stock");
+        }
+    };
+
+    const handleUpdateOrderRate = async (orderId: string, newRate: number, isOverridden: boolean = true) => {
+        if (!orderId || newRate <= 0) return;
+        try {
+            const currentOrd = orders.find(o => o.id === orderId) || (selectedOrderForDetail?.id === orderId ? selectedOrderForDetail : null);
+            const totalUsd = Number(currentOrd?.total || 0);
+            const totalBs = Number((totalUsd * newRate).toFixed(2));
+
+            const updates: any = {
+                exchange_rate: newRate,
+                custom_exchange_rate: newRate,
+                is_rate_overridden: isOverridden,
+                total_bs: totalBs,
+                updated_at: new Date().toISOString()
+            };
+
+            await supabase.from('orders').update(updates).eq('id', orderId);
+
+            setOrderRateOverride(prev => ({ ...prev, [orderId]: isOverridden }));
+            setOrderCustomRates(prev => ({ ...prev, [orderId]: newRate }));
+
+            setOrders(prev => prev.map(o => o.id === orderId ? {
+                ...o,
+                ...updates
+            } : o));
+
+            setSelectedOrderForDetail((prev: any) => prev?.id === orderId ? {
+                ...prev,
+                ...updates
+            } : prev);
+
+            toast.success(`Tasa actualizada a ${newRate.toFixed(2)} Bs/$ (Total: Bs. ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })})`);
+        } catch (err: any) {
+            console.error("Error updating order rate:", err);
+            toast.error("Error al actualizar la tasa del pedido");
         }
     };
 
@@ -2063,32 +2124,48 @@ export default function Orders() {
                     )}
 
                     <div className="flex justify-between items-start">
-                        <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 mb-1">
-                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">#{order.id.slice(-6).toUpperCase()}</span>
-                                <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
-                                    {order.source === 'waiter' ? 'Mesero' : 'App Delivery'}
-                                </span>
-                                <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
-                                    <CheckCircle className="w-3 h-3" /> Entregado
-                                </span>
+                        <div className="flex items-start gap-3 min-w-0">
+                            {order.userPhoto ? (
+                                <img
+                                    src={order.userPhoto}
+                                    alt={order.userName || 'Cliente'}
+                                    className="w-10 h-10 rounded-full object-cover border-2 border-slate-200 shrink-0"
+                                    onError={(e) => {
+                                        (e.currentTarget as HTMLElement).style.display = 'none';
+                                        (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                    }}
+                                />
+                            ) : null}
+                            <div className={`w-10 h-10 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 ${order.userPhoto ? 'hidden' : ''}`}>
+                                <User className="w-5 h-5 text-slate-400" />
                             </div>
-                            <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-primary transition-colors">
-                                {order.userName || `Usuario de ${branding.app_client_name || 'Un 2x3'}`}
-                            </h3>
-                            <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500 font-bold">
-                                {order.clientDNI && (
-                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg text-[11px] font-bold">
-                                        CI: {order.clientDNI}
+                            <div className="space-y-1 min-w-0">
+                                <div className="flex items-center gap-1.5 mb-1">
+                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">#{order.id.slice(-6).toUpperCase()}</span>
+                                    <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                        {order.source === 'waiter' ? 'Mesero' : 'App Delivery'}
                                     </span>
-                                )}
-                                <span className="flex items-center gap-1 text-slate-400">
-                                    <Clock className="w-3.5 h-3.5" />
-                                    {timeStr}
-                                </span>
-                                <span className="bg-amber-50 text-amber-800 border border-amber-200/60 px-2 py-0.5 rounded-lg text-[11px] font-black">
-                                    🛍️ {itemsText}
-                                </span>
+                                    <span className="bg-emerald-100 text-emerald-700 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1">
+                                        <CheckCircle className="w-3 h-3" /> Entregado
+                                    </span>
+                                </div>
+                                <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-primary transition-colors truncate">
+                                    {order.userName || `Usuario de ${branding.app_client_name || 'Un 2x3'}`}
+                                </h3>
+                                <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500 font-bold">
+                                    {order.clientDNI && (
+                                        <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg text-[11px] font-bold">
+                                            CI: {order.clientDNI}
+                                        </span>
+                                    )}
+                                    <span className="flex items-center gap-1 text-slate-400">
+                                        <Clock className="w-3.5 h-3.5" />
+                                        {timeStr}
+                                    </span>
+                                    <span className="bg-amber-50 text-amber-800 border border-amber-200/60 px-2 py-0.5 rounded-lg text-[11px] font-black">
+                                        🛍️ {itemsText}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 
@@ -2125,31 +2202,47 @@ export default function Orders() {
             )}
 
             <div className="flex justify-between items-start mb-3 sm:mb-5">
-                <div>
-                    <div className="flex items-center gap-1.5 mb-1">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">#{order.id.slice(-6).toUpperCase()}</span>
-                        {order.source === 'waiter' ? (
-                            <span className="bg-slate-900 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
-                                Mesero
-                            </span>
-                        ) : (
-                            <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
-                                App Delivery
-                            </span>
-                        )}
+                <div className="flex items-start gap-3 min-w-0">
+                    {order.userPhoto ? (
+                        <img
+                            src={order.userPhoto}
+                            alt={order.userName || 'Cliente'}
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover border-2 border-primary/40 shadow-xs shrink-0"
+                            onError={(e) => {
+                                (e.currentTarget as HTMLElement).style.display = 'none';
+                                (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                            }}
+                        />
+                    ) : null}
+                    <div className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 shrink-0 ${order.userPhoto ? 'hidden' : ''}`}>
+                        <User className="w-6 h-6 text-slate-400" />
                     </div>
-                    <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || `Usuario de ${branding.app_client_name || 'Un 2x3'}`}</h3>
-                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                        <p className="text-xs text-slate-400 font-bold flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" />
-                            {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
-                        </p>
-                        {order.userPhone && (
-                            <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg">📞 {order.userPhone}</span>
-                        )}
-                        {order.clientDNI && (
-                            <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">CI: {order.clientDNI}</span>
-                        )}
+                    <div>
+                        <div className="flex items-center gap-1.5 mb-1">
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">#{order.id.slice(-6).toUpperCase()}</span>
+                            {order.source === 'waiter' ? (
+                                <span className="bg-slate-900 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                    Mesero
+                                </span>
+                            ) : (
+                                <span className="bg-emerald-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider flex items-center gap-1">
+                                    App Delivery
+                                </span>
+                            )}
+                        </div>
+                        <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || `Usuario de ${branding.app_client_name || 'Un 2x3'}`}</h3>
+                        <div className="flex flex-wrap items-center gap-2 mt-0.5">
+                            <p className="text-xs text-slate-400 font-bold flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5" />
+                                {order.createdAt?.toDate ? order.createdAt.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : (order.createdAt ? new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '')}
+                            </p>
+                            {order.userPhone && (
+                                <span className="text-xs font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-lg">📞 {order.userPhone}</span>
+                            )}
+                            {order.clientDNI && (
+                                <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">CI: {order.clientDNI}</span>
+                            )}
+                        </div>
                     </div>
                 </div>
                 <div className="text-right">
@@ -2299,9 +2392,11 @@ export default function Orders() {
                                 onChange={(e) => {
                                     const checked = e.target.checked;
                                     setOrderRateOverride(prev => ({ ...prev, [order.id]: checked }));
-                                    if (!orderCustomRates[order.id]) {
-                                        setOrderCustomRates(prev => ({ ...prev, [order.id]: order.exchange_rate || bcvRate || 855.66 }));
-                                    }
+                                    const targetRate = checked 
+                                        ? (orderCustomRates[order.id] || order.custom_exchange_rate || order.exchange_rate || bcvRate || 855.66)
+                                        : (order.exchange_rate || bcvRate || 855.66);
+                                    setOrderCustomRates(prev => ({ ...prev, [order.id]: targetRate }));
+                                    handleUpdateOrderRate(order.id, targetRate, checked);
                                 }}
                                 className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
                             />
@@ -2322,6 +2417,20 @@ export default function Orders() {
                                     onChange={(e) => {
                                         const val = parseFloat(e.target.value) || 0;
                                         setOrderCustomRates(prev => ({ ...prev, [order.id]: val }));
+                                    }}
+                                    onBlur={(e) => {
+                                        const val = parseFloat(e.target.value) || 0;
+                                        if (val > 0) {
+                                            handleUpdateOrderRate(order.id, val, true);
+                                        }
+                                    }}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            const val = parseFloat((e.target as HTMLInputElement).value) || 0;
+                                            if (val > 0) {
+                                                handleUpdateOrderRate(order.id, val, true);
+                                            }
+                                        }
                                     }}
                                     className="w-full text-xs font-black text-slate-800 outline-none"
                                     placeholder="Tasa en Bs"
@@ -4547,19 +4656,22 @@ export default function Orders() {
                                     <div className="flex items-start gap-3.5">
                                         {/* Avatar / Foto de Perfil */}
                                         <div className="relative shrink-0">
-                                            {customerStats.photoUrl ? (
+                                            {(customerStats.photoUrl || selectedOrderForDetail.userPhoto || (selectedOrderForDetail as any).user_photo) ? (
                                                 <img 
-                                                    src={customerStats.photoUrl} 
+                                                    src={customerStats.photoUrl || selectedOrderForDetail.userPhoto || (selectedOrderForDetail as any).user_photo} 
                                                     alt={selectedOrderForDetail.userName || 'Cliente'} 
                                                     loading="lazy"
                                                     decoding="async"
                                                     className="w-14 h-14 rounded-2xl object-cover border-2 border-primary shadow-sm"
+                                                    onError={(e) => {
+                                                        (e.currentTarget as HTMLElement).style.display = 'none';
+                                                        (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                                                    }}
                                                 />
-                                            ) : (
-                                                <div className="w-14 h-14 rounded-2xl bg-white border-2 border-slate-200 flex items-center justify-center text-slate-400 shadow-2xs">
-                                                    <User className="w-7 h-7 text-slate-500" />
-                                                </div>
-                                            )}
+                                            ) : null}
+                                            <div className={`w-14 h-14 rounded-2xl bg-white border-2 border-slate-200 flex items-center justify-center text-slate-400 shadow-2xs ${(customerStats.photoUrl || selectedOrderForDetail.userPhoto || (selectedOrderForDetail as any).user_photo) ? 'hidden' : ''}`}>
+                                                <User className="w-7 h-7 text-slate-500" />
+                                            </div>
                                             <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-emerald-500 border-2 border-white flex items-center justify-center text-[9px] text-white font-black" title="Cliente Activo">
                                                 ✓
                                             </div>
@@ -4639,13 +4751,24 @@ export default function Orders() {
 
                                 {/* Lista Detallada de Productos con Precio, Variante, Comentario y Gestión de Stock */}
                                 <div className="space-y-3">
-                                    <div className="flex items-center justify-between px-1">
-                                        <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">
-                                            Productos ({selectedOrderForDetail.items?.length || 0})
-                                        </p>
-                                        <span className="text-[10px] text-slate-400 font-bold">
-                                            🛒 Click en carrito para editar producto
-                                        </span>
+                                    <div className="flex items-center justify-between px-1 flex-wrap gap-2">
+                                        <div>
+                                            <p className="text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                                                Productos ({selectedOrderForDetail.items?.length || 0})
+                                            </p>
+                                            <span className="text-[10px] text-slate-400 font-bold">
+                                                🛒 Click en carrito para editar producto
+                                            </span>
+                                        </div>
+                                        {(!selectedOrderForDetail.stockConfirmed || ['pending', 'pendiente_pago'].includes(selectedOrderForDetail.status)) && (
+                                            <button
+                                                onClick={() => handleOpenAddProduct(selectedOrderForDetail)}
+                                                className="bg-primary/20 hover:bg-primary text-slate-900 px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-2xs active:scale-95 transition-all"
+                                                title="Agregar producto o cortesía al pedido"
+                                            >
+                                                <Plus className="w-3.5 h-3.5" /> ➕ Agregar Productos
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="space-y-2.5">
@@ -4786,9 +4909,11 @@ export default function Orders() {
                                                         onChange={(e) => {
                                                             const checked = e.target.checked;
                                                             setOrderRateOverride(prev => ({ ...prev, [selectedOrderForDetail.id]: checked }));
-                                                            if (!orderCustomRates[selectedOrderForDetail.id]) {
-                                                                setOrderCustomRates(prev => ({ ...prev, [selectedOrderForDetail.id]: effectiveRate }));
-                                                            }
+                                                            const targetRate = checked 
+                                                                ? (orderCustomRates[selectedOrderForDetail.id] || selectedOrderForDetail.custom_exchange_rate || selectedOrderForDetail.exchange_rate || bcvRate || 855.66)
+                                                                : (selectedOrderForDetail.exchange_rate || bcvRate || 855.66);
+                                                            setOrderCustomRates(prev => ({ ...prev, [selectedOrderForDetail.id]: targetRate }));
+                                                            handleUpdateOrderRate(selectedOrderForDetail.id, targetRate, checked);
                                                         }}
                                                         className="rounded text-primary focus:ring-primary w-4 h-4 cursor-pointer"
                                                     />
@@ -4810,6 +4935,20 @@ export default function Orders() {
                                                             onChange={(e) => {
                                                                 const val = parseFloat(e.target.value) || 0;
                                                                 setOrderCustomRates(prev => ({ ...prev, [selectedOrderForDetail.id]: val }));
+                                                            }}
+                                                            onBlur={(e) => {
+                                                                const val = parseFloat(e.target.value) || 0;
+                                                                if (val > 0) {
+                                                                    handleUpdateOrderRate(selectedOrderForDetail.id, val, true);
+                                                                }
+                                                            }}
+                                                            onKeyDown={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    const val = parseFloat((e.target as HTMLInputElement).value) || 0;
+                                                                    if (val > 0) {
+                                                                        handleUpdateOrderRate(selectedOrderForDetail.id, val, true);
+                                                                    }
+                                                                }
                                                             }}
                                                             className="w-full text-xs font-black text-slate-800 outline-none"
                                                             placeholder="Tasa en Bs"
@@ -4906,6 +5045,13 @@ export default function Orders() {
                                                     </div>
                                                 ) : (
                                                     <>
+                                                        <button
+                                                            onClick={() => handleOpenAddProduct(selectedOrderForDetail)}
+                                                            className="px-3 sm:px-4 bg-amber-500 hover:bg-amber-600 text-slate-950 py-3.5 rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95 shrink-0"
+                                                            title="Agregar productos al pedido en vivo"
+                                                        >
+                                                            <Plus className="w-4 h-4" /> ➕ Agregar Productos
+                                                        </button>
                                                         <button
                                                             onClick={() => {
                                                                 handleConfirmStock(ordId);

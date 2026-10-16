@@ -4,9 +4,11 @@ import {
   Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
-  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet, Lock,
+  Scale, Trash2, Search
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { compressImage } from '../../utils/mediaCompressor';
 
 interface Message {
   id: string;
@@ -81,6 +83,26 @@ export default function OrderChatWindow({
   const [payNotes, setPayNotes] = useState('');
   const [submittingPayment, setSubmittingPayment] = useState(false);
 
+  // Assign price/peso modal for store (Consultar precio / productos pesados)
+  const [assignPriceModal, setAssignPriceModal] = useState<{
+    item: any;
+    price: number;
+    weight: string;
+  } | null>(null);
+  const [isSavingPrice, setIsSavingPrice] = useState(false);
+
+  // ➕ Agregar Productos en Vivo (Comercio / Admin)
+  const [showAddProductsModal, setShowAddProductsModal] = useState(false);
+  const [addProductsSearch, setAddProductsSearch] = useState('');
+  const [addProductsCatalog, setAddProductsCatalog] = useState<any[]>([]);
+  const [loadingCatalog, setLoadingCatalog] = useState(false);
+  const [selectedAddItems, setSelectedAddItems] = useState<{ [productId: string]: number }>({});
+  const [selectedExistingQty, setSelectedExistingQty] = useState<{ [itemId: string]: number }>({});
+
+  // 💱 Sincronización de Tasa Dinámica
+  const [showRateModal, setShowRateModal] = useState(false);
+  const [customRateInput, setCustomRateInput] = useState<string>('');
+
   // Preparation tool modal state (Store)
   const [showPrepTimeModal, setShowPrepTimeModal] = useState(false);
   const [customPrepMinutes, setCustomPrepMinutes] = useState(20);
@@ -91,6 +113,8 @@ export default function OrderChatWindow({
   const [selectedDriverId, setSelectedDriverId] = useState<string>('');
   const [loadingDrivers, setLoadingDrivers] = useState(false);
   const [dispatchingStore, setDispatchingStore] = useState(false);
+  const [driverSearchQuery, setDriverSearchQuery] = useState('');
+  const [dispatchTab, setDispatchTab] = useState<'network' | 'external'>('network');
 
   // Modalidad B: Client Dispatch modal state (Client chooses vehicle category)
   const [showClientDispatchModal, setShowClientDispatchModal] = useState(false);
@@ -98,7 +122,83 @@ export default function OrderChatWindow({
   const [clientReferenceNote, setClientReferenceNote] = useState('');
   const [submittingClientDispatch, setSubmittingClientDispatch] = useState(false);
 
-  const isStoreRole = currentUserRole === 'restaurant' || (currentUserRole as string) === 'cashier';
+  // Emergency / Lost item reactivation state for completed orders (Audio 3)
+  const isCompleted = ['delivered', 'completed', 'entregado', 'finalizado'].includes(liveOrder?.status || orderInfo?.status);
+  const emergencyActivatedMsg = messages.find((m: any) => m.action === 'lost_item_emergency' || m.text?.includes('EMERGENCIA / OBJETO OLVIDADO'));
+  const emergencyResolvedMsg = messages.find((m: any) => m.action === 'lost_item_resolved' || m.text?.includes('EMERGENCIA FINALIZADA'));
+  const isEmergencyActive = Boolean(emergencyActivatedMsg && !emergencyResolvedMsg);
+  const isEmergencyExhausted = Boolean(emergencyResolvedMsg);
+  const isChatLocked = isCompleted && !isEmergencyActive;
+
+  const handleReactivateEmergency = async () => {
+    try {
+      await handleSendMessage(
+        '🚨 ¡EMERGENCIA / OBJETO OLVIDADO! El cliente ha reactivado el chat para reportar un objeto olvidado o novedad urgente de su pedido.',
+        undefined,
+        'lost_item_emergency' as any
+      );
+      toast.success("¡Chat reactivado por emergencia! Puedes comunicarte con el comercio o repartidor.", { icon: '🚨' });
+    } catch (e) {
+      toast.error("No se pudo reactivar el chat");
+    }
+  };
+
+  const handleResolveEmergency = async () => {
+    if (!window.confirm("¿Deseas finalizar la emergencia? Una vez finalizada, el chat se cerrará definitivamente en modo solo lectura.")) return;
+    try {
+      await handleSendMessage(
+        '✅ EMERGENCIA FINALIZADA. El caso ha sido resuelto y el chat ha quedado cerrado definitivamente.',
+        undefined,
+        'lost_item_resolved' as any
+      );
+      toast.success("Emergencia finalizada con éxito. Chat cerrado.", { icon: '🔒' });
+    } catch (e) {
+      toast.error("No se pudo finalizar la emergencia");
+    }
+  };
+
+  const isStoreRole = currentUserRole === 'restaurant' || (currentUserRole as string) === 'cashier' || (currentUserRole as string) === 'cpanel';
+
+  // Bidirectional audio alert & haptic feedback (Fase 2.2)
+  const playNotificationChime = (type: 'message' | 'enter' = 'message') => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      const now = ctx.currentTime;
+      if (type === 'enter') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(587.33, now); // D5
+        osc.frequency.exponentialRampToValueAtTime(880, now + 0.12); // A5
+        gain.gain.setValueAtTime(0.12, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
+        osc.start(now);
+        osc.stop(now + 0.25);
+      } else {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(784, now); // G5
+        osc.frequency.setValueAtTime(1046.5, now + 0.08); // C6
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+        osc.start(now);
+        osc.stop(now + 0.35);
+      }
+
+      try {
+        if (navigator.vibrate) navigator.vibrate([40, 60, 40]);
+      } catch (_) {}
+    } catch (e) {
+      console.debug('Notification chime silent:', e);
+    }
+  };
 
   // Fetch BCV Rate
   useEffect(() => {
@@ -197,6 +297,8 @@ export default function OrderChatWindow({
 
   // Realtime messages & order sync
   useEffect(() => {
+    const linkedTransportId = liveOrder?.transport_request_id || orderInfo?.transport_request_id;
+
     const fetchMessages = async () => {
       try {
         let queryBuilder = supabase
@@ -206,11 +308,13 @@ export default function OrderChatWindow({
 
         if (customCollectionPath) {
           queryBuilder = queryBuilder.eq('chat_path', customCollectionPath);
+        } else if (linkedTransportId) {
+          queryBuilder = queryBuilder.or(`order_id.eq.${orderId},request_id.eq.${linkedTransportId}`);
         } else {
           queryBuilder = queryBuilder.eq('order_id', orderId);
         }
 
-        const { data, error } = await queryBuilder;
+        const { data, error } = await queryBuilder.limit(100);
         if (error) throw error;
         if (data) {
           setMessages(data.map((d: any) => ({
@@ -235,21 +339,61 @@ export default function OrderChatWindow({
     };
 
     fetchMessages();
+    playNotificationChime('enter');
 
-    const channelName = `chat_${orderId || customCollectionPath || 'default'}`;
-    const filterField = customCollectionPath ? 'chat_path' : 'order_id';
-    const filterVal = customCollectionPath || orderId;
+    const channelName = `chat_${orderId || customCollectionPath || 'default'}_${linkedTransportId || 'direct'}`;
+    const channel = supabase.channel(channelName);
 
-    const channel = supabase.channel(channelName)
-      .on('postgres_changes', {
+    if (customCollectionPath) {
+      channel.on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'messages',
-        filter: `${filterField}=eq.${filterVal}`
-      }, () => {
+        filter: `chat_path=eq.${customCollectionPath}`
+      }, (payload) => {
         fetchMessages();
-      })
-      .subscribe();
+        if (payload?.new) {
+          const newMsg = payload.new as any;
+          if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
+            playNotificationChime('message');
+          }
+        }
+      });
+    } else {
+      channel.on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'messages',
+        filter: `order_id=eq.${orderId}`
+      }, (payload) => {
+        fetchMessages();
+        if (payload?.new) {
+          const newMsg = payload.new as any;
+          if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
+            playNotificationChime('message');
+          }
+        }
+      });
+
+      if (linkedTransportId) {
+        channel.on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'messages',
+          filter: `request_id=eq.${linkedTransportId}`
+        }, (payload) => {
+          fetchMessages();
+          if (payload?.new) {
+            const newMsg = payload.new as any;
+            if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
+              playNotificationChime('message');
+            }
+          }
+        });
+      }
+    }
+
+    channel.subscribe();
 
     const orderSub = supabase.channel(`order_chat_sync_${orderId}`)
       .on('postgres_changes', {
@@ -261,7 +405,24 @@ export default function OrderChatWindow({
         if (payload.new) {
           const ord = payload.new as any;
           if (ord.items) setOrderItems(ord.items);
-          setLiveOrder(ord);
+          
+          setLiveOrder((prev: any) => {
+            const wasStockConfirmed = Boolean(prev?.stock_confirmed || prev?.stockConfirmed);
+            const isNowStockConfirmed = Boolean(ord?.stock_confirmed || ord?.stockConfirmed);
+            if (!wasStockConfirmed && isNowStockConfirmed) {
+              playNotificationChime('enter');
+              toast.success("¡Stock y monto final confirmados por el comercio! Ya puedes pagar.", { icon: '✅' });
+            }
+            return ord;
+          });
+
+          // Si el cliente canceló y eliminó el pedido
+          if (ord?.status === 'cancelled_by_client' || ord?.status === 'cancelled') {
+            if (isStoreRole) {
+              toast.error('El cliente ha eliminado su pedido', { duration: 6000, icon: '🚫' });
+              onClose?.();
+            }
+          }
         }
       })
       .subscribe();
@@ -271,7 +432,7 @@ export default function OrderChatWindow({
       supabase.removeChannel(orderSub);
       if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     };
-  }, [orderId, customCollectionPath]);
+  }, [orderId, customCollectionPath, liveOrder?.transport_request_id, orderInfo?.transport_request_id]);
 
   const handleSendMessage = async (
     text: string, 
@@ -282,8 +443,10 @@ export default function OrderChatWindow({
     setSending(true);
 
     try {
+      const linkedTransportId = liveOrder?.transport_request_id || orderInfo?.transport_request_id;
       await supabase.from('messages').insert({
         order_id: orderId,
+        request_id: linkedTransportId || null,
         chat_path: customCollectionPath || null,
         text: text.trim(),
         image_url: actionUrl || null,
@@ -307,14 +470,15 @@ export default function OrderChatWindow({
     if (!file) return;
     setSending(true);
     try {
-      const fileExt = file.name.split('.').pop() || 'jpg';
       const isVideo = file.type.startsWith('video/');
+      const uploadFile = isVideo ? file : await compressImage(file);
+      const fileExt = (uploadFile instanceof File ? uploadFile.name : file.name).split('.').pop() || 'jpg';
       const fileName = `${isVideo ? 'video' : 'media'}_${orderId}_${Date.now()}.${fileExt}`;
       const filePath = `order_chat/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('documents')
-        .upload(filePath, file);
+        .upload(filePath, uploadFile);
 
       if (uploadError) {
         const reader = new FileReader();
@@ -432,12 +596,13 @@ export default function OrderChatWindow({
     try {
       let proofUrl = '';
       if (payProofFile) {
-        const ext = payProofFile.name.split('.').pop() || 'jpg';
+        const compressedProof = await compressImage(payProofFile);
+        const ext = (compressedProof instanceof File ? compressedProof.name : payProofFile.name).split('.').pop() || 'jpg';
         const fileName = `payment_${orderId}_${Date.now()}.${ext}`;
         const filePath = `payment_proofs/${fileName}`;
-        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, payProofFile, { upsert: true });
+        const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedProof, { upsert: true });
         if (upErr) {
-          const { error: upErr2 } = await supabase.storage.from('documents').upload(filePath, payProofFile, { upsert: true });
+          const { error: upErr2 } = await supabase.storage.from('documents').upload(filePath, compressedProof, { upsert: true });
           if (!upErr2) {
             const { data } = supabase.storage.from('documents').getPublicUrl(filePath);
             proofUrl = data.publicUrl;
@@ -445,7 +610,7 @@ export default function OrderChatWindow({
             proofUrl = await new Promise<string>((resolve) => {
               const reader = new FileReader();
               reader.onload = () => resolve(reader.result as string);
-              reader.readAsDataURL(payProofFile);
+              reader.readAsDataURL(compressedProof);
             });
           }
         } else {
@@ -543,12 +708,18 @@ export default function OrderChatWindow({
   const fetchDrivers = async () => {
     setLoadingDrivers(true);
     try {
-      const { data } = await supabase.from('delivery_drivers').select('*');
-      if (data && data.length > 0) {
-        setDriversList(data);
+      // Prioritize drivers table from delivery app to get selfie_url and active driver profile
+      const { data: driversData } = await supabase.from('drivers').select('*');
+      if (driversData && driversData.length > 0) {
+        setDriversList(driversData);
       } else {
-        const { data: profs } = await supabase.from('profiles').select('*').eq('role', 'driver');
-        setDriversList(profs || []);
+        const { data } = await supabase.from('delivery_drivers').select('*');
+        if (data && data.length > 0) {
+          setDriversList(data);
+        } else {
+          const { data: profs } = await supabase.from('profiles').select('*').eq('role', 'driver');
+          setDriversList(profs || []);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -569,13 +740,45 @@ export default function OrderChatWindow({
     setDispatchingStore(true);
     try {
       const driverName = chosenDriver.name || chosenDriver.displayName || chosenDriver.full_name || 'Repartidor de la Red';
+      const driverPhone = chosenDriver.phone || chosenDriver.phoneNumber || chosenDriver.phone_number || chosenDriver.whatsapp || null;
+      const driverPhoto = chosenDriver.selfie_url || chosenDriver.documents?.selfieUrl || chosenDriver.selfieUrl || chosenDriver.photo_url || chosenDriver.photoURL || chosenDriver.avatar_url || null;
+      const vehicleType = chosenDriver.vehicleType || chosenDriver.vehicle_type || 'moto';
+      const vehicleModel = chosenDriver.vehicle_model || chosenDriver.vehicleModel || '';
+      const vehiclePlate = chosenDriver.vehicle_plate || chosenDriver.vehiclePlate || '';
+
       await supabase.from('orders').update({
         status: 'delivering',
+        delivery_status: 'in_transit',
+        delivery_type: 'network',
+        deliveryType: 'network',
+        is_external_delivery: false,
+        isExternalDelivery: false,
         driver_id: chosenDriver.id,
         driver_name: driverName,
+        driver_phone: driverPhone,
+        driver_photo: driverPhoto,
+        driver_photo_url: driverPhoto,
+        vehicle_type: vehicleType,
+        vehicle_model: vehicleModel,
+        vehicle_plate: vehiclePlate,
         dispatched_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
+
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        status: 'delivering',
+        delivery_status: 'in_transit',
+        delivery_type: 'network',
+        deliveryType: 'network',
+        is_external_delivery: false,
+        isExternalDelivery: false,
+        driver_id: chosenDriver.id,
+        driver_name: driverName,
+        driver_phone: driverPhone,
+        driver_photo: driverPhoto,
+        driver_photo_url: driverPhoto
+      }));
 
       await handleSendMessage(`🛵 *¡Tu pedido ha sido despachado!* Repartidor asignado por la tienda: **${driverName}**. Va en camino hacia tu dirección.`);
       toast.success(`Pedido despachado con ${driverName}`);
@@ -583,6 +786,45 @@ export default function OrderChatWindow({
     } catch (e) {
       console.error(e);
       toast.error("Error al despachar pedido");
+    } finally {
+      setDispatchingStore(false);
+    }
+  };
+
+  const handleStoreDispatchExternal = async () => {
+    setDispatchingStore(true);
+    try {
+      await supabase.from('orders').update({
+        status: 'delivering',
+        delivery_status: 'dispatched',
+        delivery_type: 'external',
+        deliveryType: 'external',
+        is_external_delivery: true,
+        isExternalDelivery: true,
+        driver_id: null,
+        driver_name: 'Delivery Propio del Negocio',
+        dispatched_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
+
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        status: 'delivering',
+        delivery_status: 'dispatched',
+        delivery_type: 'external',
+        deliveryType: 'external',
+        is_external_delivery: true,
+        isExternalDelivery: true,
+        driver_id: null,
+        driver_name: 'Delivery Propio del Negocio'
+      }));
+
+      await handleSendMessage(`📦 *¡Pedido en camino!* Tu pedido fue despachado directamente con el **Delivery Propio del Comercio**. En breve llegará a tu dirección.`);
+      toast.success("Pedido despachado con Delivery Externo.");
+      setShowStoreDispatchModal(false);
+    } catch (e) {
+      console.error(e);
+      toast.error("Error al despachar pedido con delivery externo");
     } finally {
       setDispatchingStore(false);
     }
@@ -786,6 +1028,127 @@ export default function OrderChatWindow({
     }
   };
 
+  // ➕ Abrir buscador/selector rápido de productos para agregar o ajustar en vivo
+  const handleOpenAddProductsModal = async () => {
+    setShowAddProductsModal(true);
+    setLoadingCatalog(true);
+    setAddProductsSearch('');
+    setSelectedAddItems({});
+    const initialExisting: { [key: string]: number } = {};
+    (orderItems || []).forEach((it: any) => {
+      initialExisting[it.id] = Number(it.quantity) || 1;
+    });
+    setSelectedExistingQty(initialExisting);
+
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_available', true)
+        .order('name');
+      if (!error && data) {
+        setAddProductsCatalog(data);
+      }
+    } catch (err) {
+      console.error("Error loading products for add:", err);
+    } finally {
+      setLoadingCatalog(false);
+    }
+  };
+
+  // 🛒 Confirmar y agregar/ajustar productos del pedido en tiempo real
+  const handleConfirmAddProducts = async () => {
+    try {
+      let updatedItems = (orderItems || []).map((it: any) => ({
+        ...it,
+        quantity: selectedExistingQty[it.id] !== undefined ? selectedExistingQty[it.id] : (Number(it.quantity) || 1)
+      })).filter(it => it.quantity > 0);
+
+      Object.entries(selectedAddItems).forEach(([prodId, qty]) => {
+        if (qty > 0) {
+          const prod = addProductsCatalog.find(p => p.id === prodId);
+          if (prod) {
+            updatedItems.push({
+              id: `${prod.id}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+              name: prod.name,
+              price: Number(prod.price || 0),
+              quantity: qty,
+              image: prod.image || prod.image_url || '',
+              category: prod.category || '',
+              is_gift: false,
+              isGift: false,
+              addedBy: 'store'
+            });
+          }
+        }
+      });
+
+      if (updatedItems.length === 0) {
+        toast.error("El pedido no puede quedar sin productos.");
+        return;
+      }
+
+      const newSubtotal = updatedItems.reduce((sum, it) => sum + (Number(it.price || 0) * Number(it.quantity || 1)), 0);
+      const deliveryFee = Number(liveOrder?.deliveryFee || liveOrder?.delivery_fee || orderInfo?.deliveryFee || 0);
+      const newTotal = Number((newSubtotal + deliveryFee).toFixed(2));
+      const currentActiveRate = (liveOrder?.is_rate_overridden && liveOrder?.custom_exchange_rate)
+        ? Number(liveOrder.custom_exchange_rate)
+        : Number(liveOrder?.exchange_rate || bcvRate || 855.66);
+      const newTotalBs = Number((newTotal * currentActiveRate).toFixed(2));
+
+      const updates: any = {
+        items: updatedItems,
+        subtotal: newSubtotal,
+        total: newTotal,
+        total_bs: newTotalBs,
+        updated_at: new Date().toISOString()
+      };
+
+      await supabase.from('orders').update(updates).eq('id', orderId);
+
+      setOrderItems(updatedItems);
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        ...updates
+      }));
+      setShowAddProductsModal(false);
+
+      await handleSendMessage(`🛒 Se agregaron productos al pedido. Nuevo total actualizado en la interfaz: $${newTotal.toFixed(2)} USD (${newTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })} Bs).`);
+      toast.success("Productos agregados y total actualizado.");
+    } catch (err) {
+      console.error("Error updating order items:", err);
+      toast.error("Error al actualizar productos del pedido");
+    }
+  };
+
+  // 💱 Actualizar y sincronizar tasa cambiaria en la base de datos
+  const handleUpdateOrderRate = async (newRate: number) => {
+    if (!newRate || newRate <= 0) return;
+    try {
+      const totalUsd = orderDisplayTotal;
+      const totalBs = Number((totalUsd * newRate).toFixed(2));
+      const updates = {
+        exchange_rate: newRate,
+        custom_exchange_rate: newRate,
+        is_rate_overridden: true,
+        total_bs: totalBs,
+        updated_at: new Date().toISOString()
+      };
+      await supabase.from('orders').update(updates).eq('id', orderId);
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        ...updates
+      }));
+      setShowRateModal(false);
+      await handleSendMessage(`💱 *Tasa de cambio actualizada:* **${newRate.toFixed(2)} Bs/$**. Total en Bolívares actualizado en pantalla: **Bs. ${totalBs.toLocaleString('es-VE', { minimumFractionDigits: 2 })}**.`);
+      toast.success(`Tasa actualizada a ${newRate.toFixed(2)} Bs/$`);
+    } catch (e) {
+      console.error("Error updating rate:", e);
+      toast.error("Error al actualizar la tasa de cambio");
+    }
+  };
+
   const handleSendPagoMovilInfo = async () => {
     try {
       const { data: res } = await supabase.from('comercios').select('*').eq('id', restaurantId).maybeSingle();
@@ -843,17 +1206,119 @@ export default function OrderChatWindow({
     }
   };
 
-  // Stock Confirmation Tool for Store
-  const handleConfirmStoreStock = async () => {
+  // Open & Save Assign Price / Peso Modal (Store)
+  const handleOpenAssignPrice = (item: any) => {
+    setAssignPriceModal({
+      item,
+      price: Number(item.price) || 0,
+      weight: item.weight_value ? String(item.weight_value) : ''
+    });
+  };
+
+  const handleSaveAssignPrice = async () => {
+    if (!assignPriceModal) return;
+    const { item, price, weight } = assignPriceModal;
+    if (Number(price) <= 0) {
+      toast.error('Por favor ingresa un precio válido mayor a 0');
+      return;
+    }
+
+    setIsSavingPrice(true);
     try {
+      const updatedItems = orderItems.map((it: any) => {
+        if (it.id === item.id) {
+          return {
+            ...it,
+            price: Number(price),
+            consultPrice: false,
+            consultar_precio: false,
+            price_pending: false,
+            weight_value: weight || undefined
+          };
+        }
+        return it;
+      });
+
+      const newSubtotal = updatedItems.reduce((acc, it) => acc + (Number(it.price || 0) * Number(it.quantity || 1)), 0);
+      const deliveryFee = Number(liveOrder?.delivery_fee || liveOrder?.deliveryFee || 0);
+      const newTotal = Number((newSubtotal + deliveryFee).toFixed(2));
+
+      setOrderItems(updatedItems);
+      setLiveOrder((prev: any) => ({
+        ...prev,
+        items: updatedItems,
+        subtotal: newSubtotal,
+        total: newTotal
+      }));
+
       await supabase.from('orders').update({
-        status: 'awaiting_payment',
+        items: updatedItems,
+        subtotal: newSubtotal,
+        total: newTotal,
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
-      setLiveOrder((prev: any) => ({ ...prev, status: 'awaiting_payment' }));
+      const auditText = `⚖️ *Precio asignado por el comercio:*\n` +
+        `• Producto: *${item.name}*\n` +
+        `• Precio unitario: **$${Number(price).toFixed(2)} USD**\n` +
+        (weight ? `• Peso registrado: **${weight}**\n` : '') +
+        `• Total orden actualizado: **$${newTotal.toFixed(2)} USD** (${(newTotal * effectiveRate).toFixed(0)} Bs).`;
 
-      await handleSendMessage("✅ *STOCK CONFIRMADO POR EL COMERCIO:*\nTodos los productos de tu pedido están disponibles y apartados. Puedes proceder con el pago con total tranquilidad.");
+      await handleSendMessage(auditText, undefined, 'items_modified');
+      toast.success('Precio y peso asignados correctamente');
+      setAssignPriceModal(null);
+    } catch (err) {
+      console.error('Error assigning price in chat:', err);
+      toast.error('Error al guardar precio');
+    } finally {
+      setIsSavingPrice(false);
+    }
+  };
+
+  // Stock Confirmation Tool for Store (Enforces Golden Rule & Dynamic Rate)
+  const handleConfirmStoreStock = async () => {
+    // Regla de Oro: Validar que no haya productos con precio pendiente
+    const pendingItems = orderItems.filter((i: any) => 
+      i.consultPrice || i.consultar_precio || i.price_pending || ((Number(i.price) === 0 || i.price === undefined || i.price === null) && !i.isGift && !i.is_gift)
+    );
+    if (pendingItems.length > 0) {
+      toast.error(`⚠️ Debes asignar precio a "${pendingItems[0].name}" antes de confirmar stock.`);
+      return;
+    }
+
+    try {
+      const currentRate = (liveOrder?.is_rate_overridden && liveOrder?.custom_exchange_rate)
+        ? Number(liveOrder.custom_exchange_rate)
+        : Number(liveOrder?.exchange_rate || bcvRate || 855.66);
+      const totalUsd = orderDisplayTotal;
+      const totalBs = Number((totalUsd * currentRate).toFixed(2));
+
+      await supabase.from('orders').update({
+        status: 'awaiting_payment',
+        stock_confirmed: true,
+        stock_confirmed_at: new Date().toISOString(),
+        total: totalUsd,
+        total_bs: totalBs,
+        exchange_rate: currentRate,
+        custom_exchange_rate: currentRate,
+        updated_at: new Date().toISOString()
+      }).eq('id', orderId);
+
+      setLiveOrder((prev: any) => ({ 
+        ...prev, 
+        status: 'awaiting_payment', 
+        stock_confirmed: true,
+        stock_confirmed_at: new Date().toISOString(),
+        total: totalUsd,
+        total_bs: totalBs,
+        exchange_rate: currentRate,
+        custom_exchange_rate: currentRate
+      }));
+
+      // Requirement 4: Breve y limpia instrucción sin datos bancarios redundantes en el chat
+      await handleSendMessage(
+        "✅ Stock confirmado y monto actualizado en pantalla. Por favor presiona el botón 'Copiar datos' en la parte superior de tu interfaz para realizar el Pago Móvil exacto y luego adjunta tu capture o número de referencia."
+      );
       toast.success("Stock confirmado al cliente.");
     } catch (e) {
       console.error(e);
@@ -862,6 +1327,10 @@ export default function OrderChatWindow({
   };
 
   // Financial and Qualification Calculations
+  const activeRate = (liveOrder?.is_rate_overridden && liveOrder?.custom_exchange_rate)
+    ? Number(liveOrder.custom_exchange_rate)
+    : Number(liveOrder?.exchange_rate || bcvRate || 855.66);
+  const effectiveRate = activeRate;
   const isPickupOrder = liveOrder?.delivery_method === 'pickup' || liveOrder?.deliveryMethod === 'pickup';
   const calculatedItemsTotal = (orderItems && orderItems.length > 0)
     ? orderItems.reduce((acc, it) => acc + (Number(it.price || 0) * Number(it.quantity || 1)), 0)
@@ -908,10 +1377,12 @@ export default function OrderChatWindow({
 
   const isPaidOrConditionallyPaid = isPaymentVerifiedByStore || isPaymentReportedWaitingStore || Boolean(liveOrder?.conditionally_paid);
 
+  const isOrderRejected = liveOrder?.status === 'rejected';
+
   const isStockConfirmed = Boolean(
-    liveOrder?.stock_confirmed ||
-    liveOrder?.stockConfirmed ||
-    (liveOrder?.status && !['pending', 'action_required'].includes(liveOrder.status))
+    !isOrderRejected &&
+    ((liveOrder?.stock_confirmed === true || liveOrder?.stockConfirmed === true) ||
+    (liveOrder?.status && ['awaiting_payment', 'awaiting_delivery_driver', 'preparing', 'ready', 'buscando_piloto', 'delivering', 'delivered', 'completed', 'paid', 'payment_confirmed'].includes(liveOrder.status) && !['pending', 'pendiente_pago', 'pending_store_review', 'action_required'].includes(liveOrder.status)))
   );
 
   const renderMessageContent = (msg: Message) => {
@@ -1024,7 +1495,7 @@ export default function OrderChatWindow({
                 onClick={() => setViewingAttachment(msg.imageUrl || null)}
                 className="cursor-pointer group relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 hover:opacity-95 transition-all text-center block"
               >
-                <img src={msg.imageUrl} alt="Adjunto" className="max-w-full rounded-2xl max-h-52 object-contain bg-slate-50 border border-slate-200 shadow-sm mx-auto" />
+                <img src={msg.imageUrl} alt="Adjunto" loading="lazy" decoding="async" className="max-w-full rounded-2xl max-h-52 object-contain bg-slate-50 border border-slate-200 shadow-sm mx-auto" />
                 <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1.5 backdrop-blur-[1px]">
                   <Eye className="w-4 h-4" /> Toca para ver comprobante
                 </div>
@@ -1108,6 +1579,37 @@ export default function OrderChatWindow({
         </div>
       </div>
 
+      {/* Banner de Emergencia / Objeto Olvidado o Modo Solo Lectura (Audio 3) */}
+      {isEmergencyActive ? (
+        <div className="bg-red-600 text-white p-3 px-4 flex items-center justify-between gap-3 shadow-md border-b-2 border-red-700 animate-in slide-in-from-top-2 shrink-0 z-20">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+            <div className="truncate">
+              <p className="text-xs font-black uppercase tracking-wider truncate">🚨 Emergencia Activa: Objeto Olvidado</p>
+              <p className="text-[10px] text-white/90 font-medium leading-tight">Chat desbloqueado para resolver la novedad</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleResolveEmergency}
+            className="px-3 py-1.5 bg-white hover:bg-slate-100 text-red-700 font-black text-xs rounded-xl shadow-sm shrink-0 active:scale-95 transition-all"
+          >
+            Finalizar emergencia
+          </button>
+        </div>
+      ) : isCompleted && (
+        <div className="p-2.5 px-3 border-b text-xs flex items-center gap-2 bg-slate-100 border-slate-200 text-slate-700 shrink-0">
+          <Lock className="w-4 h-4 shrink-0 text-slate-500" />
+          <p className="text-[11px] font-medium leading-tight">
+            {isEmergencyExhausted ? (
+              <span>Emergencia resuelta. El chat se encuentra cerrado definitivamente.</span>
+            ) : (
+              <span>Pedido completado. El chat está cerrado en modo solo lectura de respaldo.</span>
+            )}
+          </p>
+        </div>
+      )}
+
       {/* Countdown Timer Banner */}
       {prepCountdownStr && (
         <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-white px-4 py-2 flex items-center justify-between text-xs font-black shadow-md z-10 shrink-0 animate-in slide-in-from-top-2">
@@ -1121,13 +1623,42 @@ export default function OrderChatWindow({
         </div>
       )}
 
+      {/* BANNER DE CANCELACIÓN: Si el pedido fue cancelado o eliminado */}
+      {(liveOrder?.status === 'cancelled_by_client' || liveOrder?.status === 'cancelled') && (
+        <div className="bg-rose-50 border-b border-rose-200 px-4 py-2.5 flex items-center justify-between text-xs text-rose-800 shrink-0">
+          <div className="flex items-center gap-2">
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            <span className="font-black">Este pedido fue cancelado y eliminado por el cliente.</span>
+          </div>
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider active:scale-95 transition-all"
+            >
+              Cerrar
+            </button>
+          )}
+        </div>
+      )}
+
       {/* PINNED VISUAL ORDER SUMMARY CARD (Customer Name, Cédula, Products, Quantities, Amounts in $ and Bs) */}
       {showItemsList && (
         <div className="bg-white border-b-2 border-slate-200 p-3.5 space-y-2.5 shrink-0 max-h-56 overflow-y-auto shadow-sm">
           {/* Top Info: Client Name, Cédula and Delivery Method */}
           <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100 text-xs">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <div className="w-7 h-7 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              {(liveOrder?.user_photo || orderInfo?.userPhoto || (orderInfo as any)?.user_photo) ? (
+                <img 
+                  src={liveOrder?.user_photo || orderInfo?.userPhoto || (orderInfo as any)?.user_photo} 
+                  alt={liveOrder?.user_name || orderInfo?.userName || 'Cliente'} 
+                  className="w-8 h-8 rounded-full object-cover border border-primary/40 shadow-xs shrink-0"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLElement).style.display = 'none';
+                    (e.currentTarget.nextElementSibling as HTMLElement)?.classList.remove('hidden');
+                  }}
+                />
+              ) : null}
+              <div className={`w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center shrink-0 ${(liveOrder?.user_photo || orderInfo?.userPhoto || (orderInfo as any)?.user_photo) ? 'hidden' : ''}`}>
                 <User className="w-4 h-4 text-slate-600" />
               </div>
               <div className="min-w-0">
@@ -1156,15 +1687,27 @@ export default function OrderChatWindow({
           <div className="space-y-1.5">
             {orderItems.map((item: any, idx: number) => {
               const isSoldOut = !!item.isSoldOut;
-              const itemTotal = (item.price || 0) * (item.quantity || 1);
-              const itemTotalBs = bcvRate > 0 ? (itemTotal * bcvRate).toFixed(0) : '0';
+              const isGift = Boolean(item.isGift || item.is_gift || (item.price === 0 && !item.consultPrice && !item.consultar_precio && !item.price_pending));
+              const isPricePending = Boolean(
+                item.consultPrice || 
+                item.consultar_precio || 
+                item.price_pending || 
+                ((item.price === undefined || item.price === null || Number(item.price) === 0) && !isGift)
+              );
+              const itemPrice = Number(item.price || 0);
+              const itemTotal = itemPrice * (item.quantity || 1);
+              const itemTotalBs = effectiveRate > 0 ? (itemTotal * effectiveRate).toFixed(0) : '0';
 
               return (
                 <div
                   key={item.id || idx}
-                  className={`flex items-center justify-between gap-2 p-2 rounded-xl text-xs transition-all ${
+                  className={`flex items-center justify-between gap-2 p-2.5 rounded-xl text-xs transition-all ${
                     isSoldOut
                       ? 'bg-red-50 border border-red-200 text-red-700'
+                      : isPricePending
+                      ? 'bg-amber-50/80 border border-amber-300 text-amber-950 shadow-xs'
+                      : isGift
+                      ? 'bg-purple-50/80 border border-purple-200 text-purple-900'
                       : 'bg-slate-50 border border-slate-100 text-slate-800'
                   }`}
                 >
@@ -1173,16 +1716,46 @@ export default function OrderChatWindow({
                       {item.quantity}x
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className={`font-black text-xs truncate ${isSoldOut ? 'line-through text-red-600' : 'text-slate-900'}`}>
-                        {item.name}
-                      </p>
-                      <span className="text-[10px] text-slate-500 font-bold">
-                        ${itemTotal.toFixed(2)} USD • {itemTotalBs} Bs
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className={`font-black text-xs truncate ${isSoldOut ? 'line-through text-red-600' : 'text-slate-900'}`}>
+                          {item.name}
+                        </p>
+                        {isGift && (
+                          <span className="bg-purple-100 text-purple-700 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                            🎁 Cortesía / Obsequio
+                          </span>
+                        )}
+                        {item.weight_value && (
+                          <span className="bg-slate-200 text-slate-700 text-[9px] font-black px-1.5 py-0.5 rounded-md">
+                            ⚖️ {item.weight_value}
+                          </span>
+                        )}
+                      </div>
+
+                      {isPricePending ? (
+                        <div className="flex items-center gap-1 text-[10px] font-black text-amber-700 mt-0.5">
+                          <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                          <span>Precio pendiente por asignar</span>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-slate-500 font-bold block mt-0.5">
+                          ${itemTotal.toFixed(2)} USD • {itemTotalBs} Bs
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Botón Asignar Precio para comercio si el ítem está pendiente */}
+                    {isStoreRole && isPricePending && (
+                      <button
+                        onClick={() => handleOpenAssignPrice(item)}
+                        className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 shadow-sm active:scale-95 animate-pulse"
+                      >
+                        <Scale className="w-3 h-3" /> Asignar Precio
+                      </button>
+                    )}
+
                     {isSoldOut && (
                       <span className="text-[9px] font-black bg-red-100 text-red-700 px-2 py-0.5 rounded-md uppercase">
                         Agotado
@@ -1212,18 +1785,29 @@ export default function OrderChatWindow({
                 ${orderDisplayTotal.toFixed(2)} USD
               </span>
               <span className="text-slate-500 text-[10px]">
-                ({bcvRate > 0 ? (orderDisplayTotal * bcvRate).toFixed(0) : '0'} Bs)
+                ({effectiveRate > 0 ? (orderDisplayTotal * effectiveRate).toFixed(0) : '0'} Bs)
               </span>
             </div>
 
-            {/* Quick stock confirm for store */}
-            {isStoreRole && !isStockConfirmed && (
-              <button
-                onClick={handleConfirmStoreStock}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-sm active:scale-95"
-              >
-                <CheckCircle className="w-3.5 h-3.5" /> Confirmar Stock
-              </button>
+            {/* Quick stock confirm & Add products for store */}
+            {isStoreRole && !isPaymentVerifiedByStore && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={handleOpenAddProductsModal}
+                  className="bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 font-black text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-2xs active:scale-95 transition-all"
+                  title="Agregar productos o ajustar cantidades en vivo"
+                >
+                  <Plus className="w-3.5 h-3.5" /> ➕ Agregar Productos
+                </button>
+                {!isStockConfirmed && (
+                  <button
+                    onClick={handleConfirmStoreStock}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-black text-[10px] px-2.5 py-1 rounded-xl flex items-center gap-1 shadow-sm active:scale-95"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" /> Confirmar Stock
+                  </button>
+                )}
+              </div>
             )}
           </div>
         </div>
@@ -1265,19 +1849,95 @@ export default function OrderChatWindow({
       {/* ACTION BAR: Client */}
       {currentUserRole === 'client' && (
         <div className="shrink-0 bg-white border-t border-slate-200">
-          {/* State 1: Client has not reported payment yet */}
-          {!isPaymentVerifiedByStore && !isPaymentReportedWaitingStore && (
-            <div className="bg-amber-50 p-2.5 px-4 flex items-center justify-between gap-2 border-b border-amber-200">
-              <div className="flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
-                <span className="text-xs font-bold text-amber-900">¿Realizaste el pago de tu pedido?</span>
+          {/* State 1A: Pre-stock validation (Fase 2.1) */}
+          {!isStockConfirmed && !isPaymentVerifiedByStore && (
+            <div className="bg-amber-50/95 border-b border-amber-200 p-3 px-4 flex flex-col gap-2.5">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                  <Clock className="w-4 h-4 animate-spin" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-black text-amber-950">Esperando confirmación del comercio...</p>
+                  <p className="text-[11px] font-bold text-amber-800 leading-snug">
+                    El comercio está revisando los productos, pesaje y montos. El pago se habilitará formalmente en cuanto confirmen el stock.
+                  </p>
+                </div>
               </div>
-              <button
-                onClick={() => setShowPayModal(true)}
-                className="bg-primary hover:bg-primary/90 text-slate-900 font-black px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0"
-              >
-                <CheckCircle className="w-4 h-4 text-slate-900" /> Reportar Pago
-              </button>
+
+              {/* Tarjeta inferior de pago deshabilitada con opacidad 50% (Regla de Oro: Bloqueo de Pago) */}
+              <div className="opacity-50 pointer-events-none bg-white border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-2xs select-none">
+                <div className="min-w-0 text-[11px] text-slate-500">
+                  <p className="font-bold flex items-center gap-1">
+                    <Lock className="w-3.5 h-3.5 text-slate-400" /> Pago bloqueado
+                  </p>
+                  <p className="text-[10px] text-slate-400">Esperando confirmación de stock</p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="bg-slate-100 text-slate-400 font-black px-3 py-2 rounded-xl text-xs flex items-center gap-1 border border-slate-200">
+                    <Copy className="w-3.5 h-3.5" /> Copiar Datos
+                  </span>
+                  <span className="bg-slate-200 text-slate-500 font-black px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-none">
+                    <CreditCard className="w-4 h-4" /> Reportar Pago
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* State 1B: Stock confirmed by store, awaiting payment report (Fase 3.1) */}
+          {isStockConfirmed && !isPaymentVerifiedByStore && !isPaymentReportedWaitingStore && (
+            <div className="bg-emerald-50/95 border-b border-emerald-200 p-3 px-4 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <CheckCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black text-emerald-950">¡Stock Confirmado por el Comercio!</p>
+                    <p className="text-[10px] font-bold text-emerald-700">Ya puedes realizar y reportar tu pago</p>
+                  </div>
+                </div>
+                <span className="text-xs font-black text-slate-900 bg-white border border-emerald-200 px-2 py-0.5 rounded-lg shadow-xs">
+                  ${orderDisplayTotal.toFixed(2)} USD {effectiveRate > 0 && `• ${(orderDisplayTotal * effectiveRate).toFixed(2)} Bs`}
+                </span>
+              </div>
+
+              {/* Bank Details & 1-click Copy */}
+              <div className="bg-white border border-emerald-200 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+                <div className="min-w-0 text-[11px] text-slate-700 leading-tight">
+                  <p className="font-black text-slate-900 truncate">
+                    {storeData?.payment_methods?.find((m: any) => m.type === 'Pago Móvil')?.bank || storeData?.pago_movil?.bank || storeData?.pagoMovil?.bank || 'Pago Móvil'}
+                  </p>
+                  <p className="text-slate-500 font-bold truncate">
+                    Tlf: {storeData?.payment_methods?.find((m: any) => m.type === 'Pago Móvil')?.phone || storeData?.phone || 'Ver en chat'} • RIF: {storeData?.payment_methods?.find((m: any) => m.type === 'Pago Móvil')?.rif || storeData?.rif || 'N/A'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      const pm = storeData?.payment_methods?.find((m: any) => m.type === 'Pago Móvil') || storeData?.pago_movil || storeData?.pagoMovil || {};
+                      const textToCopy = `Copie y pegue en su banco esto para realizar su pago:\n` +
+                        `Banco: ${pm.bank || 'Banesco / Provincial / Venezuela / Mercantil'}\n` +
+                        `Teléfono: ${pm.phone || storeData?.phone || ''}\n` +
+                        `Cédula/RIF: ${pm.rif || pm.idf || storeData?.rif || ''}\n` +
+                        `Titular: ${pm.owner || storeData?.name || ''}\n` +
+                        `Monto: ${(orderDisplayTotal * effectiveRate).toFixed(2)} Bs ($${orderDisplayTotal.toFixed(2)} USD)` +
+                        (liveOrder?.is_rate_overridden ? `\n(Tasa aplicada: ${effectiveRate.toFixed(2)} Bs/$)` : '');
+                      navigator.clipboard.writeText(textToCopy);
+                      toast.success("¡Datos bancarios copiados al portapapeles! Copie y pegue en su banco.", { duration: 4000 });
+                    }}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-black px-3 py-2 rounded-xl text-xs flex items-center gap-1 border border-slate-200 active:scale-95 transition-all"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-slate-600" /> Copiar Datos
+                  </button>
+                  <button
+                    onClick={() => setShowPayModal(true)}
+                    className="bg-primary hover:bg-primary/90 text-slate-900 font-black px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all"
+                  >
+                    <CreditCard className="w-4 h-4" /> Reportar Pago
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1340,11 +2000,36 @@ export default function OrderChatWindow({
         </div>
       )}
 
-      {/* ACTION BAR: Store / Cashier */}
+      {/* ACTION BAR: Store / Cashier / Admin */}
       {isStoreRole && (
         <div className="bg-white p-2.5 border-t border-slate-200 flex items-center gap-2 overflow-x-auto whitespace-nowrap scrollbar-hide shadow-sm z-10 w-full shrink-0">
           {!isPaymentVerifiedByStore && (
             <>
+              <button
+                onClick={handleOpenAddProductsModal}
+                className="shrink-0 bg-amber-500 hover:bg-amber-600 px-3.5 py-1.5 rounded-xl text-xs font-black text-slate-950 active:scale-95 transition-all flex items-center gap-1.5 shadow-sm"
+                title="Agregar productos al pedido en vivo"
+              >
+                <Plus className="w-4 h-4" /> ➕ Agregar Productos
+              </button>
+              {!isStockConfirmed && (
+                <button
+                  onClick={handleConfirmStoreStock}
+                  className="shrink-0 bg-blue-600 hover:bg-blue-700 px-3.5 py-1.5 rounded-xl text-xs font-black text-white active:scale-95 transition-all flex items-center gap-1.5 shadow-sm animate-pulse"
+                >
+                  <CheckCircle className="w-4 h-4" /> CONFIRMAR STOCK
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  setCustomRateInput(String(activeRate));
+                  setShowRateModal(true);
+                }}
+                className="shrink-0 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-black text-slate-800 active:scale-95 transition-all flex items-center gap-1"
+                title="Cambiar tasa del pedido"
+              >
+                💱 Tasa: {activeRate.toFixed(2)} Bs
+              </button>
               <button
                 onClick={handleSendPagoMovilInfo}
                 className="shrink-0 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl text-xs font-black text-blue-700 hover:bg-blue-100 active:scale-95 transition-all flex items-center gap-1"
@@ -1417,10 +2102,30 @@ export default function OrderChatWindow({
 
       {/* Input area */}
       <div className="p-3 bg-white border-t border-slate-200 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-        {isRecordingVoice ? (
+        {isChatLocked ? (
+          <div className="p-3.5 bg-slate-100 border border-slate-200 rounded-2xl text-center space-y-2">
+            <div className="flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
+              <Lock className="w-3.5 h-3.5 text-slate-500" />
+              <span>
+                {isEmergencyExhausted 
+                  ? "La emergencia ha sido finalizada y el chat ha concluido definitivamente." 
+                  : "Este pedido ha sido entregado. El chat se encuentra en modo solo lectura."}
+              </span>
+            </div>
+            {!isEmergencyExhausted && currentUserRole === 'client' && (
+              <button
+                type="button"
+                onClick={handleReactivateEmergency}
+                className="w-full py-2.5 bg-amber-400 hover:bg-amber-500 active:scale-95 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+              >
+                <span>📦 ¿Olvidaste algo? Reactivar chat de emergencia</span>
+              </button>
+            )}
+          </div>
+        ) : isRecordingVoice ? (
           <div className="flex items-center justify-between gap-3 bg-red-50 border-2 border-red-300 p-2.5 rounded-2xl animate-in fade-in">
             <div className="flex items-center gap-2.5">
-              <span className="w-3 h-3 rounded-full bg-red-600 animate-ping"></span>
+              <span className="w-3.5 h-3.5 rounded-full bg-red-600 animate-ping"></span>
               <span className="text-xs font-black text-red-700 font-mono">
                 Grabando nota de voz ({recordingSeconds}s)...
               </span>
@@ -1573,17 +2278,19 @@ export default function OrderChatWindow({
                 )}
               </div>
 
-              {/* Reference Code Input */}
+              {/* Reference Code Input (Fase 3.1: Strict Numeric-only Keyboard) */}
               <div>
                 <label className="font-black text-slate-700 block mb-1 text-[11px]">
-                  Número de Referencia:
+                  Número de Referencia (Solo Números):
                 </label>
                 <input
                   type="text"
-                  placeholder="Ej: 12345678 (Mínimo 4 dígitos)"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="Ej: 12345678 (Solo dígitos)"
                   value={payReferenceCode}
-                  onChange={(e) => setPayReferenceCode(e.target.value)}
-                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary focus:bg-white"
+                  onChange={(e) => setPayReferenceCode(e.target.value.replace(/\D/g, ''))}
+                  className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary focus:bg-white font-mono"
                 />
               </div>
 
@@ -1834,83 +2541,318 @@ export default function OrderChatWindow({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
-              {/* Free Delivery Commission Notice */}
-              <div className={`p-2.5 rounded-2xl border ${
-                qualifiesForFreeDelivery
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                  : 'bg-slate-100 border-slate-200 text-slate-700'
-              }`}>
-                <p className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Esquema de Envío:
-                </p>
-                <p className="text-[11px] font-bold mt-1">
-                  {qualifiesForFreeDelivery
-                    ? `🎁 Envío Gratis activo: El monto de compra ($${orderSubtotal.toFixed(2)}) califica. El negocio asume la tarifa del driver.`
-                    : `🛵 Tarifa de delivery calculada: $${Number(liveOrder?.delivery_fee || liveOrder?.deliveryFee || 2.0).toFixed(2)}.`}
-                </p>
-              </div>
-
-              {/* Drivers List */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-black text-slate-700 block">
-                  Conductores Registrados Disponibles:
-                </label>
-                {loadingDrivers ? (
-                  <div className="text-center py-6 text-slate-400">
-                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" />
-                    <span className="text-[10px] font-bold mt-1 block">Buscando conductores...</span>
-                  </div>
-                ) : driversList.length === 0 ? (
-                  <p className="text-slate-400 text-center py-4 text-[11px]">No hay repartidores conectados en este momento.</p>
-                ) : (
-                  driversList.map((drv: any) => {
-                    const isSelected = selectedDriverId === drv.id;
-                    const name = drv.name || drv.displayName || drv.full_name || 'Driver';
-                    return (
-                      <div
-                        key={drv.id}
-                        onClick={() => setSelectedDriverId(drv.id)}
-                        className={`p-2.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
-                          isSelected
-                            ? 'bg-primary/10 border-primary shadow-sm'
-                            : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <Bike className="w-4 h-4 text-slate-700" />
-                          <div>
-                            <p className="font-black text-slate-900 text-xs">{name}</p>
-                            <span className="text-[10px] text-slate-400 font-bold">{drv.vehicleType || drv.vehicle_type || 'Moto'}</span>
-                          </div>
-                        </div>
-                        <input
-                          type="radio"
-                          checked={isSelected}
-                          onChange={() => setSelectedDriverId(drv.id)}
-                          className="accent-primary"
-                        />
-                      </div>
-                    );
-                  })
-                )}
-              </div>
+            {/* Pestañas de Selección de Esquema de Despacho */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl mb-3">
+              <button
+                type="button"
+                onClick={() => setDispatchTab('network')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  dispatchTab === 'network'
+                    ? 'bg-white text-slate-950 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Bike className="w-3.5 h-3.5 text-primary" /> Red Un 2x3
+              </button>
+              <button
+                type="button"
+                onClick={() => setDispatchTab('external')}
+                className={`py-2 px-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+                  dispatchTab === 'external'
+                    ? 'bg-amber-500 text-white shadow-sm'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" /> Delivery Externo (Propio)
+              </button>
             </div>
 
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+              {dispatchTab === 'network' ? (
+                <>
+                  {/* Free Delivery Commission Notice */}
+                  <div className={`p-2.5 rounded-2xl border ${
+                    qualifiesForFreeDelivery
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-slate-100 border-slate-200 text-slate-700'
+                  }`}>
+                    <p className="text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" /> Esquema de Envío:
+                    </p>
+                    <p className="text-[11px] font-bold mt-1">
+                      {qualifiesForFreeDelivery
+                        ? `🎁 Envío Gratis activo: El monto de compra ($${orderSubtotal.toFixed(2)}) califica. El negocio asume la tarifa del driver.`
+                        : `🛵 Tarifa de delivery calculada: $${Number(liveOrder?.delivery_fee || liveOrder?.deliveryFee || 2.0).toFixed(2)}.`}
+                    </p>
+                  </div>
+
+                  {/* 1. BUSCADOR DE CONDUCTORES */}
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Buscar conductor por nombre..."
+                        value={driverSearchQuery}
+                        onChange={(e) => setDriverSearchQuery(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-8 py-2 text-xs font-bold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary"
+                      />
+                      {driverSearchQuery && (
+                        <button
+                          type="button"
+                          onClick={() => setDriverSearchQuery('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px] hover:bg-slate-300"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <label className="text-[11px] font-black text-slate-700 block mt-2">
+                      Conductores Registrados Disponibles:
+                    </label>
+
+                    {loadingDrivers ? (
+                      <div className="text-center py-6 text-slate-400">
+                        <Loader2 className="w-5 h-5 animate-spin mx-auto text-primary" />
+                        <span className="text-[10px] font-bold mt-1 block">Buscando conductores...</span>
+                      </div>
+                    ) : (() => {
+                      const filteredList = driversList.filter((drv: any) => {
+                        const name = (drv.name || drv.displayName || drv.full_name || '').toLowerCase();
+                        return name.includes(driverSearchQuery.toLowerCase());
+                      });
+
+                      if (filteredList.length === 0) {
+                        return (
+                          <p className="text-slate-400 text-center py-4 text-[11px]">
+                            {driverSearchQuery ? 'No se encontraron conductores con ese nombre.' : 'No hay repartidores conectados en este momento.'}
+                          </p>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-2">
+                          {filteredList.map((drv: any) => {
+                            const isSelected = selectedDriverId === drv.id;
+                            const name = drv.name || drv.displayName || drv.full_name || 'Driver';
+                            const photoUrl = drv.selfie_url || drv.documents?.selfieUrl || drv.selfieUrl || drv.photo_url || drv.photoURL || drv.avatar_url;
+                            const vehicleLabel = drv.vehicleType || drv.vehicle_type || drv.vehicle_model || 'Moto';
+
+                            return (
+                              <div
+                                key={drv.id}
+                                onClick={() => setSelectedDriverId(drv.id)}
+                                className={`p-2.5 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                                  isSelected
+                                    ? 'bg-primary/10 border-primary shadow-sm'
+                                    : 'bg-slate-50 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  {/* 2. FOTO DE PERFIL DEL CONDUCTOR (Avatar circular) */}
+                                  <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-200 border border-slate-300 shrink-0 flex items-center justify-center">
+                                    {photoUrl ? (
+                                      <img 
+                                        src={photoUrl} 
+                                        alt={name} 
+                                        className="w-10 h-10 rounded-full object-cover" 
+                                        loading="lazy" 
+                                        decoding="async" 
+                                      />
+                                    ) : (
+                                      <span className="font-black text-slate-600 text-xs">{name.charAt(0).toUpperCase()}</span>
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <p className="font-black text-slate-900 text-xs truncate">{name}</p>
+                                    <span className="text-[10px] text-slate-500 font-bold capitalize block truncate">{vehicleLabel}</span>
+                                  </div>
+                                </div>
+                                <input
+                                  type="radio"
+                                  checked={isSelected}
+                                  onChange={() => setSelectedDriverId(drv.id)}
+                                  className="accent-primary shrink-0"
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </>
+              ) : (
+                /* 3. PANEL DELIVERY EXTERNO / PROPIO DEL NEGOCIO */
+                <div className="space-y-3">
+                  <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-amber-950 space-y-1">
+                    <p className="font-black text-xs flex items-center gap-1.5 text-amber-800">
+                      <Store className="w-4 h-4" /> Despacho con Delivery Externo (Propio)
+                    </p>
+                    <p className="text-[11px] font-medium leading-relaxed">
+                      El pedido será entregado directamente por el personal del negocio. No se asignará driver de la red ni se activará GPS de conductor.
+                    </p>
+                  </div>
+
+                  {/* Recuadro Destacado con TODA la Información del Cliente */}
+                  {(() => {
+                    const clientFullName = liveOrder?.client_name || liveOrder?.customer_name || liveOrder?.user_name || liveOrder?.userName || orderInfo?.client_name || orderInfo?.userName || 'Cliente';
+                    const clientRawPhone = liveOrder?.client_phone || liveOrder?.customer_phone || liveOrder?.user_phone || liveOrder?.phone || orderInfo?.client_phone || orderInfo?.user_phone || '';
+                    const clientWrittenAddress = liveOrder?.delivery_address || liveOrder?.address?.address || liveOrder?.address?.name || liveOrder?.shipping_address || orderInfo?.deliveryAddress || orderInfo?.delivery_address || 'Dirección de entrega especificada en el pedido';
+                    const clientAddressRef = liveOrder?.address?.reference || liveOrder?.delivery_reference || liveOrder?.notes || orderInfo?.address?.reference || '';
+                    const clientGpsCoords = liveOrder?.delivery_coords || liveOrder?.address?.coords || null;
+                    const cleanPhone = clientRawPhone ? clientRawPhone.replace(/\D/g, '') : '';
+                    const waPhone = cleanPhone.startsWith('58') ? cleanPhone : cleanPhone.startsWith('0') ? `58${cleanPhone.slice(1)}` : cleanPhone ? `58${cleanPhone}` : '';
+                    const itemsList = liveOrder?.items || orderItems || [];
+                    const finalTotalUsd = Number(liveOrder?.total || liveOrder?.total_amount || orderSubtotal || 0);
+
+                    return (
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-3">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Datos del Cliente para Despacho:</p>
+
+                        {/* Nombre del Cliente */}
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center shrink-0 text-slate-600">
+                            <User className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-[9px] font-bold text-slate-400 uppercase block">Nombre Completo</span>
+                            <p className="font-black text-slate-900 text-xs truncate">{clientFullName}</p>
+                          </div>
+                        </div>
+
+                        {/* Teléfono del Cliente */}
+                        <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl border border-slate-200">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Phone className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <div className="min-w-0">
+                              <span className="text-[9px] font-bold text-slate-400 uppercase block">Teléfono</span>
+                              <p className="font-black text-slate-900 text-xs truncate">{clientRawPhone || 'No registrado'}</p>
+                            </div>
+                          </div>
+                          {clientRawPhone && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(clientRawPhone);
+                                  toast.success('Teléfono copiado');
+                                }}
+                                className="w-7 h-7 bg-slate-100 hover:bg-slate-200 rounded-lg flex items-center justify-center text-slate-600"
+                                title="Copiar Teléfono"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                              </button>
+                              <a
+                                href={`tel:${clientRawPhone}`}
+                                className="w-7 h-7 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center"
+                                title="Llamar"
+                              >
+                                <Phone className="w-3.5 h-3.5" />
+                              </a>
+                              {waPhone && (
+                                <a
+                                  href={`https://wa.me/${waPhone}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="w-7 h-7 bg-emerald-600 text-white rounded-lg flex items-center justify-center hover:bg-emerald-700"
+                                  title="WhatsApp"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Dirección Escrita Explícita */}
+                        <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1">
+                          <div className="flex items-center gap-1.5 text-slate-700 font-black text-[11px]">
+                            <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                            <span>Dirección de Entrega:</span>
+                          </div>
+                          <p className="text-xs font-bold text-slate-900 leading-snug">
+                            {clientWrittenAddress}
+                          </p>
+                          {clientAddressRef && (
+                            <p className="text-[10px] text-amber-700 font-bold bg-amber-50 p-1.5 rounded-lg border border-amber-100">
+                              📍 Ref: {clientAddressRef}
+                            </p>
+                          )}
+                          {clientGpsCoords?.lat && clientGpsCoords?.lng && (
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${clientGpsCoords.lat},${clientGpsCoords.lng}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-black text-blue-600 hover:underline pt-0.5"
+                            >
+                              <ExternalLink className="w-3 h-3" /> Ver ubicación GPS en Google Maps
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Detalle Resumido de Productos y Monto */}
+                        <div className="p-2.5 bg-white rounded-xl border border-slate-200 space-y-1.5">
+                          <div className="flex items-center justify-between pb-1 border-b border-slate-100 text-[10px] font-black text-slate-400 uppercase">
+                            <span>Productos a despachar</span>
+                            <span>{itemsList.length} items</span>
+                          </div>
+                          <div className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                            {itemsList.map((item: any, idx: number) => (
+                              <div key={idx} className="flex justify-between items-center text-[11px]">
+                                <span className="font-bold text-slate-800 truncate mr-2">
+                                  {item.quantity || 1}x {item.name || item.title || 'Producto'}
+                                </span>
+                                <span className="font-black text-slate-900 shrink-0">
+                                  ${(Number(item.price || 0) * (item.quantity || 1)).toFixed(2)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center text-xs font-black">
+                            <span className="text-slate-700">Total Pedido:</span>
+                            <span className="text-slate-950">${finalTotalUsd.toFixed(2)} USD ({(finalTotalUsd * bcvRate).toFixed(2)} Bs)</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
+
+            {/* Botón de Acción Principal */}
             <div className="pt-3 border-t border-slate-100 mt-2">
-              <button
-                onClick={handleStoreDispatchOrder}
-                disabled={dispatchingStore || !selectedDriverId}
-                className="w-full bg-slate-950 hover:bg-slate-900 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
-              >
-                {dispatchingStore ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <>
-                    <Bike className="w-4 h-4 text-primary" /> Confirmar y Despachar
-                  </>
-                )}
-              </button>
+              {dispatchTab === 'network' ? (
+                <button
+                  onClick={handleStoreDispatchOrder}
+                  disabled={dispatchingStore || !selectedDriverId}
+                  className="w-full bg-slate-950 hover:bg-slate-900 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {dispatchingStore ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Bike className="w-4 h-4 text-primary" /> Confirmar y Despachar
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleStoreDispatchExternal}
+                  disabled={dispatchingStore}
+                  className="w-full bg-amber-500 hover:bg-amber-600 text-white font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 disabled:opacity-50 active:scale-95 transition-all"
+                >
+                  {dispatchingStore ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" /> Confirmar Despacho Externo (Listo)
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2017,7 +2959,7 @@ export default function OrderChatWindow({
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       {(p.image || p.image_url) && (
-                        <img src={p.image || p.image_url} alt={p.name} className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                        <img src={p.image || p.image_url} alt={p.name} loading="lazy" decoding="async" className="w-10 h-10 rounded-xl object-cover shrink-0" />
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-xs font-black text-slate-800 truncate group-hover:text-slate-950">{p.name}</p>
@@ -2030,6 +2972,362 @@ export default function OrderChatWindow({
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Asignar Precio / Peso para Ítems Pendientes (Comercio) */}
+      {assignPriceModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center">
+                  <Scale className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="font-black text-sm text-slate-900">Asignar Precio / Peso</h4>
+                  <p className="text-[10px] text-slate-500 font-bold">Definir precio final acordado</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAssignPriceModal(null)}
+                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-3">
+              <p className="font-black text-xs text-amber-950">{assignPriceModal.item.name}</p>
+              <p className="text-[10px] text-amber-700 font-bold">
+                Cantidad: {assignPriceModal.item.quantity || 1}x
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-black text-slate-700 block mb-1">
+                  Precio Unitario ($ USD) *
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 font-black text-slate-400 text-xs">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0.01"
+                    value={assignPriceModal.price || ''}
+                    onChange={(e) => setAssignPriceModal({
+                      ...assignPriceModal,
+                      price: parseFloat(e.target.value) || 0
+                    })}
+                    placeholder="0.00"
+                    className="w-full pl-7 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-black text-slate-700 block mb-1">
+                  Peso o Detalle (Opcional, ej: 1.150 kg)
+                </label>
+                <input
+                  type="text"
+                  value={assignPriceModal.weight || ''}
+                  onChange={(e) => setAssignPriceModal({
+                    ...assignPriceModal,
+                    weight: e.target.value
+                  })}
+                  placeholder="Ej: 1.250 kg"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              {Number(assignPriceModal.price) > 0 && (
+                <div className="bg-slate-50 rounded-xl p-2.5 text-xs border border-slate-100 flex items-center justify-between font-bold">
+                  <span className="text-slate-500">Subtotal ítem:</span>
+                  <span className="font-black text-slate-900">
+                    ${(Number(assignPriceModal.price) * (assignPriceModal.item.quantity || 1)).toFixed(2)} USD
+                    {effectiveRate > 0 && ` (${((Number(assignPriceModal.price) * (assignPriceModal.item.quantity || 1)) * effectiveRate).toFixed(0)} Bs)`}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setAssignPriceModal(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isSavingPrice || Number(assignPriceModal.price) <= 0}
+                onClick={handleSaveAssignPrice}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 shadow-md active:scale-95"
+              >
+                {isSavingPrice ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                Guardar Precio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ➕ Agregar / Modificar Productos del Pedido en Vivo (Comercio / Admin) */}
+      {showAddProductsModal && (
+        <div className="fixed inset-0 z-[250] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-950 flex items-center justify-center font-black">
+                  <Plus className="w-5 h-5 text-amber-700" />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-900 text-base">Modificar Carrito en Vivo</h4>
+                  <p className="text-[11px] text-slate-500 font-bold">Agrega productos o ajusta cantidades al pedido</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddProductsModal(false)}
+                className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-500 hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+              {/* Buscador de Productos */}
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar producto por nombre o categoría..."
+                  value={addProductsSearch}
+                  onChange={(e) => setAddProductsSearch(e.target.value)}
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-900 outline-none focus:border-amber-500 focus:bg-white transition-all"
+                />
+              </div>
+
+              {/* Sección 1: Productos Actuales en el Pedido */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Productos actuales en el pedido ({orderItems.length})
+                </p>
+                <div className="space-y-1.5">
+                  {orderItems.map((it: any) => {
+                    const currentQty = selectedExistingQty[it.id] !== undefined ? selectedExistingQty[it.id] : (Number(it.quantity) || 1);
+                    return (
+                      <div key={it.id} className="flex items-center justify-between p-2.5 bg-slate-50 rounded-2xl border border-slate-100 gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className={`text-xs font-black truncate ${currentQty === 0 ? 'line-through text-slate-400' : 'text-slate-900'}`}>
+                            {it.name}
+                          </p>
+                          <p className="text-[10px] font-bold text-slate-500">
+                            ${Number(it.price || 0).toFixed(2)} USD c/u
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl p-1 shadow-2xs shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedExistingQty(prev => ({ ...prev, [it.id]: Math.max(0, currentQty - 1) }))}
+                            className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-xs font-black text-slate-700 active:scale-90"
+                          >
+                            -
+                          </button>
+                          <span className="w-6 text-center text-xs font-black text-slate-900">{currentQty}</span>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedExistingQty(prev => ({ ...prev, [it.id]: currentQty + 1 }))}
+                            className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-xs font-black text-slate-700 active:scale-90"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Sección 2: Catálogo de la Tienda */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Catálogo disponible del negocio
+                </p>
+                {loadingCatalog ? (
+                  <div className="py-8 text-center">
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto text-amber-500" />
+                    <p className="text-xs font-bold text-slate-400 mt-1">Cargando productos...</p>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                    {addProductsCatalog
+                      .filter(p => !addProductsSearch.trim() || p.name.toLowerCase().includes(addProductsSearch.toLowerCase()) || (p.category && p.category.toLowerCase().includes(addProductsSearch.toLowerCase())))
+                      .map((p) => {
+                        const qty = selectedAddItems[p.id] || 0;
+                        return (
+                          <div key={p.id} className="flex items-center justify-between p-2.5 bg-white rounded-2xl border border-slate-200/80 gap-2 hover:border-amber-300 transition-all">
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              {(p.image || p.image_url) ? (
+                                <img src={p.image || p.image_url} alt={p.name} className="w-9 h-9 rounded-xl object-cover shrink-0 border border-slate-100" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 shrink-0">
+                                  <Store className="w-4 h-4" />
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-black text-slate-900 truncate">{p.name}</p>
+                                <p className="text-[11px] font-black text-emerald-600">${Number(p.price || 0).toFixed(2)} USD</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl p-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setSelectedAddItems(prev => ({ ...prev, [p.id]: Math.max(0, qty - 1) }))}
+                                className="w-6 h-6 rounded-lg bg-white hover:bg-slate-200 flex items-center justify-center text-xs font-black text-slate-700 active:scale-90"
+                              >
+                                -
+                              </button>
+                              <span className="w-6 text-center text-xs font-black text-slate-900">{qty}</span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedAddItems(prev => ({ ...prev, [p.id]: qty + 1 }))}
+                                className="w-6 h-6 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 flex items-center justify-center text-xs font-black active:scale-90"
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer con Totales Recalculados */}
+            {(() => {
+              const previewExistingSubtotal = (orderItems || []).reduce((sum, it) => {
+                const q = selectedExistingQty[it.id] !== undefined ? selectedExistingQty[it.id] : (Number(it.quantity) || 1);
+                return sum + (Number(it.price || 0) * q);
+              }, 0);
+              const previewAddedSubtotal = Object.entries(selectedAddItems).reduce((sum, [pId, q]) => {
+                const prod = addProductsCatalog.find(p => p.id === pId);
+                return sum + (Number(prod?.price || 0) * q);
+              }, 0);
+              const deliveryFee = Number(liveOrder?.deliveryFee || liveOrder?.delivery_fee || orderInfo?.deliveryFee || 0);
+              const previewTotalUsd = previewExistingSubtotal + previewAddedSubtotal + deliveryFee;
+              const previewTotalBs = previewTotalUsd * activeRate;
+
+              return (
+                <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200/80 shrink-0 space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nuevo Total Estimado</p>
+                      <p className="text-xl font-black text-slate-900">${previewTotalUsd.toFixed(2)} USD</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Equivalente en Bs ({activeRate.toFixed(2)} Bs/$)</p>
+                      <p className="text-lg font-black text-emerald-700">Bs. {previewTotalBs.toLocaleString('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddProductsModal(false)}
+                      className="px-4 py-3 rounded-2xl border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-100 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleConfirmAddProducts}
+                      className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-3 rounded-2xl text-xs flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+                    >
+                      <Check className="w-4 h-4" /> Confirmar y Actualizar Pedido
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: 💱 Modificar y Sincronizar Tasa de Cambio (Comercio / Admin) */}
+      {showRateModal && (
+        <div className="fixed inset-0 z-[250] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-primary/20 text-slate-900 flex items-center justify-center font-black">
+                  💱
+                </div>
+                <div>
+                  <h4 className="font-black text-sm text-slate-900">Ajustar Tasa de Cambio</h4>
+                  <p className="text-[10px] text-slate-500 font-bold">Se reflejará en vivo al cliente</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRateModal(false)}
+                className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-[11px] font-black text-slate-700 block mb-1">
+                  Nueva Tasa de Cambio (Bs por 1 USD)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="1"
+                  value={customRateInput}
+                  onChange={(e) => setCustomRateInput(e.target.value)}
+                  placeholder={String(activeRate)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-primary"
+                />
+              </div>
+
+              {Number(customRateInput) > 0 && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs space-y-1">
+                  <div className="flex justify-between font-bold text-slate-600">
+                    <span>Total USD:</span>
+                    <span>${orderDisplayTotal.toFixed(2)} USD</span>
+                  </div>
+                  <div className="flex justify-between font-black text-emerald-800 text-sm pt-1 border-t border-emerald-200">
+                    <span>Nuevo Total Bs:</span>
+                    <span>Bs. {(orderDisplayTotal * Number(customRateInput)).toLocaleString('es-VE', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowRateModal(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-xs font-black text-slate-600 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={!Number(customRateInput) || Number(customRateInput) <= 0}
+                onClick={() => handleUpdateOrderRate(Number(customRateInput))}
+                className="flex-1 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-xs font-black flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all"
+              >
+                <Check className="w-4 h-4 text-primary" /> Guardar Tasa
+              </button>
             </div>
           </div>
         </div>
