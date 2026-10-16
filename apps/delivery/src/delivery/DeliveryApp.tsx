@@ -141,6 +141,7 @@ function DeliveryRoutes() {
 }
 
 export default function DeliveryApp() {
+    const [splashFinished, setSplashFinished] = useState(false);
     const isDeliveryPath = window.location.pathname.startsWith('/delivery');
     const isDeliverySubdomain = window.location.hostname.startsWith('delivery.') || window.location.hostname.startsWith('driver.');
     const basename = isDeliveryPath && !isDeliverySubdomain ? '/delivery' : '/';

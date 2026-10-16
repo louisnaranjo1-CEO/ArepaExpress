@@ -232,7 +232,14 @@ export default function CpanelApp() {
 
     // Paso 1: Si no está autenticado, mostrar login
     if (!isAuthenticated) {
-        return <Login onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} />;
+        return (
+            <>
+                {!splashFinished && (
+                    <SplashScreen onFinish={() => setSplashFinished(true)} />
+                )}
+                <Login onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} />
+            </>
+        );
     }
 
     // Paso 2: Si está autenticado pero el dispositivo NO está autorizado, mostrar bloqueo de dispositivo

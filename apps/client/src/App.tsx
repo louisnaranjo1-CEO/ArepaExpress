@@ -173,6 +173,7 @@ function AppContent() {
 }
 
 export default function ClientApp() {
+    const [splashFinished, setSplashFinished] = useState(false);
     return (
         <Router>
             <Toaster position="top-center" reverseOrder={false} />

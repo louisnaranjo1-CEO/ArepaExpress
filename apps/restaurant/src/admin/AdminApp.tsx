@@ -1,5 +1,5 @@
 import SplashScreen from '../components/SplashScreen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
@@ -83,6 +83,7 @@ function AdminRoutes() {
 }
 
 export default function AdminApp() {
+    const [splashFinished, setSplashFinished] = useState(false);
     const isDevAdminPath = window.location.pathname.startsWith('/admin');
     const isAdminSubdomain = window.location.hostname.startsWith('restaurante.') || window.location.hostname.startsWith('negocios.');
 

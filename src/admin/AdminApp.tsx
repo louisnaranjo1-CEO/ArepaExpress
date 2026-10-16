@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import SplashScreen from '../components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -66,6 +67,7 @@ function AdminRoutes() {
 }
 
 export default function AdminApp() {
+    const [splashFinished, setSplashFinished] = useState(false);
     const isDevAdminPath = window.location.pathname.startsWith('/admin');
     const isAdminSubdomain = window.location.hostname.startsWith('restaurante.');
 

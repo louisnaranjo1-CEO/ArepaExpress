@@ -1,12 +1,13 @@
 import SplashScreen from '../components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import React from 'react';
+import React, { useState } from 'react';
 import CashierLogin from './pages/CashierLogin';
 import CashierDashboard from './pages/CashierDashboard';
 import CashierPOS from './pages/CashierPOS';
 import { Toaster } from 'react-hot-toast';
 
 export default function CashierApp() {
+    const [splashFinished, setSplashFinished] = useState(false);
     const isSubpathCaja = window.location.pathname.startsWith('/caja');
     const basename = isSubpathCaja ? '/caja' : '/';
 

@@ -21,6 +21,7 @@ const WaiterProtectedRoute = () => {
 };
 
 export default function WaiterApp() {
+    const [splashFinished, setSplashFinished] = useState(false);
     return (
         <Router>
             {!splashFinished && (
