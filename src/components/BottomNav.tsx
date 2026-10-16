@@ -46,7 +46,7 @@ export default function BottomNav() {
           .select('id, status, service_category, order_id, driver_paid, payment_status')
           .in('status', ['searching', 'accepted', 'arriving', 'in_progress', 'verifying_payment', 'completed'])
           .order('created_at', { ascending: false })
-          .limit(1);
+          .limit(3);
 
         if (rawUserId) {
           trQuery = trQuery.or(`user_id.eq.${rawUserId}${localTransportId ? `,id.eq.${localTransportId}` : ''}`);
@@ -59,25 +59,37 @@ export default function BottomNav() {
         if (trQuery) {
           const { data: trData } = await trQuery;
           if (trData && trData.length > 0) {
-            const tr = trData[0];
-            const isCompletedPending = tr.status === 'completed' && (!tr.driver_paid || tr.payment_status !== 'confirmed');
-            
-            // Si está completado pero ya confirmado, no mostrar como activo
-            if (tr.status === 'completed' && !isCompletedPending) {
-              // no-op, continue to orders
-            } else {
-              const isFood = tr.service_category === 'food_delivery' || Boolean(tr.order_id);
-              const isMandado = tr.service_category === 'muchacho_mandado';
-              const url = isFood && tr.order_id 
-                ? `/track/${tr.order_id}` 
+            const activeTr = trData.find((tr: any) => {
+              const isDismissed = localStorage.getItem(`dismissed_trip_${tr.id}`) === 'true';
+              if (isDismissed) return false;
+              const isPaymentConfirmed = tr.payment_status === 'confirmed' || tr.payment_status === 'paid' || tr.driver_paid === true;
+              if (tr.status === 'completed') {
+                return !isPaymentConfirmed;
+              }
+              return ['searching', 'accepted', 'arriving', 'in_progress', 'verifying_payment'].includes(tr.status);
+            });
+
+            if (activeTr) {
+              const isCompletedPending = activeTr.status === 'completed';
+              const isFood = activeTr.service_category === 'food_delivery' || Boolean(activeTr.order_id);
+              const isMandado = activeTr.service_category === 'muchacho_mandado';
+              const url = isFood && activeTr.order_id 
+                ? `/track/${activeTr.order_id}` 
                 : isMandado 
-                ? `/mandado/tracking/${tr.id}` 
-                : `/taxi/track/${tr.id}`;
+                ? `/mandado/tracking/${activeTr.id}` 
+                : `/taxi/track/${activeTr.id}`;
               setActiveService({
                 url,
                 label: isCompletedPending ? '💳 Por Pagar' : isFood ? 'Delivery' : isMandado ? 'Mandado' : 'En Viaje'
               });
               return;
+            } else {
+              if (localTransportId) {
+                const tr = trData.find((t: any) => t.id === localTransportId);
+                if (tr && (tr.status === 'completed' || tr.status === 'cancelled')) {
+                  localStorage.removeItem('active_transport_req_id');
+                }
+              }
             }
           }
         }
@@ -136,8 +148,11 @@ export default function BottomNav() {
       })
       .subscribe();
 
+    window.addEventListener('transport_cycle_closed', checkActiveService);
+
     return () => {
       supabase.removeChannel(channel);
+      window.removeEventListener('transport_cycle_closed', checkActiveService);
     };
   }, [user?.id, (userData as any)?.id]);
 

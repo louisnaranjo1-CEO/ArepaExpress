@@ -41,15 +41,14 @@ export default function PendingPaymentTripBanner() {
         }
 
         try {
-            // Buscar viajes completados donde el chofer aún no ha sido pagado o el estatus no es confirmed
+            // Buscar viajes completados recientes para validar estatus de pago
             const { data, error } = await supabase
                 .from('transport_requests')
                 .select('*')
                 .eq('user_id', uid)
                 .eq('status', 'completed')
-                .or('driver_paid.is.false,driver_paid.is.null,payment_status.neq.confirmed,payment_status.is.null')
                 .order('completed_at', { ascending: false })
-                .limit(1);
+                .limit(3);
 
             if (error) {
                 console.warn("Error fetching pending payment trip:", error);
@@ -57,17 +56,18 @@ export default function PendingPaymentTripBanner() {
             }
 
             if (data && data.length > 0) {
-                const trip = data[0];
-                setPendingTrip(trip);
+                // Encontrar un viaje que realmente NO haya sido confirmado ni descartado
+                const trip = data.find((t: any) => {
+                    const isDismissed = localStorage.getItem(`dismissed_trip_${t.id}`) === 'true';
+                    if (isDismissed) return false;
+                    const isConfirmed = t.payment_status === 'confirmed' || t.payment_status === 'paid' || t.driver_paid === true;
+                    return !isConfirmed;
+                });
 
-                // Si recién pasó a confirmed por acción del conductor
-                if (trip.payment_status === 'confirmed' || trip.driver_paid === true) {
-                    if (!trip.rating) {
-                        // Abrir modal para calificar por última vez
-                        setIsPaymentModalOpen(true);
-                    } else {
-                        setPendingTrip(null);
-                    }
+                if (trip) {
+                    setPendingTrip(trip);
+                } else {
+                    setPendingTrip(null);
                 }
             } else {
                 setPendingTrip(null);
@@ -82,7 +82,17 @@ export default function PendingPaymentTripBanner() {
     useEffect(() => {
         fetchPendingPaymentTrip();
 
-        if (!uid) return;
+        const handleClosed = () => {
+            setPendingTrip(null);
+            setIsPaymentModalOpen(false);
+        };
+        window.addEventListener('transport_cycle_closed', handleClosed);
+
+        if (!uid) {
+            return () => {
+                window.removeEventListener('transport_cycle_closed', handleClosed);
+            };
+        }
 
         // Suscripción en tiempo real a transport_requests para este usuario
         const channel = supabase
@@ -98,26 +108,21 @@ export default function PendingPaymentTripBanner() {
                 (payload: any) => {
                     const newTrip = payload.new;
                     if (newTrip) {
+                        const isDismissed = localStorage.getItem(`dismissed_trip_${newTrip.id}`) === 'true';
+                        const isConfirmed = newTrip.payment_status === 'confirmed' || newTrip.payment_status === 'paid' || newTrip.driver_paid === true || isDismissed;
                         const isCompleted = newTrip.status === 'completed';
-                        const isNotConfirmed = !newTrip.driver_paid || newTrip.payment_status !== 'confirmed';
 
-                        if (isCompleted && isNotConfirmed) {
+                        if (isCompleted && !isConfirmed) {
                             setPendingTrip(newTrip);
-                        } else if (newTrip.payment_status === 'confirmed' || newTrip.driver_paid === true) {
-                            // Conductor confirmó pago
-                            vibrate([40, 60, 40]);
-                            toast.success("¡Tu conductor ha confirmado el Pago Recibido! 🎉", { icon: '✅', duration: 4500 });
-                            
-                            if (!newTrip.rating) {
-                                // Si faltaba calificar, abrimos modal para estrellas
-                                setPendingTrip(newTrip);
-                                setIsPaymentModalOpen(true);
-                            } else {
-                                setPendingTrip(null);
-                                setIsPaymentModalOpen(false);
+                        } else if (isConfirmed) {
+                            // Conductor confirmó pago - Liberar inmediatamente al usuario
+                            setPendingTrip(null);
+                            setIsPaymentModalOpen(false);
+                            if (payload.old && (!payload.old.driver_paid && payload.old.payment_status !== 'confirmed')) {
+                                vibrate([40, 60, 40]);
+                                toast.success("¡Tu conductor ha confirmado el Pago Recibido! 🎉", { icon: '✅', duration: 4500 });
                             }
                         } else if (!isCompleted) {
-                            // Si cambió a otro estado o cancelado
                             fetchPendingPaymentTrip();
                         }
                     }
@@ -127,19 +132,22 @@ export default function PendingPaymentTripBanner() {
 
         return () => {
             supabase.removeChannel(channel);
+            window.removeEventListener('transport_cycle_closed', handleClosed);
         };
     }, [uid, fetchPendingPaymentTrip]);
 
     if (!pendingTrip || loading) return null;
 
+    const isDismissed = localStorage.getItem(`dismissed_trip_${pendingTrip.id}`) === 'true';
+    const isConfirmed = pendingTrip.payment_status === 'confirmed' || pendingTrip.payment_status === 'paid' || pendingTrip.driver_paid === true || isDismissed;
+
+    // Si ya está confirmado por el chofer o descartado, el usuario está libre: NUNCA mostrar banner de pago pendiente
+    if (isConfirmed) return null;
+
     const amountUsd = parseFloat(pendingTrip.price || pendingTrip.fare || pendingTrip.total || 0);
     const amountBs = bcvRate > 0 ? (amountUsd * bcvRate).toFixed(2) : amountUsd.toFixed(2);
     const driverName = pendingTrip.driver_name || 'tu conductor';
     const isReported = pendingTrip.payment_status === 'reported' || Boolean(pendingTrip.payment_ref || pendingTrip.payment_proof_url);
-    const isConfirmed = pendingTrip.payment_status === 'confirmed' || pendingTrip.driver_paid === true;
-
-    // Si ya está confirmado y ya fue calificado, no mostrar banner
-    if (isConfirmed && pendingTrip.rating) return null;
 
     return (
         <>

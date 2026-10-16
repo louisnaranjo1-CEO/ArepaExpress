@@ -161,8 +161,17 @@ export default function TripPaymentModal({
     const idf = pm.idf || pm.cedula || 'Sin cédula';
     const driverName = trip.driver_name || 'Tu Conductor';
 
-    const isConfirmed = trip.payment_status === 'confirmed' || trip.driver_paid === true;
+    const isConfirmed = trip.payment_status === 'confirmed' || trip.payment_status === 'paid' || trip.driver_paid === true;
     const isReported = (trip.payment_status === 'reported' || Boolean(trip.payment_ref || trip.payment_proof_url)) && !isEditingReported;
+
+    const handleCloseModal = () => {
+        if (isConfirmed && trip?.id) {
+            localStorage.setItem(`dismissed_trip_${trip.id}`, 'true');
+            localStorage.removeItem('active_transport_req_id');
+            window.dispatchEvent(new CustomEvent('transport_cycle_closed', { detail: { id: trip.id } }));
+        }
+        onClose();
+    };
 
     const handleCopy = (text: string, key: string) => {
         if (!text) return;
@@ -391,7 +400,7 @@ export default function TripPaymentModal({
 
                         <button
                             type="button"
-                            onClick={onClose}
+                            onClick={handleCloseModal}
                             className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center active:scale-95 transition-all"
                         >
                             <X className="w-5 h-5" />
@@ -760,7 +769,7 @@ export default function TripPaymentModal({
                         {isConfirmed && (
                             <button
                                 type="button"
-                                onClick={onClose}
+                                onClick={handleCloseModal}
                                 className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 active:scale-98 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg flex items-center justify-center gap-2 transition-all"
                             >
                                 <span>Entendido / Cerrar</span>

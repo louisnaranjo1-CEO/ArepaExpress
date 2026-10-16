@@ -32,13 +32,8 @@ export default function TransportRequests() {
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all'); // all, verifying_payment, finding_driver, in_progress, completed, cancelled
     const [searchTerm, setSearchTerm] = useState('');
-    const [view, setView] = useState<'viajes' | 'contabilidad' | 'comprobantes'>('viajes');
+    const [view, setView] = useState<'viajes' | 'comprobantes'>('viajes');
     const [selectedChatRequest, setSelectedChatRequest] = useState<string | null>(null);
-
-    const [showPayoutModal, setShowPayoutModal] = useState(false);
-    const [selectedDriver, setSelectedDriver] = useState<any>(null);
-    const [payoutReceipt, setPayoutReceipt] = useState<File | null>(null);
-    const [payoutLoading, setPayoutLoading] = useState(false);
 
     // Map States
     const [showMapModal, setShowMapModal] = useState(false);
@@ -302,52 +297,7 @@ export default function TransportRequests() {
         return true;
     });
 
-    const getDriverStats = () => {
-        const stats: Record<string, {
-            driverId: string;
-            driverName: string;
-            driverPhone: string;
-            weeklyDebt: number;
-            lifetimeEarnings: number;
-            unpaidTrips: any[];
-            totalTripsCount: number;
-            adminProfit: number;
-        }> = {};
 
-        validRequests.filter(r => r && r.status === 'completed').forEach(req => {
-            const { driverId, driverName, driverPhone, driverPayout, clientTotal, driverPaid } = req;
-            const payout = parseFloat(driverPayout || req.price || 0);
-            const total = parseFloat(clientTotal || req.price || 0);
-            const profit = total - payout;
-
-            if (driverId) {
-                if (!stats[driverId]) {
-                    stats[driverId] = {
-                        driverId,
-                        driverName: driverName || 'Desconocido',
-                        driverPhone: driverPhone || '',
-                        weeklyDebt: 0,
-                        lifetimeEarnings: 0,
-                        unpaidTrips: [],
-                        totalTripsCount: 0,
-                        adminProfit: 0
-                    };
-                }
-
-                stats[driverId].totalTripsCount += 1;
-                stats[driverId].adminProfit += profit;
-
-                if (driverPaid) {
-                    stats[driverId].lifetimeEarnings += payout;
-                } else {
-                    stats[driverId].weeklyDebt += payout;
-                    stats[driverId].unpaidTrips.push(req);
-                }
-            }
-        });
-
-        return Object.values(stats);
-    };
 
     const getStatusBadge = (status: string) => {
         const norm = (status || '').toUpperCase().trim();
@@ -388,72 +338,7 @@ export default function TransportRequests() {
         }
     };
 
-    const handleProcessPayout = async () => {
-        if (!selectedDriver || selectedDriver.unpaidTrips.length === 0) return;
-        if (!payoutReceipt) {
-            toast.error("Debes adjuntar el comprobante de pago");
-            return;
-        }
 
-        setPayoutLoading(true);
-        try {
-            // Upload receipt
-            const ext = payoutReceipt.name.split('.').pop() || 'jpg';
-            const filePath = `payout_receipts/${selectedDriver.driverId}_${Date.now()}.${ext}`;
-            const { error: uploadError } = await supabase.storage
-                .from('store_assets')
-                .upload(filePath, payoutReceipt, { upsert: true });
-
-            if (uploadError) throw uploadError;
-
-            const { data: { publicUrl: receiptUrl } } = supabase.storage
-                .from('store_assets')
-                .getPublicUrl(filePath);
-
-            // Update all unpaid trips
-            const tripIds = selectedDriver.unpaidTrips.map((trip: any) => trip.id);
-            if (tripIds.length > 0) {
-                const { error: updateError } = await supabase
-                    .from('transport_requests')
-                    .update({
-                        driver_paid: true,
-                        driverPaid: true,
-                        payout_receipt_url: receiptUrl,
-                        payoutReceiptUrl: receiptUrl,
-                        payout_date: new Date().toISOString(),
-                        payoutDate: new Date().toISOString()
-                    })
-                    .in('id', tripIds);
-
-                if (updateError) throw updateError;
-            }
-
-            // Notify driver
-            const bsAmount = selectedDriver.weeklyDebt * bcvRate;
-            await supabase.from('notifications').insert([{
-                user_id: selectedDriver.driverId,
-                userId: selectedDriver.driverId,
-                title: '¡Pago Recibido!',
-                body: `Se ha procesado tu pago de $${selectedDriver.weeklyDebt.toFixed(2)} (${bsAmount.toFixed(2)} Bs). Revisa el comprobante en tu historial.`,
-                read: false,
-                created_at: new Date().toISOString(),
-                createdAt: new Date().toISOString(),
-                payout_receipt_url: receiptUrl,
-                payoutReceiptUrl: receiptUrl
-            }]);
-
-            toast.success(`Pago procesado con éxito para ${selectedDriver.driverName}`);
-            setShowPayoutModal(false);
-            setSelectedDriver(null);
-            setPayoutReceipt(null);
-            fetchRequests();
-        } catch (error) {
-            console.error("Error processing payout:", error);
-            toast.error("Hubo un error al procesar el pago");
-        } finally {
-            setPayoutLoading(false);
-        }
-    };
 
     if (loading) {
         return (
@@ -469,8 +354,8 @@ export default function TransportRequests() {
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                 <div>
-                    <h1 className="text-2xl font-black text-slate-900">Gestión y Contabilidad Taxis</h1>
-                    <p className="text-slate-500 font-medium mt-1">Supervisa viajes y administra pagos a choferes.</p>
+                    <h1 className="text-2xl font-black text-slate-900">Gestión de Viajes (Taxis)</h1>
+                    <p className="text-slate-500 font-medium mt-1">Supervisa viajes en tiempo real y consulta comprobantes.</p>
                 </div>
                 <div className="flex bg-slate-100 p-1 rounded-xl">
                     <button
@@ -478,12 +363,6 @@ export default function TransportRequests() {
                         className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'viajes' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                     >
                         Viajes
-                    </button>
-                    <button
-                        onClick={() => setView('contabilidad')}
-                        className={`px-6 py-2 rounded-lg font-bold text-sm transition-all ${view === 'contabilidad' ? 'bg-primary text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        Contabilidad
                     </button>
                     <button
                         onClick={() => setView('comprobantes')}
@@ -921,64 +800,6 @@ export default function TransportRequests() {
                         )}
                     </div>
                 </>
-            ) : view === 'contabilidad' ? (
-                <div className="space-y-4">
-                    {getDriverStats().length === 0 ? (
-                        <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 flex flex-col items-center">
-                            <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-400 mb-4">
-                                <DollarSign className="w-8 h-8" />
-                            </div>
-                            <h3 className="text-xl font-bold text-slate-900">No hay datos de contabilidad</h3>
-                            <p className="text-slate-500 mt-2">Aún no hay viajes completados por choferes.</p>
-                        </div>
-                    ) : (
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {getDriverStats().map((stat) => (
-                                <div key={stat.driverId} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col">
-                                    <div className="flex items-center gap-4 mb-6">
-                                        <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center text-slate-900 shrink-0">
-                                            <User className="w-6 h-6" />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-black text-slate-900 text-lg leading-tight">{stat.driverName}</h3>
-                                            <p className="text-xs font-bold text-slate-500 mt-0.5">{stat.driverPhone || 'Sin teléfono'}</p>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-4 mb-4">
-                                        <div className="bg-rose-50 p-3 rounded-2xl border border-rose-100">
-                                            <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Deuda</p>
-                                            <DualPrice usdAmount={stat.weeklyDebt} usdClassName="text-lg font-black text-rose-700" showDivider={false} className="flex flex-col" />
-                                        </div>
-                                        <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100">
-                                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Pagado</p>
-                                            <DualPrice usdAmount={stat.lifetimeEarnings} usdClassName="text-lg font-black text-emerald-700" showDivider={false} className="flex flex-col" />
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 mb-6">
-                                        <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">Comisión de la aplicación</p>
-                                        <DualPrice usdAmount={stat.adminProfit} usdClassName="text-2xl font-black text-amber-700" showDivider={false} className="flex flex-col" />
-                                        <p className="text-[10px] font-bold text-amber-600 mt-1 uppercase tracking-tighter">Total de {stat.totalTripsCount} viajes</p>
-                                    </div>
-
-                                    <button
-                                        disabled={stat.weeklyDebt === 0}
-                                        onClick={() => {
-                                            setSelectedDriver(stat);
-                                            setShowPayoutModal(true);
-                                        }}
-                                        className="w-full bg-slate-900 text-white font-black py-4 rounded-2xl shadow-xl shadow-slate-900/20 disabled:opacity-50 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-auto"
-                                    >
-                                        <DollarSign className="w-5 h-5" />
-                                        <span>Liquidar Deuda</span>
-                                        <DualPrice usdAmount={stat.weeklyDebt} usdClassName="font-black" showDivider={false} className="flex gap-1 items-baseline ml-1" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
             ) : (
                 <div className="space-y-6">
                     <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
@@ -1117,85 +938,6 @@ export default function TransportRequests() {
                 )}
             </AnimatePresence>
 
-            {/* Payout Modal */}
-            {showPayoutModal && selectedDriver && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] z-50 overflow-y-auto">
-                    <div className="bg-white rounded-3xl w-full max-w-md my-auto relative shadow-2xl overflow-hidden">
-                        {/* Header */}
-                        <div className="bg-slate-900 p-6 text-center relative">
-                            <button
-                                onClick={() => {
-                                    setShowPayoutModal(false);
-                                    setSelectedDriver(null);
-                                    setPayoutReceipt(null);
-                                }}
-                                className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors"
-                            >
-                                <XCircle className="w-8 h-8" />
-                            </button>
-                            <div className="w-20 h-20 bg-primary rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-slate-800 shadow-xl">
-                                <DollarSign className="w-10 h-10 text-white" />
-                            </div>
-                            <h2 className="text-2xl font-black text-white">Liquidar Deuda</h2>
-                            <p className="text-slate-400 font-medium mt-1">Sube el comprobante de pago</p>
-                        </div>
-
-                        <div className="p-6">
-                            {/* Driver Summary */}
-                            <div className="bg-slate-50 rounded-2xl p-4 mb-6 border border-slate-100 text-center">
-                                <p className="text-sm font-bold text-slate-500 mb-1">Chofer: <span className="text-slate-900">{selectedDriver.driverName}</span></p>
-                                <DualPrice usdAmount={selectedDriver.weeklyDebt} usdClassName="text-3xl font-black text-emerald-600" showDivider={true} className="flex flex-col items-center" />
-                                <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{selectedDriver.unpaidTrips.length} Viajes pendientes</p>
-                            </div>
-
-                            {/* File Upload */}
-                            <div className="mb-8">
-                                <label className="block text-sm font-bold text-slate-700 mb-2">
-                                    Comprobante de Transferencia/Pago
-                                </label>
-                                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-slate-300 border-dashed rounded-2xl cursor-pointer bg-slate-50 hover:bg-slate-100/50 transition-colors">
-                                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                                        {payoutReceipt ? (
-                                            <div className="flex flex-col items-center text-emerald-600">
-                                                <CheckCircle2 className="w-8 h-8 mb-2" />
-                                                <p className="text-sm font-bold">{payoutReceipt.name}</p>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <div className="w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center mb-3">
-                                                    <Upload className="w-6 h-6 text-slate-900" />
-                                                </div>
-                                                <p className="mb-1 text-sm text-slate-500 font-medium">Click para subir foto</p>
-                                                <p className="text-xs text-slate-400 font-bold">PNG, JPG o JPEG</p>
-                                            </>
-                                        )}
-                                    </div>
-                                    <input
-                                        type="file"
-                                        className="hidden"
-                                        accept="image/*"
-                                        onChange={(e) => setPayoutReceipt(e.target.files?.[0] || null)}
-                                    />
-                                </label>
-                            </div>
-
-                            <button
-                                onClick={handleProcessPayout}
-                                disabled={payoutLoading || !payoutReceipt}
-                                className="flex items-center justify-center w-full bg-primary text-slate-900 font-black py-4 rounded-xl hover:bg-primary transition-colors shadow-xl shadow-primary/20 disabled:opacity-50"
-                            >
-                                {payoutLoading ? (
-                                    <div className="w-6 h-6 border-4 border-white border-t-transparent rounded-full animate-spin"></div>
-                                ) : (
-                                    <>
-                                        Confirmar Pago
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
             {/* Chat Modal for Admin */}
             {selectedChatRequest && (
                 <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100] z-50">

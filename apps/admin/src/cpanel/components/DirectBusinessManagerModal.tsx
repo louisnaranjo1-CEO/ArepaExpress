@@ -177,8 +177,7 @@ export default function DirectBusinessManagerModal({ isOpen, onClose, business, 
         try {
             const { error } = await supabase.from('push_campaigns').update({
                 scheduled_at: newDateTime.toISOString(),
-                was_rescheduled: true,
-                updated_at: new Date().toISOString()
+                was_rescheduled: true
             }).eq('id', rescheduleCamp.id);
 
             if (error) throw error;

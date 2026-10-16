@@ -176,8 +176,7 @@ export default function MarketingManager() {
                 status: 'active',
                 activated_at: new Date().toISOString(),
                 scheduled_at: newScheduledAt,
-                was_auto_rescheduled: wasAutoRescheduled,
-                updated_at: new Date().toISOString()
+                was_auto_rescheduled: wasAutoRescheduled
             }).eq('id', camp.id);
 
             if (error) throw error;
@@ -251,8 +250,7 @@ export default function MarketingManager() {
         try {
             const { error } = await supabase.from('push_campaigns').update({
                 scheduled_at: newDateTime.toISOString(),
-                was_rescheduled: true,
-                updated_at: new Date().toISOString()
+                was_rescheduled: true
             }).eq('id', selectedCampForReschedule.id);
 
             if (error) throw error;
@@ -303,8 +301,7 @@ export default function MarketingManager() {
         if (!confirm("¿Rechazar esta campaña por pago inválido?")) return;
         try {
             const { error } = await supabase.from('push_campaigns').update({
-                status: 'rejected_payment',
-                updated_at: new Date().toISOString()
+                status: 'rejected_payment'
             }).eq('id', campaignId);
             if (error) throw error;
             toast.success("Campaña rechazada");

@@ -746,6 +746,25 @@ export default function TransportTracker() {
         setSelectedTags(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]);
     };
 
+    const handleFinalizeAndExit = async () => {
+        if (requestId) {
+            try {
+                await supabase.from('transport_requests').update({
+                    driver_paid: true,
+                    payment_status: 'confirmed',
+                    payment_confirmed_at: new Date().toISOString()
+                }).eq('id', requestId);
+            } catch (e) {
+                console.warn("Error finalizing trip cycle:", e);
+            }
+            localStorage.setItem(`dismissed_trip_${requestId}`, 'true');
+        }
+        localStorage.removeItem('active_transport_req_id');
+        window.dispatchEvent(new CustomEvent('transport_cycle_closed', { detail: { id: requestId } }));
+        toast.success("¡Ciclo de viaje finalizado con éxito!", { icon: '✅' });
+        navigate('/');
+    };
+
     const handleRateTrip = async () => {
         if (!requestId || rating === 0) return;
         setSubmittingRating(true);
@@ -1254,7 +1273,7 @@ export default function TransportTracker() {
                             serviceCategory={request?.service_category}
                             requestStatus={request?.status}
                             completedAt={request?.completed_at || (request as any)?.updated_at}
-                            allowChatOnCompleted={!request?.driver_paid || request?.payment_status !== 'confirmed'}
+                            allowChatOnCompleted={!(request?.payment_status === 'confirmed' || request?.payment_status === 'paid' || request?.driver_paid === true)}
                         />
                     </div>
                 </div>
@@ -1891,10 +1910,7 @@ export default function TransportTracker() {
                                 </div>
                             </div>
                             <button
-                                onClick={() => {
-                                    localStorage.removeItem('active_transport_req_id');
-                                    navigate('/');
-                                }}
+                                onClick={handleFinalizeAndExit}
                                 className="w-full py-3 bg-slate-900 hover:bg-slate-800 active:scale-95 text-yellow-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2"
                             >
                                 <span>Finalizar y Salir</span>
@@ -2448,6 +2464,9 @@ export default function TransportTracker() {
                         <XCircle className="w-4 h-4" /> Cancelar Viaje
                     </button>
                 )}
+            </div>
+
+            {/* ── MODALS (Mounted outside bottom sheet to prevent clipping) ── */}
 
                 {/* Cancellation Modal with 50% penalty warning if arriving, or 0% penalty for quick transport */}
                 {showCancelModal && (() => {
@@ -2726,10 +2745,10 @@ export default function TransportTracker() {
 
                 {/* Modal de Consejos de Seguridad y Confianza */}
                 {showTipsModal && (
-                    <div className="fixed inset-0 z-[120] bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in pointer-events-auto">
-                        <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] overflow-y-auto shadow-2xl border border-slate-100 p-5 space-y-4 animate-scale-in">
-                            {/* Header */}
-                            <div className="flex items-start justify-between">
+                    <div className="fixed inset-0 z-[120] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in pointer-events-auto">
+                        <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden animate-scale-in">
+                            {/* Header (Fijo superior) */}
+                            <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-amber-50/60">
                                 <div className="flex items-center gap-3">
                                     <div className="w-12 h-12 rounded-2xl bg-amber-400 text-slate-950 flex items-center justify-center font-black text-xl shadow-md">
                                         🛡️
@@ -2741,14 +2760,14 @@ export default function TransportTracker() {
                                 </div>
                                 <button
                                     onClick={() => setShowTipsModal(false)}
-                                    className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-sm font-black transition-colors"
+                                    className="w-8 h-8 rounded-full bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 flex items-center justify-center text-sm font-black transition-colors shadow-xs"
                                 >
                                     ✕
                                 </button>
                             </div>
 
-                            {/* List of Tips */}
-                            <div className="space-y-3 text-xs">
+                            {/* List of Tips (Cuerpo desplazable independiente) */}
+                            <div className="p-5 overflow-y-auto flex-1 space-y-3 text-xs overscroll-contain">
                                 <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200/80 flex items-start gap-3">
                                     <div className="w-7 h-7 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 font-black text-xs shadow-xs">
                                         1
@@ -2810,19 +2829,19 @@ export default function TransportTracker() {
                                 </div>
                             </div>
 
-                            {/* Close Button */}
-                            <button
-                                type="button"
-                                onClick={() => setShowTipsModal(false)}
-                                className="w-full py-3.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-xl transition-all"
-                            >
-                                Entendido, ¡confío en el servicio!
-                            </button>
+                            {/* Close Button (Fijo inferior) */}
+                            <div className="p-4 border-t border-slate-100 bg-white shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTipsModal(false)}
+                                    className="w-full py-3.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-xl transition-all"
+                                >
+                                    Entendido, ¡confío en el servicio!
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
-
-            </div>
         </div>
     );
 }

@@ -371,16 +371,35 @@ export default function Taxi() {
                 const { data: reqs } = await query;
 
                 if (reqs && reqs.length > 0) {
-                    const activeReq = reqs[0];
-                    const isPendingCompletion = activeReq.status === 'completed' && (!activeReq.driver_paid || activeReq.payment_status !== 'confirmed');
-                    
-                    if (isPendingCompletion || ['accepted', 'arriving', 'in_progress'].includes(activeReq.status)) {
-                        setActiveService(activeReq);
-                        navigate(`/taxi/track/${activeReq.id}`);
-                        return;
-                    } else if (activeReq.status !== 'completed') {
-                        setActiveService(activeReq);
+                    // Find a genuinely active trip or a completed trip where payment is NOT yet confirmed
+                    const trulyActiveReq = reqs.find((r: any) => {
+                        const isDismissed = localStorage.getItem(`dismissed_trip_${r.id}`) === 'true';
+                        if (isDismissed) return false;
+
+                        const isPaymentConfirmed = r.payment_status === 'confirmed' || r.payment_status === 'paid' || r.driver_paid === true;
+                        if (r.status === 'completed') {
+                            return !isPaymentConfirmed;
+                        }
+                        return ['searching', 'verifying_payment', 'accepted', 'arriving', 'in_progress'].includes(r.status);
+                    });
+
+                    if (trulyActiveReq) {
+                        const isPendingCompletion = trulyActiveReq.status === 'completed';
+                        if (isPendingCompletion || ['accepted', 'arriving', 'in_progress'].includes(trulyActiveReq.status)) {
+                            setActiveService(trulyActiveReq);
+                            navigate(`/taxi/track/${trulyActiveReq.id}`);
+                            return;
+                        } else {
+                            setActiveService(trulyActiveReq);
+                        }
                     } else {
+                        // All trips are completed & confirmed or dismissed. Clear stale active_transport_req_id
+                        if (activeLocalId) {
+                            const stale = reqs.find((r: any) => r.id === activeLocalId);
+                            if (stale && (stale.status === 'completed' || stale.status === 'cancelled')) {
+                                localStorage.removeItem('active_transport_req_id');
+                            }
+                        }
                         setActiveService(null);
                     }
                 } else {
@@ -399,8 +418,11 @@ export default function Taxi() {
             })
             .subscribe();
 
+        window.addEventListener('transport_cycle_closed', checkActive);
+
         return () => {
             supabase.removeChannel(channel);
+            window.removeEventListener('transport_cycle_closed', checkActive);
         };
     }, [user, navigate]);
 
