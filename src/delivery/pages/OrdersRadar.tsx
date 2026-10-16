@@ -601,10 +601,20 @@ export default function OrdersRadar() {
         let channel: any;
 
         const fetchAvailableTransport = async () => {
+            const isOnline = driverProfile?.is_online ?? driverProfile?.isOnline ?? true;
+            const isCommissionBlocked = driverProfile?.commission_status === 'blocked' || isSuspended;
+
+            if (!isOnline || isCommissionBlocked) {
+                setAvailableTransport([]);
+                setLoading(false);
+                return;
+            }
+
             const { data } = await supabase
                 .from('transport_requests')
                 .select('*')
-                .in('status', ['searching', 'pending']);
+                .eq('status', 'searching')
+                .is('driver_id', null);
             
             if (data) {
                 const drvVehicle = (driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto').toLowerCase();
@@ -613,11 +623,16 @@ export default function OrdersRadar() {
                 const isCarDriver = drvVehicle === 'carro' || drvVehicle === 'carro_ejecutivo' || drvVehicle === 'ejecutivo' || drvVehicle === 'auto';
                 const isComfortDriver = Boolean(
                     !isMotoDriver &&
-                    Number(driverProfile?.vehicle_year || driverProfile?.vehicleYear || 0) >= 2016
+                    (Boolean(driverProfile?.is_comfort_eligible || driverProfile?.isComfortEligible) || Number(driverProfile?.vehicle_year || driverProfile?.vehicleYear || 0) >= 2016)
                 );
                 const myId = user?.id || (user as any)?.uid;
 
                 const reqs = data.filter((req: any) => {
+                    // Si el conductor omitió/rechazó esta solicitud localmente
+                    if (dismissedRequestIds.includes(req.id)) {
+                        return false;
+                    }
+
                     // Si el viaje ya fue tomado por otro conductor, no mostrar
                     if (req.driver_id && req.driver_id !== myId) {
                         return false;
@@ -1151,26 +1166,44 @@ export default function OrdersRadar() {
             const vehicleModel = driverProfile?.vehicle_model || driverProfile?.vehicleModel || null;
             const vehiclePlate = driverProfile?.vehicle_plate || driverProfile?.plate || null;
             const myId = user.uid || (user as any).id;
+            const drvVehicle = (driverProfile?.vehicle_type || driverProfile?.vehicleType || 'moto').toLowerCase();
+
+            const paymentMobile = driverProfile?.payment_mobile || driverProfile?.paymentInfo || (driverProfile?.bank_name ? {
+                bank: driverProfile.bank_name,
+                phone: driverProfile.phone || driverPhone,
+                cedula: driverProfile.cedula || driverProfile.dni
+            } : null);
+
+            const vehicleDetails = {
+                model: vehicleModel,
+                plate: vehiclePlate,
+                color: driverProfile?.vehicle_color || driverProfile?.color || null,
+                year: driverProfile?.vehicle_year || driverProfile?.vehicleYear || null,
+                type: drvVehicle
+            };
 
             const { data, error } = await supabase
                 .from('transport_requests')
                 .update({ 
                     status: 'accepted', 
                     driver_id: myId, 
+                    assigned_driver_id: myId,
                     driver_name: driverName,
                     driver_photo: realSelfie,
                     driver_phone: driverPhone,
                     vehicle_model: vehicleModel,
                     vehicle_plate: vehiclePlate,
+                    driver_vehicle_details: vehicleDetails,
+                    driver_payment_info: paymentMobile,
                     driver_assigned_at: new Date().toISOString() 
                 })
                 .eq('id', reqId)
-                .in('status', ['searching', 'pending'])
                 .is('driver_id', null)
+                .eq('status', 'searching')
                 .select();
                 
             if (error || !data || data.length === 0) {
-                toast.error("Este viaje ya fue tomado por otro conductor.");
+                toast.error("Otro conductor ya tomó este viaje.");
                 setAvailableTransport(prev => prev.filter(t => t.id !== reqId));
                 if (incomingDispatch?.id === reqId) {
                     setIncomingDispatch(null);
@@ -1183,10 +1216,85 @@ export default function OrdersRadar() {
                     setIncomingDispatch(null);
                 }
                 setActiveTransport(data[0]);
+
+                // Sincronizar orden comercial si existe
+                if (data[0].order_id) {
+                    try {
+                        await supabase.from('orders').update({
+                            delivery_driver_id: myId,
+                            driver_id: myId,
+                            driver_name: driverName,
+                            driver_photo: realSelfie,
+                            driver_assigned_at: new Date().toISOString()
+                        }).eq('id', data[0].order_id);
+                    } catch (orderErr) {
+                        console.warn("Error sync order on accept:", orderErr);
+                    }
+                }
             }
         } catch (error) {
             console.error("Error al aceptar viaje:", error);
             toast.error("Error al procesar la aceptación del viaje.");
+        } finally {
+            setProcessingAction(null);
+        }
+    };
+
+    const handleDriverCancelTransport = async (reason?: string) => {
+        if (!activeTransport || processingAction) return;
+        const currentId = activeTransport.id;
+        setProcessingAction('cancel_active');
+        try {
+            // 1. Agregar a dismissed/ignored localmente para no volvérselo a mostrar a este chofer
+            setDismissedRequestIds(prev => {
+                if (prev.includes(currentId)) return prev;
+                const updated = [...prev, currentId];
+                try {
+                    sessionStorage.setItem('driver_dismissed_requests', JSON.stringify(updated));
+                } catch (e) {}
+                return updated;
+            });
+
+            // 2. Regresar la solicitud a status: 'searching' en Supabase y limpiar conductor asignado
+            const { error } = await supabase
+                .from('transport_requests')
+                .update({
+                    status: 'searching',
+                    driver_id: null,
+                    assigned_driver_id: null,
+                    driver_name: null,
+                    driver_phone: null,
+                    driver_photo: null,
+                    driver_vehicle_details: null,
+                    driver_assigned_at: null,
+                    driver_payment_info: null,
+                    cancel_reason: reason || 'Liberado por el conductor para otro chofer',
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', currentId);
+
+            if (error) throw error;
+
+            // 3. Notificar por canal de broadcast si está escuchando
+            try {
+                const notifyChannel = supabase.channel(`call_${currentId}`);
+                notifyChannel.subscribe((subStatus) => {
+                    if (subStatus === 'SUBSCRIBED') {
+                        notifyChannel.send({
+                            type: 'broadcast',
+                            event: 'driver_cancelled_reassign',
+                            payload: { requestId: currentId }
+                        });
+                    }
+                });
+            } catch (e) {}
+
+            setActiveTransport(null);
+            toast("Has cancelado el viaje. La solicitud regresó al radar para otros conductores.", { icon: '↩️', duration: 4000 });
+            fetchAvailableTransport();
+        } catch (err: any) {
+            console.error("Error al cancelar viaje como conductor:", err);
+            toast.error("No se pudo cancelar el viaje. Intenta nuevamente.");
         } finally {
             setProcessingAction(null);
         }
@@ -1230,6 +1338,19 @@ export default function OrdersRadar() {
                 updatePayload.driver_payout = Math.max(0, fareNum - comm);
             }
             await supabase.from('transport_requests').update(updatePayload).eq('id', activeTransport.id);
+
+            // Sincronizar orden comercial si existe
+            if (activeTransport.order_id) {
+                try {
+                    await supabase.from('orders').update({
+                        status: 'on_the_way',
+                        dispatched_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString()
+                    }).eq('id', activeTransport.order_id);
+                } catch (orderErr) {
+                    console.warn("Error sync order on in_progress:", orderErr);
+                }
+            }
         } finally {
             setProcessingAction(null);
         }
@@ -1414,24 +1535,25 @@ export default function OrdersRadar() {
 
             // Increment driver total_trips & debit commission_debt
             try {
-                const cur = Number(driverProfile?.total_trips || 0) + 1;
-                const curDebt = Number(driverProfile?.commission_debt || 0);
-                const newDebt = parseFloat((curDebt + comm).toFixed(2));
-                await supabase.from('drivers').update({
-                    total_trips: cur,
-                    commission_debt: newDebt
-                }).eq('id', user!.uid);
+                if (!activeTransport.commission_debited) {
+                    const cur = Number(driverProfile?.total_trips || 0) + 1;
+                    const curDebt = Number(driverProfile?.commission_debt || 0);
+                    const newDebt = parseFloat((curDebt + comm).toFixed(2));
+                    await supabase.from('drivers').update({
+                        total_trips: cur,
+                        commission_debt: newDebt
+                    }).eq('id', user!.uid);
+                }
             } catch (e) {
                 console.error("Error updating driver commission debt:", e);
             }
 
-            const orderTargetId = activeTransport.order_id || activeTransport.id;
-            if (activeTransport.type === 'food_delivery' && orderTargetId) {
+            if (activeTransport.order_id) {
                 try {
                     await supabase.from('orders').update({
                         status: 'delivered',
                         delivered_at: new Date().toISOString()
-                    }).eq('id', orderTargetId);
+                    }).eq('id', activeTransport.order_id);
                 } catch (orderError) {
                     console.error("Error al actualizar estado de orden:", orderError);
                 }
@@ -1468,6 +1590,7 @@ export default function OrdersRadar() {
                 console.warn("RPC confirm_service_payment_and_award_points error, fallback to direct update:", error);
                 await supabase.from('transport_requests').update({
                     payment_status: 'confirmed',
+                    driver_paid: true,
                     payment_confirmed_at: new Date().toISOString()
                 }).eq('id', item.id);
             }
@@ -2050,6 +2173,22 @@ export default function OrdersRadar() {
                                 </button>
                             );
                         })()}
+
+                        {(activeTransport.status === 'accepted' || activeTransport.status === 'arriving') && (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (window.confirm("¿Seguro que deseas cancelar este viaje? Regresará al radar para que lo tome otro compañero.")) {
+                                        handleDriverCancelTransport();
+                                    }
+                                }}
+                                disabled={processingAction !== null}
+                                className="w-full py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs uppercase tracking-wider rounded-xl border border-rose-200 active:scale-98 transition-all flex items-center justify-center gap-1.5"
+                            >
+                                <X className="w-3.5 h-3.5" />
+                                <span>No puedo realizar este viaje (Liberar para otro chofer)</span>
+                            </button>
+                        )}
                         {activeTransport.status === 'in_progress' && (
                             <button
                                 onClick={handleTransportComplete}

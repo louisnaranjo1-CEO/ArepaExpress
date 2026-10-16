@@ -63,10 +63,10 @@ export const DEFAULT_PRICING_SETTINGS: SmartPricingSettings = {
             driverCutPercent: 85 // Conductor recibe $2.55 base + $0.68/km
         },
         ejecutivo: {
-            baseFare: 5.00,
+            baseFare: 3.80,
             baseKm: 2.0,
-            pricePerKm: 1.20,
-            driverCutPercent: 85 // Conductor recibe $4.25 base + $1.02/km
+            pricePerKm: 0.95,
+            driverCutPercent: 85 // Conductor recibe $3.23 base + $0.80/km
         }
     },
     dynamicFactors: {

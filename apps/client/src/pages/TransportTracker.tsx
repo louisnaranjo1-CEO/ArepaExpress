@@ -753,37 +753,48 @@ export default function TransportTracker() {
                 const penaltyPrice = Math.round((numPrice * 0.5) * 100) / 100;
                 const penaltyCommission = Math.round((numComm * 0.5) * 100) / 100;
                 await supabase.from('transport_requests').update({
-                    status: 'cancelled',
+                    status: 'canceled',
+                    canceled_by: 'client',
+                    cancel_reason: 'Cancelado por cliente con chofer en sitio (penalidad 50%)',
                     cancellation_penalty_applied: true,
                     price: penaltyPrice,
                     total: penaltyPrice,
                     commission_amount: penaltyCommission,
-                    cancellation_reason: 'Cancelado por cliente con chofer en sitio (penalidad 50%)',
-                    cancelled_at: new Date().toISOString(),
+                    canceled_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 }).eq('id', requestId);
                 toast.error("Viaje cancelado con penalidad del 50% por cancelación con conductor en punto de partida.");
             } else if (isQuickTransport) {
                 await supabase.from('transport_requests').update({
-                    status: 'cancelled',
+                    status: 'canceled',
+                    canceled_by: 'client',
+                    cancel_reason: 'Cancelado en punto de recogida (Transporte Rápido - Tarifa no acordada)',
                     cancellation_penalty_applied: false,
                     price: 0,
                     total: 0,
                     fare: 0,
                     commission_amount: 0,
-                    cancellation_reason: 'Cancelado en punto de recogida (Transporte Rápido - Tarifa no acordada)',
-                    cancelled_at: new Date().toISOString(),
+                    canceled_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 }).eq('id', requestId);
                 toast.success("Solicitud de Transporte Rápido cancelada sin penalidad.");
             } else {
                 await supabase.from('transport_requests').update({
-                    status: 'cancelled',
-                    cancellation_reason: 'Cancelado por el cliente',
-                    cancelled_at: new Date().toISOString(),
+                    status: 'canceled',
+                    canceled_by: 'client',
+                    cancel_reason: 'Cancelado por el cliente',
+                    canceled_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 }).eq('id', requestId);
                 toast.success("Viaje cancelado.");
+            }
+
+            // Liberar disponibilidad del chofer si estaba asignado
+            const drvId = request.driver_id || request.assigned_driver_id;
+            if (drvId) {
+                try {
+                    await supabase.from('drivers').update({ availability: 'available' }).eq('id', drvId);
+                } catch (e) {}
             }
 
             // Notificar inmediatamente al canal del viaje para que la app del conductor se libere en tiempo real

@@ -1175,33 +1175,50 @@ export default function Taxi() {
     const calculateDriverTripPrice = useCallback((driver: NearbyDriver, tripDistanceKm?: number, isComfortCategory = false): number => {
         const dist = tripDistanceKm !== undefined ? tripDistanceKm : (routeInfo ? routeInfo.distance : 1);
         const fares = driver.driverFares;
+        const isMoto = driver.vehicleType === 'moto';
         const isComfort = isComfortCategory || (driver.vehicleType === 'carro' && (Boolean(driver.isComfortEligible) || Number(driver.vehicleYear) >= 2016));
         const isNight = isNightTime();
+
+        // Safe baseline rates per segment (minimum per-km floor so prices don't stay at flat $1.50 for long distances):
+        const minPerKm = isMoto ? 0.40 : isComfort ? 0.85 : 0.65;
+        const defaultBase = isMoto ? 1.80 : isComfort ? 3.60 : 2.80;
 
         if (fares) {
             let base: number;
             let baseKm: number;
             let perKm: number;
+            const isFlatModel = fares.model === 'flat' || fares.pricing_model === 'flat';
 
             if (isComfort && (Number(fares.comfort_base_fare_day) >= 0.50 || Number(fares.comfort_base_fare) >= 0.50)) {
                 if (isNight) {
-                    base = Number(fares.comfort_base_fare_night ?? fares.comfort_base_fare ?? 3.0);
+                    base = Number(fares.comfort_base_fare_night ?? fares.comfort_base_fare ?? 3.60);
                     baseKm = Math.min(6, Math.max(1, Number(fares.comfort_base_distance_night ?? fares.base_distance_night ?? fares.base_km ?? 2)));
-                    perKm = Number(fares.comfort_extra_km_price_night ?? fares.comfort_per_km_fare ?? 1.2);
+                    perKm = Number(fares.comfort_extra_km_price_night ?? fares.comfort_per_km_fare ?? 0.95);
                 } else {
-                    base = Number(fares.comfort_base_fare_day ?? fares.comfort_base_fare ?? 2.5);
+                    base = Number(fares.comfort_base_fare_day ?? fares.comfort_base_fare ?? 3.20);
                     baseKm = Math.min(6, Math.max(1, Number(fares.comfort_base_distance_day ?? fares.base_distance_day ?? fares.base_km ?? 2)));
-                    perKm = Number(fares.comfort_extra_km_price_day ?? fares.comfort_per_km_fare ?? 1.0);
+                    perKm = Number(fares.comfort_extra_km_price_day ?? fares.comfort_per_km_fare ?? 0.85);
                 }
             } else {
                 if (isNight) {
-                    base = Number(fares.base_fare_night ?? (Number(fares.base_fare_day ?? fares.base_fare ?? 1.5) * 1.25));
+                    base = Number(fares.base_fare_night ?? (Number(fares.base_fare_day ?? fares.base_fare ?? defaultBase) * 1.25));
                     baseKm = Math.min(6, Math.max(1, Number(fares.base_distance_night ?? fares.base_distance_day ?? fares.base_km ?? 2)));
-                    perKm = Number(fares.extra_km_price_night ?? (Number(fares.extra_km_price_day ?? fares.per_km_fare ?? 0.20) * 1.35));
+                    perKm = Number(fares.extra_km_price_night ?? (Number(fares.extra_km_price_day ?? fares.per_km_fare ?? minPerKm) * 1.25));
                 } else {
-                    base = Number(fares.base_fare_day ?? fares.base_fare ?? 1.5);
+                    base = Number(fares.base_fare_day ?? fares.base_fare ?? defaultBase);
                     baseKm = Math.min(6, Math.max(1, Number(fares.base_distance_day ?? fares.base_km ?? 2)));
-                    perKm = Number(fares.extra_km_price_day ?? fares.per_km_fare ?? 0.20);
+                    perKm = Number(fares.extra_km_price_day ?? fares.per_km_fare ?? minPerKm);
+                }
+            }
+
+            // Regla: Si el viaje supera los 2.0 km y el modelo es flat o la tarifa por km es insuficiente,
+            // aplicar el cálculo progresivo por distancia real (base para primeros 2km + km adicional * tarifa por km)
+            if (dist > 2.0) {
+                if (isFlatModel || perKm < minPerKm) {
+                    perKm = Math.max(perKm, minPerKm);
+                }
+                if (base < (isMoto ? 1.50 : 2.50)) {
+                    base = isMoto ? 1.50 : 2.50;
                 }
             }
 
@@ -1213,7 +1230,7 @@ export default function Taxi() {
         }
 
         return parseFloat(calculatePrice(isComfort ? 'ejecutivo' : driver.vehicleType));
-    }, [routeInfo, adminRates, activeDriversCount, weather, testRain]);
+    }, [routeInfo, adminRates, activeDriversCount, weather, testRain, calculatePrice]);
 
     // Dynamic price calculation per segment using the closest active driver or platform rates
     const getSegmentPricing = useCallback((cat: 'mototaxi' | 'taxi_driver' | 'carro_confort' | 'moto_envios' | 'auto_envios') => {
@@ -1221,19 +1238,56 @@ export default function Taxi() {
         const isComfort = cat === 'carro_confort';
         const tripDist = routeInfo ? routeInfo.distance : 1;
 
+        // Si es Carro Confort, calculamos una tarifa proporcional y razonable (25% a 35% superior a Taxi Económico)
+        if (isComfort) {
+            const standardPricing = getSegmentPricing('taxi_driver');
+            const matchingComfortDrivers = nearbyDrivers.filter(d => {
+                if (d.isBusy || !d.isOnline) return false;
+                const isAvail = (d as any).availability === 'active' || (d as any).availability === 'available' || (d as any).availability === undefined;
+                if (!isAvail) return false;
+                return d.vehicleType === 'carro' && (Boolean(d.isComfortEligible) || Number(d.vehicleYear) >= 2016);
+            });
+            matchingComfortDrivers.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
+
+            if (matchingComfortDrivers.length > 0) {
+                const closestDriver = matchingComfortDrivers[0];
+                const rawComfortPrice = calculateDriverTripPrice(closestDriver, tripDist, true);
+                const minProportional = Number((standardPricing.effectivePrice * 1.20).toFixed(2));
+                const maxProportional = Number((standardPricing.effectivePrice * 1.35).toFixed(2));
+                const clampedPrice = Math.max(minProportional, Math.min(maxProportional, rawComfortPrice));
+
+                return {
+                    effectivePrice: clampedPrice,
+                    uniquePrices: [clampedPrice],
+                    closestDriver,
+                    driversCount: matchingComfortDrivers.length,
+                    hasDrivers: true
+                };
+            }
+
+            // Fallback proporcional: exactamente 30% superior a Taxi Económico
+            const fallbackComfortPrice = Number((standardPricing.effectivePrice * 1.30).toFixed(2));
+            return {
+                effectivePrice: fallbackComfortPrice,
+                uniquePrices: [fallbackComfortPrice],
+                closestDriver: null,
+                driversCount: 0,
+                hasDrivers: false
+            };
+        }
+
         const matchingDrivers = nearbyDrivers.filter(d => {
             if (d.isBusy || !d.isOnline) return false;
             const isAvail = (d as any).availability === 'active' || (d as any).availability === 'available' || (d as any).availability === undefined;
             if (!isAvail) return false;
             if (isMoto) return d.vehicleType === 'moto';
-            if (isComfort) return d.vehicleType === 'carro' && (Boolean(d.isComfortEligible) || Number(d.vehicleYear) >= 2016);
             return d.vehicleType === 'carro';
         });
 
         matchingDrivers.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
 
-        const fallbackRateCat = isMoto ? 'moto' : isComfort ? 'ejecutivo' : 'carro';
-        const platformFallbackPrice = parseFloat(calculatePrice(fallbackRateCat)) || (isMoto ? 1.5 : 2.5);
+        const fallbackRateCat = isMoto ? 'moto' : 'carro';
+        const platformFallbackPrice = parseFloat(calculatePrice(fallbackRateCat)) || (isMoto ? 1.8 : 2.8);
 
         if (matchingDrivers.length === 0) {
             return {
@@ -1246,12 +1300,12 @@ export default function Taxi() {
         }
 
         const driverPrices = matchingDrivers
-            .map(d => calculateDriverTripPrice(d, tripDist, isComfort))
+            .map(d => calculateDriverTripPrice(d, tripDist, false))
             .filter(p => !isNaN(p) && p > 0);
 
         const uniquePrices = Array.from(new Set(driverPrices)).sort((a, b) => a - b);
         const closestDriver = matchingDrivers[0];
-        const closestPrice = calculateDriverTripPrice(closestDriver, tripDist, isComfort);
+        const closestPrice = calculateDriverTripPrice(closestDriver, tripDist, false);
 
         return {
             effectivePrice: closestPrice,
@@ -1413,10 +1467,12 @@ export default function Taxi() {
                     address: data.destinationAddress || 'Mi ubicación actual (GPS)'
                 },
                 service_category: 'muchacho_mandado',
-                type: 'muchacho_mandado',
+                type: 'transport',
                 vehicle_type: 'moto',
                 total: 1.00,
                 price: 1.00,
+                fare: 1.00,
+                driver_payout: Math.max(0, 1.00 - liveCommissions.mandao),
                 commission_amount: liveCommissions.mandao,
                 status: 'searching',
                 payment_method: 'pago_movil',
@@ -1553,17 +1609,19 @@ export default function Taxi() {
                 route: routeInfo,
                 total: tripPriceToSave,
                 price: tripPriceToSave,
+                fare: tripPriceToSave,
                 driver_id: null,
                 assigned_driver_id: null,
                 driver_name: null,
                 driver_phone: null,
                 driver_photo: null,
-                service_category: selectedCategory,
+                service_category: selectedCategory === 'delivery_envios' || mainMode === 'package' ? 'delivery_envios' : selectedCategory,
                 vehicle_type: vType,
+                type: 'transport',
                 driver_payout: driverPayoutVal,
                 commission_amount: commAmount,
                 commission_debited: false,
-                status: 'pending',
+                status: 'searching',
                 payment_method: selectedPaymentMethod,
                 payment_status: 'pending',
                 cash_currency: selectedPaymentMethod === 'cash_ves' ? 'VES' : 'USD',
@@ -1576,13 +1634,14 @@ export default function Taxi() {
             };
 
             if (selectedCategory === 'muchacho_mandado') {
-                orderData.type = 'muchacho_mandado';
+                orderData.type = 'transport';
+                orderData.service_category = 'muchacho_mandado';
                 orderData.mandado_details = {
                     description: mandadoDescription,
                     storeName: mandadoStoreName || 'Comercio Local'
                 };
             } else if (selectedCategory === 'delivery_envios' || mainMode === 'package') {
-                orderData.type = 'package_delivery';
+                orderData.type = 'transport';
                 orderData.service_category = 'delivery_envios';
                 orderData.package_description = packageDescription.trim();
                 orderData.receiver_name = recipientName.trim();
@@ -1727,6 +1786,7 @@ export default function Taxi() {
                 },
                 total: basePrice,
                 price: basePrice,
+                fare: basePrice,
                 driver_id: null,
                 assigned_driver_id: null, // Radar abierto para todas las unidades cercanas
                 service_category: serviceCat,

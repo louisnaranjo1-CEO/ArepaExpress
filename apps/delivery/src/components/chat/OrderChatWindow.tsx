@@ -660,8 +660,9 @@ export default function OrderChatWindow({
 
     try {
       const transportData: any = {
-        type: 'delivery_envios',
+        type: 'transport',
         service_category: clientSelectedCategory === 'moto' ? 'mototaxi' : clientSelectedCategory === 'confort' ? 'carro_confort' : 'taxi_driver',
+        vehicle_type: clientSelectedCategory === 'moto' ? 'moto' : 'carro',
         order_id: orderId,
         restaurant_id: restaurantId,
         restaurant_name: liveOrder?.restaurant_name || storeData?.name || 'Comercio',
@@ -679,8 +680,12 @@ export default function OrderChatWindow({
           coords: clientCoords
         },
         distance: orderDistanceKm,
+        price: selectedFare,
+        fare: selectedFare,
+        total: selectedFare,
         client_total: selectedFare,
         driver_payout: Number((selectedFare * 0.8).toFixed(2)),
+        commission_amount: Number((selectedFare * 0.2).toFixed(2)),
         service_fee: Number((selectedFare * 0.2).toFixed(2)),
         status: 'searching',
         payment_method: 'pago_movil',

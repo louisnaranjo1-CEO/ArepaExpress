@@ -3,12 +3,14 @@ import { Search, Filter, Clock, MapPin, ChevronRight, Bike, Truck, CheckCircle, 
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useCurrency } from '../../context/CurrencyContext';
+import { useBranding } from '../../context/BrandingContext';
 import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import ComandaPreview from '../components/ComandaPreview';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';
 import { useHaptics } from '../../hooks/useHaptics';
+import { triggerHaptic } from '../../services/nativeNotificationService';
 
 interface OrderItem {
     id: string;
@@ -70,6 +72,7 @@ interface Order {
 
 export default function Orders() {
     const { user, userData } = useAuth();
+    const { branding } = useBranding();
     const rid = userData?.managedRestaurantId || user?.uid;
     const [activeTab, setActiveTab] = useState<'pending' | 'pendiente_pago' | 'preparing' | 'delivering' | 'delivered' | 'rejected' | 'tables'>('pending');
     const [orders, setOrders] = useState<Order[]>([]);
@@ -432,16 +435,32 @@ export default function Orders() {
     const fetchOrders = async () => {
         if (!rid) return;
         try {
-            const { data, error } = await supabase
+            // 1. Pedidos activos del restaurante en curso (sin límite restrictivo para seguimiento en tiempo real)
+            const { data: activeData, error: activeErr } = await supabase
                 .from('orders')
                 .select('*')
                 .eq('restaurant_id', rid)
+                .not('status', 'in', '("completed","cancelled","cancelled_by_client","cancelled_by_store","rejected")')
                 .order('created_at', { ascending: false });
 
-            if (error) {
-                console.error("Error fetching orders:", error);
+            // 2. Historial de pedidos completados/cancelados (limitado a 50 para alto rendimiento)
+            const { data: historyData, error: historyErr } = await supabase
+                .from('orders')
+                .select('*')
+                .eq('restaurant_id', rid)
+                .in('status', ['completed', 'cancelled', 'cancelled_by_client', 'cancelled_by_store', 'rejected'])
+                .order('created_at', { ascending: false })
+                .limit(50);
+
+            if (activeErr && historyErr) {
+                console.error("Error fetching orders:", activeErr || historyErr);
                 return;
             }
+
+            const combinedMap = new Map<string, any>();
+            (activeData || []).forEach(o => combinedMap.set(o.id, o));
+            (historyData || []).forEach(o => combinedMap.set(o.id, o));
+            const data = Array.from(combinedMap.values()).sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
 
             const items: Order[] = (data || []).map((o: any) => ({
                 id: o.id,
@@ -872,11 +891,13 @@ export default function Orders() {
                 updates.driver_id = driverObj.id;
                 updates.delivery_driver_id = driverObj.id;
                 updates.driver_name = realDriverName;
+                updates.driver_photo = driverObj.photo_url || driverObj.documents?.selfie_url || driverObj.documents?.selfieUrl || null;
                 updates.preferred_driver_id = driverObj.id;
                 updates.preferred_driver_name = realDriverName;
                 updates.eligible_drivers = [driverObj.id];
                 updates.driver_payout = payout;
                 updates.dispatched_at = new Date().toISOString();
+                triggerHaptic('success').catch(() => {});
 
                 // Enlazar transport_requests exclusivo evitando DUPLICADOS
                 try {
@@ -897,14 +918,17 @@ export default function Orders() {
                         user_phone: selectedOrderForDispatch.userPhone || '',
                         user_cedula: selectedOrderForDispatch.clientDNI || '',
                         driver_id: driverObj.id,
+                        assigned_driver_id: driverObj.id,
                         driver_name: realDriverName,
                         driver_phone: driverObj.phone,
                         driver_photo: driverObj.photo_url,
                         vehicle_type: driverObj.vehicle_type || selectedVehicleCategory || 'moto',
-                        type: 'food_delivery',
+                        type: 'transport',
                         service_category: 'food_delivery',
                         status: 'accepted',
                         price: payout,
+                        total: payout,
+                        fare: payout,
                         driver_payout: payout,
                         items_summary: itemsSummary,
                         flete_pagado_por: 'negocio',
@@ -1490,6 +1514,12 @@ export default function Orders() {
             if (!orderTemp) return;
 
             const missing = missingItemsByOrder[orderId] || [];
+            const allItems = orderTemp.items || [];
+            const availableCount = allItems.filter((i: any) => !missing.includes(i.id)).length;
+            if (allItems.length > 0 && availableCount === 0) {
+                toast.error("⚠️ Todos los productos están sin stock. Debes rechazar el pedido.");
+                return;
+            }
             
             if (missing.length > 0) {
                 await supabase.from('orders').update({ 
@@ -1538,8 +1568,13 @@ export default function Orders() {
                 stockConfirmed: true,
                 stock_confirmed_at: new Date().toISOString(),
                 exchange_rate: customRate,
+                exchangeRate: customRate,
+                custom_exchange_rate: customRate,
+                customExchangeRate: customRate,
                 is_rate_overridden: isOverridden,
+                isRateOverridden: isOverridden,
                 total_bs: totalBs,
+                totalBs: totalBs,
                 updated_at: new Date().toISOString()
             }).eq('id', orderId);
 
@@ -1648,6 +1683,41 @@ export default function Orders() {
         } catch (error) {
             console.error("Error verifying payment:", error);
             toast.error("Error al procesar la acreditación");
+        } finally {
+            setIsVerifying(false);
+        }
+    };
+
+    const handleRejectPaymentProof = async (order: any) => {
+        if (!order) return;
+        setIsVerifying(true);
+        try {
+            await supabase.from('orders').update({
+                status: 'awaiting_payment',
+                payment_status: 'pending',
+                payment_proof_url: null,
+                payment_reference: null,
+                restaurant_payment_client_confirmed: false,
+                updated_at: new Date().toISOString()
+            }).eq('id', order.id);
+
+            await supabase.from('messages').insert({
+                order_id: order.id,
+                sender_id: user?.uid,
+                sender_name: 'Restaurante',
+                sender_role: 'restaurant',
+                text: '⚠️ *El comercio no pudo validar tu comprobante de pago.* Por favor verifica y repórtalo nuevamente.',
+                action: 'payment_rejected',
+                created_at: new Date().toISOString()
+            });
+
+            toast.success("Comprobante rechazado. Se solicitó un nuevo reporte al cliente.");
+            setVerifyModalOpen(false);
+            setSelectedOrderForVerify(null);
+            fetchOrders();
+        } catch (err) {
+            console.error("Error rejecting payment proof:", err);
+            toast.error("Error al rechazar el comprobante");
         } finally {
             setIsVerifying(false);
         }
@@ -2004,7 +2074,7 @@ export default function Orders() {
                                 </span>
                             </div>
                             <h3 className="text-base sm:text-lg font-black text-slate-900 group-hover:text-primary transition-colors">
-                                {order.userName || 'Usuario de Deliexpress'}
+                                {order.userName || `Usuario de ${branding.app_client_name || 'Un 2x3'}`}
                             </h3>
                             <div className="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500 font-bold">
                                 {order.clientDNI && (
@@ -2068,7 +2138,7 @@ export default function Orders() {
                             </span>
                         )}
                     </div>
-                    <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || 'Usuario de Deliexpress'}</h3>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900">{order.userName || `Usuario de ${branding.app_client_name || 'Un 2x3'}`}</h3>
                     <div className="flex flex-wrap items-center gap-2 mt-0.5">
                         <p className="text-xs text-slate-400 font-bold flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5" />
@@ -2336,6 +2406,8 @@ export default function Orders() {
                                         <img 
                                             src={order.paymentProofUrl} 
                                             alt="Comprobante" 
+                                            loading="lazy"
+                                            decoding="async"
                                             className="w-full h-full object-cover group-hover:scale-110 transition-transform" 
                                         />
                                         <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -2592,36 +2664,75 @@ export default function Orders() {
                     </div>
                 )}
 
-                {order.status === 'delivering' && (
-                    <div className="flex flex-col w-full gap-2.5">
-                        <div className="w-full bg-amber-50/90 border border-amber-200/80 p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                                <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
-                                    <Bike className="w-5 h-5 animate-pulse" />
+                {order.status === 'delivering' && (() => {
+                    const isExternal = Boolean(
+                        order.delivery_type === 'external' || 
+                        order.is_external_delivery || 
+                        order.isExternalDelivery ||
+                        (order.driver_name && order.driver_name.toLowerCase().includes('delivery propio'))
+                    );
+                    return (
+                        <div className="flex flex-col w-full gap-2.5">
+                            <div className="w-full bg-amber-50/90 border border-amber-200/80 p-3.5 rounded-2xl flex items-center justify-between shadow-xs">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-700 flex items-center justify-center shrink-0">
+                                        <Bike className="w-5 h-5 animate-pulse" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-black text-slate-900 truncate">
+                                            {isExternal 
+                                                ? 'En tránsito con Delivery Propio del Comercio' 
+                                                : `Pedido en tránsito con ${order.driver_name || order.driverName || order.preferred_driver_name || (order as any).assigned_driver_name || 'repartidor'}`}
+                                        </p>
+                                        <p className="text-[10px] font-bold text-amber-700">
+                                            {isExternal 
+                                                ? '🛵 Despachado por el personal de la tienda' 
+                                                : '⏳ Esperando entrega al cliente • Puedes cambiar de conductor si es necesario'}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div className="min-w-0">
-                                    <p className="text-xs font-black text-slate-900 truncate">
-                                        Pedido en tránsito con {order.driver_name || order.driverName || order.preferred_driver_name || (order as any).assigned_driver_name || 'repartidor'}
-                                    </p>
-                                    <p className="text-[10px] font-bold text-amber-700">
-                                        ⏳ Esperando calificación del cliente • Se cerrará automáticamente en 24h
-                                    </p>
-                                </div>
+                                <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span> En Camino
+                                </span>
                             </div>
-                            <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 shrink-0">
-                                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span> En Camino
-                            </span>
+
+                            {isExternal && (
+                                <button
+                                    onClick={() => updateStatus(order.id, 'delivered')}
+                                    className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3.5 rounded-2xl font-black shadow-lg shadow-emerald-600/20 hover:scale-[1.01] active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-xs"
+                                >
+                                    <CheckCircle className="w-4 h-4" /> ✅ Marcar Pedido como Entregado
+                                </button>
+                            )}
+
+                            <div className="flex w-full gap-2">
+                                <button
+                                    onClick={() => {
+                                        setSelectedOrderForDispatch(order);
+                                        setDispatchType('platform');
+                                        if (order.preferred_driver_id || order.driver_id) {
+                                            setSelectedDriver(order.preferred_driver_id || order.driver_id!);
+                                            setSelectedVehicleCategory('moto');
+                                        }
+                                        setDispatchModalOpen(true);
+                                        fetchActiveDrivers();
+                                    }}
+                                    className="flex-1 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 py-3 rounded-2xl font-black transition-all flex items-center justify-center gap-1.5 text-xs shadow-xs"
+                                >
+                                    <Bike className="w-4 h-4 text-amber-700" /> Cambiar Conductor
+                                </button>
+                                <button
+                                    onClick={() => setChatOrderId(order.id)}
+                                    className="px-4 bg-slate-100 hover:bg-slate-200 text-slate-800 py-3 rounded-2xl font-black transition-all flex items-center justify-center gap-2 border border-slate-200 shadow-sm text-xs"
+                                    title="Abrir Chat del Pedido"
+                                >
+                                    <MessageCircle className="w-4 h-4 text-slate-700" />
+                                    <span>Chat</span>
+                                </button>
+                            </div>
                         </div>
-                        <button
-                            onClick={() => setChatOrderId(order.id)}
-                            className="w-full bg-slate-100 hover:bg-slate-200 text-slate-800 py-3 rounded-2xl font-black transition-all flex items-center justify-center gap-2 border border-slate-200 shadow-sm text-xs"
-                            title="Abrir Chat del Pedido"
-                        >
-                            <MessageCircle className="w-4 h-4 text-slate-700" />
-                            <span>Abrir Chat con Cliente / Conductor</span>
-                        </button>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {order.status === 'ready' && (
                     <div className="flex flex-col w-full gap-2.5">
@@ -3231,6 +3342,8 @@ export default function Orders() {
                                                         <img 
                                                             src={clientChosenDriverObj.photo_url} 
                                                             alt={clientChosenDriverName || 'Repartidor'} 
+                                                            loading="lazy"
+                                                            decoding="async"
                                                             className="w-16 h-16 rounded-2xl object-cover border-2 border-emerald-500 shadow-md"
                                                         />
                                                     ) : (
@@ -3427,6 +3540,8 @@ export default function Orders() {
                                                                                 <img 
                                                                                     src={drv.photo_url} 
                                                                                     alt={drv.full_name} 
+                                                                                    loading="lazy"
+                                                                                    decoding="async"
                                                                                     className="w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-sm"
                                                                                 />
                                                                             ) : (
@@ -3631,6 +3746,8 @@ export default function Orders() {
                                                         <img 
                                                             src={selectedOrderForVerify.status === 'verificando_pago_delivery' ? selectedOrderForVerify.deliveryPaymentProofUrl : selectedOrderForVerify.paymentProofUrl} 
                                                             alt="Comprobante de pago" 
+                                                            loading="lazy"
+                                                            decoding="async"
                                                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                                         />
                                                         <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs font-bold gap-1">
@@ -3685,15 +3802,14 @@ export default function Orders() {
                                         <div className="grid grid-cols-2 gap-3 pt-2">
                                             <button
                                                 onClick={() => {
-                                                    if(window.confirm("¿Seguro que deseas rechazar este comprobante?")) {
-                                                        const isDelivery = selectedOrderForVerify.status === 'verificando_pago_delivery';
-                                                        updateStatus(selectedOrderForVerify.id, isDelivery ? 'awaiting_delivery_payment' : 'pendiente_pago');
-                                                        setVerifyModalOpen(false);
+                                                    if(window.confirm("¿Seguro que deseas rechazar este comprobante y solicitar uno nuevo al cliente?")) {
+                                                        handleRejectPaymentProof(selectedOrderForVerify);
                                                     }
                                                 }}
-                                                className="bg-slate-100 text-slate-500 py-3.5 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all text-sm"
+                                                disabled={isVerifying}
+                                                className="bg-slate-100 text-slate-500 py-3.5 rounded-2xl font-black hover:bg-red-50 hover:text-red-500 transition-all text-sm disabled:opacity-50"
                                             >
-                                                Rechazar
+                                                Rechazar Comprobante
                                             </button>
                                             <button
                                                 onClick={handleConfirmPayment}
@@ -3900,7 +4016,7 @@ export default function Orders() {
                                             >
                                                 <div className="h-24 bg-slate-100 relative overflow-hidden shrink-0">
                                                     {product.image ? (
-                                                        <img src={product.image} className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
+                                                        <img src={product.image} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center text-slate-300">
                                                             <Bike className="w-8 h-8" />
@@ -4175,7 +4291,7 @@ export default function Orders() {
             {selectedOrderForComanda && (
                 <ComandaPreview
                     order={selectedOrderForComanda}
-                    restaurantName={restaurantConfig?.name || 'Deliexpress'}
+                    restaurantName={restaurantConfig?.name || (branding.app_client_name || 'Un 2x3')}
                     onClose={() => setSelectedOrderForComanda(null)}
                     onPrint={async (orderToPrint) => {
                         await handlePrintOrder(orderToPrint.id, orderToPrint as Order);
@@ -4196,7 +4312,7 @@ export default function Orders() {
                         {/* Modal Header with Image */}
                         <div className="relative h-48 sm:h-64 bg-slate-100 shrink-0">
                             {selectedProductForSelection.image ? (
-                                <img src={selectedProductForSelection.image} className="w-full h-full object-cover" alt={selectedProductForSelection.name} />
+                                <img src={selectedProductForSelection.image} className="w-full h-full object-cover" alt={selectedProductForSelection.name} loading="lazy" decoding="async" />
                             ) : (
                                 <div className="w-full h-full flex items-center justify-center text-slate-300">
                                     <Bike className="w-16 h-16" />
@@ -4435,6 +4551,8 @@ export default function Orders() {
                                                 <img 
                                                     src={customerStats.photoUrl} 
                                                     alt={selectedOrderForDetail.userName || 'Cliente'} 
+                                                    loading="lazy"
+                                                    decoding="async"
                                                     className="w-14 h-14 rounded-2xl object-cover border-2 border-primary shadow-sm"
                                                 />
                                             ) : (
@@ -4736,6 +4854,8 @@ export default function Orders() {
                                             <img 
                                                 src={selectedOrderForDetail.paymentProofUrl} 
                                                 alt="Comprobante" 
+                                                loading="lazy"
+                                                decoding="async"
                                                 className="w-12 h-12 rounded-xl object-cover border border-slate-200"
                                             />
                                             <div>
@@ -4756,32 +4876,62 @@ export default function Orders() {
                             {/* Modal Footer con Acciones */}
                             <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-100 shrink-0 flex flex-col gap-2">
                                 <div className="flex gap-2">
-                                    {(!selectedOrderForDetail.stockConfirmed || ['pending', 'pendiente_pago'].includes(selectedOrderForDetail.status)) && (
-                                        <>
-                                            <button
-                                                onClick={() => {
-                                                    const ordId = selectedOrderForDetail.id;
-                                                    handleConfirmStock(ordId);
-                                                    setSelectedOrderForDetail((prev: any) => prev ? { ...prev, stockConfirmed: true, stock_confirmed: true } : null);
-                                                }}
-                                                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95"
-                                            >
-                                                <CheckCircle className="w-4 h-4" /> Confirmar Stock
-                                            </button>
-                                            <button
-                                                onClick={() => {
-                                                    const ord = selectedOrderForDetail;
-                                                    setSelectedOrderForDetail(null);
-                                                    setSelectedOrderForReject(ord);
-                                                    setSmartRejectReason(null);
-                                                    setSmartRejectModalOpen(true);
-                                                }}
-                                                className="px-4 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 py-3.5 rounded-2xl font-black text-xs transition-all active:scale-95"
-                                            >
-                                                Rechazar
-                                            </button>
-                                        </>
-                                    )}
+                                    {(!selectedOrderForDetail.stockConfirmed || ['pending', 'pendiente_pago'].includes(selectedOrderForDetail.status)) && (() => {
+                                        const ordId = selectedOrderForDetail.id;
+                                        const missing = missingItemsByOrder[ordId] || [];
+                                        const allItems = selectedOrderForDetail.items || [];
+                                        const availableItemsCount = allItems.filter((i: any) => !missing.includes(i.id)).length;
+                                        const isAllOutOfStock = allItems.length > 0 && availableItemsCount === 0;
+
+                                        return (
+                                            <>
+                                                {isAllOutOfStock ? (
+                                                    <div className="w-full space-y-2 mb-1">
+                                                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-bold flex items-center gap-2">
+                                                            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                                                            <span>Todos los productos están sin stock. Debes rechazar el pedido.</span>
+                                                        </div>
+                                                        <button
+                                                            onClick={() => {
+                                                                const ord = selectedOrderForDetail;
+                                                                setSelectedOrderForDetail(null);
+                                                                setSelectedOrderForReject(ord);
+                                                                setSmartRejectReason('Falta de stock disponible en todos los productos');
+                                                                setSmartRejectModalOpen(true);
+                                                            }}
+                                                            className="w-full bg-red-600 hover:bg-red-700 text-white py-3.5 rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                                                        >
+                                                            <XCircle className="w-4 h-4" /> Rechazar Pedido por Falta de Stock
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <button
+                                                            onClick={() => {
+                                                                handleConfirmStock(ordId);
+                                                                setSelectedOrderForDetail((prev: any) => prev ? { ...prev, stockConfirmed: true, stock_confirmed: true } : null);
+                                                            }}
+                                                            className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-2xl font-black text-xs shadow-md transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                                                        >
+                                                            <CheckCircle className="w-4 h-4" /> Confirmar Stock
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                const ord = selectedOrderForDetail;
+                                                                setSelectedOrderForDetail(null);
+                                                                setSelectedOrderForReject(ord);
+                                                                setSmartRejectReason(null);
+                                                                setSmartRejectModalOpen(true);
+                                                            }}
+                                                            className="px-4 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 py-3.5 rounded-2xl font-black text-xs transition-all active:scale-95"
+                                                        >
+                                                            Rechazar
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                     <button
                                         onClick={() => {
                                             const ordId = selectedOrderForDetail.id;

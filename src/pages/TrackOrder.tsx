@@ -9,6 +9,7 @@ import {
     Car, MessageSquare, Image as ImageIcon, Sparkles, ExternalLink, Trash2, ShoppingBag
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+import { compressImage } from '../utils/mediaCompressor';
 import { useCurrency } from '../context/CurrencyContext';
 import ReviewModal from '../components/ReviewModal';
 import DualPrice from '../components/DualPrice';
@@ -17,6 +18,10 @@ import RideChat from '../components/RideChat';
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import LiveTripMap from '../components/LiveTripMap';
+
+// In-memory caches to prevent redundant network fetches on renders (mobile-native-perf)
+const trackStoreProfileCache = new Map<string, any>();
+const trackDriverProfileCache = new Map<string, any>();
 
 // ─── Geo Distance Calculator ────────────────────────────────────────────────
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -32,6 +37,11 @@ function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: num
 
 // ─── Flow Step Resolver ─────────────────────────────────────────────────────
 function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
+    // If transport request was rejected or cancelled, immediately return to step 3 (driver selection)
+    if (transportRequest && ['cancelled', 'rejected'].includes(transportRequest.status)) {
+        return 3;
+    }
+
     // Paso 4: En tránsito / Repartidor asignado en viaje / Entregado
     if (transportRequest) {
         if (['in_progress', 'arriving', 'completed', 'accepted'].includes(transportRequest.status)) {
@@ -42,6 +52,9 @@ function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
         return 4;
     }
     if (order?.driver_id || order?.delivery_driver_id) {
+        if (transportRequest && ['cancelled', 'rejected'].includes(transportRequest.status)) {
+            return 3;
+        }
         return 4;
     }
 
@@ -70,7 +83,7 @@ function getFlowStep(order: any, transportRequest: any): 1 | 2 | 3 | 4 {
 
     // Paso 2: Pago al negocio (stock verificado o comprobante reportado)
     if (
-        ['awaiting_payment', 'ready_for_payment', 'pending_verification'].includes(order?.status) ||
+        ['awaiting_payment', 'pending_verification'].includes(order?.status) ||
         Boolean(order?.stock_confirmed || order?.stockConfirmed)
     ) {
         return 2;
@@ -291,21 +304,29 @@ export default function TrackOrder() {
             try {
                 const { data } = await supabase
                     .from('drivers')
-                    .select('id, full_name, phone, vehicle_type, vehicle_brand, vehicle_model, vehicle_plate, vehicle_image_url, rating, is_online, city')
+                    .select('id, full_name, phone, vehicle_type, vehicle_brand, vehicle_model, vehicle_plate, vehicle_image_url, selfie_url, rating, is_online, city')
                     .eq('is_online', true);
                 if (data && data.length > 0) {
-                    const ids = data.map((d: any) => d.id);
-                    const { data: profs } = await supabase
-                        .from('profiles')
-                        .select('id, photo_url, full_name')
-                        .in('id', ids);
-                    const profMap = new Map((profs || []).map((p: any) => [p.id, p]));
                     setAvailableDrivers(data.map((d: any) => {
-                        const prof = profMap.get(d.id);
+                        const driverPhoto = d.selfie_url || d.vehicle_image_url || null;
+                        if (driverPhoto) {
+                            trackDriverProfileCache.set(d.id, {
+                                id: d.id,
+                                name: d.full_name || 'Conductor',
+                                displayName: d.full_name,
+                                phone: d.phone,
+                                vehicle_type: d.vehicle_type,
+                                vehicle_brand: d.vehicle_brand,
+                                vehicle_model: d.vehicle_model,
+                                vehicle_plate: d.vehicle_plate,
+                                rating: d.rating || 5.0,
+                                photo_url: driverPhoto,
+                                selfie_url: driverPhoto
+                            });
+                        }
                         return {
                             ...d,
-                            full_name: prof?.full_name?.trim() || d.full_name,
-                            photo_url: prof?.photo_url || d.vehicle_image_url || null
+                            photo_url: driverPhoto
                         };
                     }));
                 }
@@ -326,25 +347,61 @@ export default function TrackOrder() {
 
         const fetchDriverData = async (dId: string) => {
             if (!dId) return;
+            if (trackDriverProfileCache.has(dId)) {
+                setDriver(trackDriverProfileCache.get(dId));
+                return;
+            }
+            const { data: driverRow } = await supabase
+                .from('drivers')
+                .select('*')
+                .eq('id', dId)
+                .maybeSingle();
+
+            if (driverRow) {
+                const selfie = driverRow.selfie_url || driverRow.documents?.selfieUrl || driverRow.vehicle_image_url;
+                const dObj: any = {
+                    id: driverRow.id,
+                    name: driverRow.full_name || 'Conductor',
+                    displayName: driverRow.full_name,
+                    phone: driverRow.phone,
+                    vehicle_type: driverRow.vehicle_type,
+                    vehicle_brand: driverRow.vehicle_brand,
+                    vehicle_model: driverRow.vehicle_model,
+                    vehicle_plate: driverRow.vehicle_plate,
+                    rating: driverRow.rating || 5.0,
+                    photo_url: selfie,
+                    selfie_url: selfie
+                };
+                trackDriverProfileCache.set(dId, dObj);
+                setDriver(dObj as DeliveryDriver);
+                return;
+            }
+
             const { data: dData } = await supabase.from('delivery_drivers').select('*').eq('id', dId).maybeSingle();
             if (dData) {
-                setDriver({ id: dData.id, ...dData } as DeliveryDriver);
-            } else {
-                const { data: driverRow } = await supabase.from('drivers').select('*').eq('id', dId).maybeSingle();
-                if (driverRow) {
-                    setDriver({
-                        id: driverRow.id,
-                        name: driverRow.full_name || 'Conductor',
-                        displayName: driverRow.full_name,
-                        phone: driverRow.phone,
-                        vehicle_type: driverRow.vehicle_type,
-                        vehicle_brand: driverRow.vehicle_brand,
-                        vehicle_model: driverRow.vehicle_model,
-                        vehicle_plate: driverRow.vehicle_plate,
-                        rating: driverRow.rating || 5.0,
-                        photo_url: driverRow.vehicle_image_url
-                    } as any);
-                }
+                const selfie = dData.selfie_url || dData.photo_url || dData.vehicle_image_url;
+                const dObj: any = {
+                    id: dData.id,
+                    ...dData,
+                    photo_url: selfie,
+                    selfie_url: selfie
+                };
+                trackDriverProfileCache.set(dId, dObj);
+                setDriver(dObj as DeliveryDriver);
+            }
+        };
+
+        const fetchRestaurantData = async (rId: string) => {
+            if (!rId) return;
+            if (trackStoreProfileCache.has(rId)) {
+                setRestaurant(trackStoreProfileCache.get(rId));
+                return;
+            }
+            const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
+            if (rData) {
+                const storeObj = { id: rData.id, ...rData, logoUrl: rData.logoUrl || rData.logo_url || rData.logo };
+                trackStoreProfileCache.set(rId, storeObj);
+                setRestaurant(storeObj);
             }
         };
 
@@ -359,8 +416,15 @@ export default function TrackOrder() {
                 }
                 const rId = orderData.restaurantId || orderData.restaurant_id;
                 if (rId) {
-                    const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
-                    if (rData) setRestaurant({ id: rData.id, ...rData });
+                    if (orderData.restaurant_logo || orderData.restaurantLogo) {
+                        trackStoreProfileCache.set(rId, {
+                            id: rId,
+                            name: orderData.restaurant_name || orderData.restaurantName,
+                            logoUrl: orderData.restaurant_logo || orderData.restaurantLogo,
+                            phone: orderData.restaurant_phone || orderData.restaurantPhone
+                        });
+                    }
+                    fetchRestaurantData(rId);
                 }
                 const assignedDriver = orderData.driver_id || orderData.delivery_driver_id;
                 if (assignedDriver) fetchDriverData(assignedDriver);
@@ -382,8 +446,7 @@ export default function TrackOrder() {
                         }
                         const rId = orderData.restaurantId || orderData.restaurant_id;
                         if (rId && (!restaurant || restaurant.id !== rId)) {
-                            const { data: rData } = await supabase.from('comercios').select('*').eq('id', rId).maybeSingle();
-                            if (rData) setRestaurant({ id: rData.id, ...rData });
+                            fetchRestaurantData(rId);
                         }
                         const assignedDriver = orderData.driver_id || orderData.delivery_driver_id;
                         if (assignedDriver) fetchDriverData(assignedDriver);
@@ -415,8 +478,15 @@ export default function TrackOrder() {
                     if (payload.new) {
                         const trData: any = payload.new;
                         setTransportRequest({ id: trData.id, ...trData });
-                        const dId = trData.driver_id || trData.driverId;
-                        if (dId) fetchDriverData(dId);
+                        if (trData.status === 'cancelled' || trData.status === 'rejected') {
+                            toast.error("El conductor no pudo tomar el pedido, por favor selecciona otro.");
+                            setDriver(null);
+                            setSelectedDriverId(null);
+                            setForcedStep(3);
+                        } else {
+                            const dId = trData.driver_id || trData.driverId;
+                            if (dId) fetchDriverData(dId);
+                        }
                     }
                 }).subscribe();
 
@@ -599,11 +669,12 @@ export default function TrackOrder() {
         try {
             let uploadedProofUrl: string | null = order.payment_proof_url || null;
 
-            // Subir comprobante a storage si se adjuntó archivo
+            // Subir comprobante a storage si se adjuntó archivo (comprimido en cliente)
             if (paymentProofFile) {
-                const ext = paymentProofFile.name.split('.').pop() || 'jpg';
+                const compressedProof = await compressImage(paymentProofFile);
+                const ext = (compressedProof instanceof File ? compressedProof.name : paymentProofFile.name).split('.').pop() || 'jpg';
                 const filePath = `payment_proofs/order_${orderId}_${Date.now()}.${ext}`;
-                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, paymentProofFile, { upsert: true });
+                const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, compressedProof, { upsert: true });
                 if (!upErr) {
                     const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(filePath);
                     uploadedProofUrl = publicUrl;
@@ -730,7 +801,7 @@ export default function TrackOrder() {
         }
     };
 
-    // Cancelar orden
+    // Cancelar y eliminar orden
     const handleCancelOrder = async () => {
         setShowCancelModal(true);
     };
@@ -929,7 +1000,7 @@ export default function TrackOrder() {
                 restaurant_id: order.restaurantId || order.restaurant_id || null,
                 restaurant_name: restaurant?.name || order.restaurantName || null,
                 items_summary: itemsSummary,
-                type: 'food_delivery',
+                type: 'transport',
                 service_category: 'food_delivery',
                 status: 'searching',
                 user_id: clientAuthId,
@@ -941,6 +1012,7 @@ export default function TrackOrder() {
                 vehicle_type: selectedVehicle,
                 price: deliveryFee,
                 total: deliveryFee,
+                fare: deliveryFee,
                 driver_payout: deliveryFee * 0.8,
                 commission_amount: deliveryFee * 0.2,
                 payment_method: 'Transferencia/Pago Móvil',
@@ -966,10 +1038,19 @@ export default function TrackOrder() {
                 status: 'buscando_piloto',
                 updated_at: new Date().toISOString()
             };
+            let assignedDriverName = 'Conductor';
+            let assignedDriverPhoto: string | null = null;
             if (selectedDriverId) {
+                const selectedDriverObj = availableDrivers.find(d => d.id === selectedDriverId);
+                assignedDriverName = selectedDriverObj?.full_name || selectedDriverObj?.fullName || selectedDriverObj?.name || 'Conductor';
+                assignedDriverPhoto = selectedDriverObj?.photo_url || selectedDriverObj?.documents?.selfie_url || selectedDriverObj?.documents?.selfieUrl || null;
+
                 orderUpdates.preferred_driver_id = selectedDriverId;
                 orderUpdates.eligible_drivers = [selectedDriverId];
                 orderUpdates.delivery_driver_id = selectedDriverId;
+                orderUpdates.driver_id = selectedDriverId;
+                orderUpdates.driver_name = assignedDriverName;
+                orderUpdates.driver_photo = assignedDriverPhoto;
             } else {
                 orderUpdates.preferred_driver_id = null;
                 orderUpdates.eligible_drivers = null;
@@ -995,7 +1076,10 @@ export default function TrackOrder() {
                 ...(selectedDriverId ? {
                     preferred_driver_id: selectedDriverId,
                     eligible_drivers: [selectedDriverId],
-                    delivery_driver_id: selectedDriverId
+                    delivery_driver_id: selectedDriverId,
+                    driver_id: selectedDriverId,
+                    driver_name: assignedDriverName,
+                    driver_photo: assignedDriverPhoto
                 } : {})
             }) : prev);
 
@@ -1152,6 +1236,9 @@ export default function TrackOrder() {
     const itemsTotal = Array.isArray(order?.items)
         ? order.items.reduce((s: number, i: any) => s + (Number(i.price) * Number(i.quantity)), 0)
         : Number(order?.subtotal || order?.total || 0);
+
+    const orderExchangeRate = Number(order?.custom_exchange_rate || order?.customExchangeRate || order?.exchange_rate || order?.exchangeRate || 0);
+    const orderTotalBs = (order?.total_bs != null || order?.totalBs != null) ? Number(order.total_bs ?? order.totalBs) : undefined;
 
     const paymentMethods: any[] = Array.isArray(restaurant?.paymentMethods)
         ? restaurant.paymentMethods
@@ -1460,8 +1547,8 @@ export default function TrackOrder() {
                     {/* Store Card */}
                     <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-100 flex items-center gap-3.5">
                         <div className="w-14 h-14 bg-slate-50 rounded-2xl overflow-hidden flex items-center justify-center shrink-0 border border-slate-100 shadow-inner">
-                            {restaurant?.logoUrl
-                                ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                            {(restaurant?.logoUrl || restaurant?.logo_url || restaurant?.logo || order.restaurant_logo || order.restaurantLogo)
+                                ? <img src={restaurant?.logoUrl || restaurant?.logo_url || restaurant?.logo || order.restaurant_logo || order.restaurantLogo} alt="Logo" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                 : <Store className="w-7 h-7 text-slate-400" />}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -1633,14 +1720,14 @@ export default function TrackOrder() {
                 </motion.button>
 
                 {/* Estatus Visual de Confirmación de Stock */}
-                {(order.status === 'pending' || order.status === 'pending_store_review') && (
+                {order.status === 'pending' && (
                     <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200/80 text-center space-y-3">
                         <div className="w-16 h-16 bg-blue-50 text-blue-500 rounded-full flex items-center justify-center mx-auto">
                             <Clock className="w-8 h-8 animate-spin" />
                         </div>
                         <h3 className="text-xl font-black text-slate-900">Verificando Stock de tu Pedido</h3>
                         <p className="text-sm font-medium text-slate-500 max-w-xs mx-auto">
-                            La tienda está verificando disponibilidad, peso y precios de tu pedido. Te notificaremos al instante cuando esté listo para pagar.
+                            La tienda está verificando que todos los productos seleccionados estén disponibles. Te notificaremos al instante.
                         </p>
                     </div>
                 )}
@@ -1691,8 +1778,8 @@ export default function TrackOrder() {
                 {/* Tienda */}
                 <div className="bg-white rounded-3xl p-4 shadow-xs border border-slate-200/80 flex items-center gap-3.5">
                     <div className="w-14 h-14 bg-slate-100 rounded-2xl overflow-hidden flex items-center justify-center shrink-0 border border-slate-200">
-                        {restaurant?.logoUrl
-                            ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                        {(restaurant?.logoUrl || restaurant?.logo_url || restaurant?.logo || order.restaurant_logo || order.restaurantLogo)
+                            ? <img src={restaurant?.logoUrl || restaurant?.logo_url || restaurant?.logo || order.restaurant_logo || order.restaurantLogo} alt="Logo" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                             : <Store className="w-6 h-6 text-slate-500" />}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -1721,7 +1808,7 @@ export default function TrackOrder() {
                     </div>
                     <div className="flex justify-between items-center pt-3 border-t border-slate-100">
                         <span className="font-black text-base text-slate-900">Total Productos</span>
-                        <DualPrice usdAmount={itemsTotal} usdClassName="font-black text-lg text-slate-900" />
+                        <DualPrice usdAmount={itemsTotal} usdClassName="font-black text-lg text-slate-900" customRate={orderExchangeRate > 0 ? orderExchangeRate : undefined} fixedBsAmount={orderTotalBs} />
                     </div>
                 </div>
 
@@ -1772,12 +1859,7 @@ export default function TrackOrder() {
                         <div className="relative z-10">
                             <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Monto Total a Pagar</p>
                             <div className="text-4xl font-black">
-                                <DualPrice 
-                                    usdAmount={itemsTotal} 
-                                    usdClassName="text-white" 
-                                    bsClassName="text-primary text-2xl" 
-                                    customRate={order?.exchange_rate || order?.custom_exchange_rate}
-                                />
+                                <DualPrice usdAmount={itemsTotal} usdClassName="text-white" bsClassName="text-primary text-2xl" customRate={orderExchangeRate > 0 ? orderExchangeRate : undefined} fixedBsAmount={orderTotalBs} />
                             </div>
                             <p className="text-xs text-white/50 font-bold mt-2">Destinatario: {restaurant?.name || 'Comercio'}</p>
                         </div>
@@ -1892,6 +1974,84 @@ export default function TrackOrder() {
         const isFreeDelivery = order.free_delivery === true || restaurant?.free_delivery === true;
         const isKitchenPreparing = order.status === 'preparing' || (Boolean(order.estimated_ready_at) && countdownSeconds > 0);
         const isOrderReady = order.status === 'ready' || order.status === 'ready_for_pickup' || (!isKitchenPreparing && !isBuscando && order.status !== 'buscando_piloto');
+
+        const isExternalDelivery = Boolean(
+            order?.delivery_type === 'external' || 
+            order?.is_external_delivery || 
+            transportRequest?.delivery_type === 'external' || 
+            (order?.driver_name && order.driver_name.toLowerCase().includes('delivery propio'))
+        );
+
+        if (isExternalDelivery) {
+            const storeLogo = restaurant?.logoUrl || restaurant?.logo_url || restaurant?.logo || order?.restaurant_logo || order?.restaurantLogo;
+            return (
+                <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
+                    <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                        <button
+                            onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                            className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                        >
+                            <ArrowLeft className="w-5 h-5 text-slate-700" />
+                        </button>
+                        <div className="flex-1">
+                            <h1 className="text-base font-black text-slate-900 leading-tight">Delivery del Comercio</h1>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enviado por la Tienda · Paso 3</p>
+                        </div>
+                    </div>
+                    <StepProgressHeader currentStep={currentStep} />
+                    <div className="px-4 pt-6 max-w-lg mx-auto text-center space-y-5">
+                        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 text-center space-y-4">
+                            <div className="w-20 h-20 mx-auto rounded-3xl overflow-hidden bg-slate-50 border-2 border-primary/20 shadow-md flex items-center justify-center">
+                                {storeLogo ? (
+                                    <img src={storeLogo} alt="Logo" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                                ) : (
+                                    <Store className="w-10 h-10 text-primary" />
+                                )}
+                            </div>
+                            <div>
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 inline-block mb-2">
+                                    🛵 Delivery Externo (Propio)
+                                </span>
+                                <h3 className="text-xl font-black text-slate-900">Tu pedido fue enviado directamente con el delivery propio del negocio</h3>
+                                <p className="text-xs font-bold text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
+                                    El comercio ha asignado su personal de confianza para llevar tu orden a tu dirección. Puedes coordinar con ellos directamente.
+                                </p>
+                            </div>
+
+                            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 text-left text-xs space-y-1.5">
+                                <p className="font-bold text-slate-700"><span className="text-slate-400 uppercase text-[10px] font-black block">Comercio:</span> {restaurant?.name || order.restaurantName || 'Comercio'}</p>
+                                {(restaurant?.phone || restaurant?.phone_number || order.restaurant_phone || order.restaurantPhone) && (
+                                    <p className="font-bold text-slate-700"><span className="text-slate-400 uppercase text-[10px] font-black block">Teléfono:</span> {restaurant?.phone || restaurant?.phone_number || order.restaurant_phone || order.restaurantPhone}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2 pt-2">
+                                {(restaurant?.phone || restaurant?.phone_number || order.restaurant_phone || order.restaurantPhone) && (
+                                    <a
+                                        href={`tel:${restaurant?.phone || restaurant?.phone_number || order.restaurant_phone || order.restaurantPhone}`}
+                                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 text-xs shadow-md active:scale-95"
+                                    >
+                                        <Phone className="w-4 h-4 fill-white" /> Llamar al Comercio
+                                    </a>
+                                )}
+                                <button
+                                    onClick={openChat}
+                                    className="w-full bg-slate-900 text-white font-black py-3.5 rounded-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-xs shadow-md active:scale-95"
+                                >
+                                    <MessageSquare className="w-4 h-4 text-primary" /> Abrir Chat con la Tienda
+                                </button>
+                                <button
+                                    onClick={() => setShowReviewModal(true)}
+                                    className="w-full bg-primary text-slate-950 font-black py-4 rounded-2xl hover:bg-amber-400 transition-all flex items-center justify-center gap-2 text-sm shadow-xl active:scale-95 mt-2"
+                                >
+                                    <CheckCircle2 className="w-4 h-4" /> ¿Recibiste tu pedido? Confirmar Recepción
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
 
         if (isPickup || order.delivery_method === 'pickup') {
             return (
@@ -2344,9 +2504,9 @@ export default function TrackOrder() {
                                                             }`}
                                                         >
                                                             <div className="flex items-center gap-3 min-w-0">
-                                                                <div className="w-10 h-10 rounded-2xl bg-white border border-slate-200 overflow-hidden flex items-center justify-center font-black text-slate-700 shrink-0">
+                                                                <div className="w-10 h-10 rounded-full bg-white border border-slate-200 overflow-hidden flex items-center justify-center font-black text-slate-700 shrink-0">
                                                                     {drv.photo_url ? (
-                                                                        <img src={drv.photo_url} alt={drv.full_name} className="w-full h-full object-cover" />
+                                                                        <img src={drv.photo_url} alt={drv.full_name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                                                                     ) : (
                                                                         drv.full_name?.charAt(0) || 'D'
                                                                     )}
@@ -2412,15 +2572,109 @@ export default function TrackOrder() {
     // PASO 4 — Tracking en Vivo Tipo Videojuego (Pantalla Completa - Pilar 4)
     // ═══════════════════════════════════════════════════════════════════════════
     const renderStep4 = () => {
+        const isExternalDelivery = Boolean(
+            order?.delivery_type === 'external' || 
+            order?.is_external_delivery || 
+            transportRequest?.delivery_type === 'external' || 
+            (order?.driver_name && order.driver_name.toLowerCase().includes('delivery propio'))
+        );
+
+        if (isExternalDelivery) {
+            const storeLogo = restaurant?.logoUrl || restaurant?.logo_url || restaurant?.logo || order?.restaurant_logo || order?.restaurantLogo;
+            return (
+                <div className="w-full h-full overflow-y-auto overflow-x-hidden bg-slate-50 pb-28">
+                    <div className="bg-white px-4 py-4 flex items-center gap-3 sticky top-0 z-30 shadow-xs border-b border-slate-100">
+                        <button
+                            onClick={() => window.history.length > 1 ? window.history.back() : navigate('/')}
+                            className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center active:scale-95 transition-transform"
+                        >
+                            <ArrowLeft className="w-5 h-5 text-slate-700" />
+                        </button>
+                        <div className="flex-1">
+                            <h1 className="text-base font-black text-slate-900 leading-tight">Delivery del Comercio</h1>
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">En Camino · Paso 4</p>
+                        </div>
+                    </div>
+                    <StepProgressHeader currentStep={4} />
+                    <div className="px-4 pt-6 max-w-lg mx-auto text-center space-y-5">
+                        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-200/80 text-center space-y-4">
+                            <div className="w-20 h-20 mx-auto rounded-3xl overflow-hidden bg-slate-50 border-2 border-primary/20 shadow-md flex items-center justify-center">
+                                {storeLogo ? (
+                                    <img src={storeLogo} alt="Logo" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                                ) : (
+                                    <Store className="w-10 h-10 text-primary" />
+                                )}
+                            </div>
+                            <div>
+                                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 inline-block mb-2">
+                                    🛵 Delivery Propio (Externo)
+                                </span>
+                                <h3 className="text-xl font-black text-slate-900">Tu pedido fue enviado directamente con el delivery propio del negocio</h3>
+                                <p className="text-xs font-bold text-slate-500 mt-2 max-w-sm mx-auto leading-relaxed">
+                                    El comercio ha asignado su personal de confianza para llevar tu orden a tu dirección registrada.
+                                </p>
+                            </div>
+
+                            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 text-left text-xs space-y-1.5">
+                                <p className="font-bold text-slate-700"><span className="text-slate-400 uppercase text-[10px] font-black block">Comercio:</span> {restaurant?.name || order.restaurantName || 'Comercio'}</p>
+                                {(restaurant?.phone || restaurant?.phone_number || order.restaurant_phone || order.restaurantPhone) && (
+                                    <p className="font-bold text-slate-700"><span className="text-slate-400 uppercase text-[10px] font-black block">Teléfono:</span> {restaurant?.phone || restaurant?.phone_number || order.restaurant_phone || order.restaurantPhone}</p>
+                                )}
+                                <p className="font-bold text-slate-700"><span className="text-slate-400 uppercase text-[10px] font-black block">Dirección de entrega:</span> {order.deliveryAddress || 'Tu dirección registrada'}</p>
+                            </div>
+
+                            <div className="space-y-2 pt-2">
+                                {(restaurant?.phone || restaurant?.phone_number || order.restaurant_phone || order.restaurantPhone) && (
+                                    <a
+                                        href={`tel:${restaurant?.phone || restaurant?.phone_number || order.restaurant_phone || order.restaurantPhone}`}
+                                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-3.5 rounded-2xl transition-all flex items-center justify-center gap-2 text-xs shadow-md active:scale-95"
+                                    >
+                                        <Phone className="w-4 h-4 fill-white" /> Llamar al Comercio
+                                    </a>
+                                )}
+                                <button
+                                    onClick={openChat}
+                                    className="w-full bg-slate-900 text-white font-black py-3.5 rounded-2xl hover:bg-slate-800 transition-all flex items-center justify-center gap-2 text-xs shadow-md active:scale-95"
+                                >
+                                    <MessageSquare className="w-4 h-4 text-primary" /> Abrir Chat con la Tienda
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            await supabase.from('orders').update({
+                                                status: 'delivered',
+                                                delivered_at: new Date().toISOString(),
+                                                updated_at: new Date().toISOString()
+                                            }).eq('id', order.id);
+                                            setOrder((prev: any) => ({ ...prev, status: 'delivered' }));
+                                            setShowReviewModal(true);
+                                            toast.success("¡Pedido confirmado como entregado!");
+                                        } catch (e) {
+                                            console.error("Error marking external delivery as delivered:", e);
+                                            setShowReviewModal(true);
+                                        }
+                                    }}
+                                    className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl transition-all flex items-center justify-center gap-2 text-sm shadow-xl active:scale-95 mt-2"
+                                >
+                                    <CheckCircle className="w-4 h-4" /> ✅ Confirmar que recibí mi pedido
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         const isDelivered = ['delivered', 'completed'].includes(order.status) || transportRequest?.status === 'completed';
         const driverName = driver?.name || driver?.displayName || transportRequest?.driver_name || order.driver_name || 'Repartidor';
         const driverPhone = driver?.phone || driver?.phoneNumber || transportRequest?.driver_phone || order.driver_phone;
-        const driverPhoto = driver?.photo_url || transportRequest?.driver_photo || null;
+        const driverPhoto = driver?.selfie_url || (driver as any)?.documents?.selfieUrl || driver?.photo_url || transportRequest?.driver_photo || order.driver_photo || order.driver_photo_url || null;
         const driverRating = driver?.rating || 5.0;
         const vehicleModel = driver?.vehicle_model || transportRequest?.vehicle_model || '';
         const vehiclePlate = driver?.vehicle_plate || transportRequest?.vehicle_plate || '';
         const vehicleType = transportRequest?.vehicle_type || order.vehicle_type || driver?.vehicle_type || 'moto';
         const vehicleLabel = vehicleType === 'confort' || vehicleType === 'ejecutivo' ? 'Carro Confort' : (vehicleType === 'carro' ? 'Taxi Económico' : 'Moto Taxi');
+        const storeLogo = restaurant?.logoUrl || restaurant?.logo_url || restaurant?.logo || order?.restaurant_logo || order?.restaurantLogo;
 
         return (
             <div className="fixed inset-0 z-40 w-full h-[100dvh] max-h-[100dvh] bg-slate-100 overflow-hidden flex flex-col select-none">
@@ -2454,8 +2708,8 @@ export default function TrackOrder() {
                     </div>
 
                     <div className="w-11 h-11 bg-slate-900/85 backdrop-blur-md rounded-2xl border border-white/10 shadow-xl flex items-center justify-center overflow-hidden pointer-events-auto">
-                        {restaurant?.logoUrl
-                            ? <img src={restaurant.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                        {storeLogo
+                            ? <img src={storeLogo} alt="Logo" loading="lazy" decoding="async" className="w-full h-full object-cover" />
                             : <Store className="w-5 h-5 text-primary" />}
                     </div>
                 </div>
@@ -2506,7 +2760,7 @@ export default function TrackOrder() {
                             <div className="flex items-center gap-3">
                                 <div className="relative">
                                     {driverPhoto ? (
-                                        <img src={driverPhoto} alt={driverName} className="w-12 h-12 rounded-2xl object-cover border-2 border-primary/50 shadow-md" />
+                                        <img src={driverPhoto} alt={driverName} loading="lazy" decoding="async" className="w-12 h-12 rounded-2xl object-cover border-2 border-primary/50 shadow-md" />
                                     ) : (
                                         <div className="w-12 h-12 rounded-2xl bg-slate-800 border-2 border-primary/40 flex items-center justify-center text-primary font-black text-base">
                                             {driverName.charAt(0).toUpperCase()}
@@ -2574,34 +2828,6 @@ export default function TrackOrder() {
                                     <CheckCircle2 className="w-4 h-4 text-slate-950" />
                                     {isDelivered ? 'Calificar Tienda y Repartidor' : '¿Recibiste tu pedido? Confirmar y Calificar'}
                                 </button>
-                                {!isDelivered && (
-                                    <div className="flex gap-2 pt-1">
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                if (window.confirm('¿Deseas cancelar el delivery e ir a buscar el pedido tú mismo al negocio? Se notificará a la tienda inmediatamente.')) {
-                                                    await handleSwitchToPickup();
-                                                }
-                                            }}
-                                            className="flex-1 bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold py-2 rounded-xl text-[10px] transition-all flex items-center justify-center gap-1.5 border border-white/10"
-                                            title="Ir a buscar el pedido personalmente al negocio"
-                                        >
-                                            <Store className="w-3.5 h-3.5 text-amber-400" /> Ir a buscarlo yo mismo
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={async () => {
-                                                if (window.confirm('¿Deseas cancelar a este repartidor por demora? Se notificará al negocio y podrás seleccionar otro repartidor o radar.')) {
-                                                    await handleCancelDriverSearchAndRetry();
-                                                }
-                                            }}
-                                            className="flex-1 bg-red-500/20 hover:bg-red-500/30 active:scale-95 text-red-300 font-bold py-2 rounded-xl text-[10px] transition-all flex items-center justify-center gap-1.5 border border-red-500/30"
-                                            title="Cancelar conductor por demora"
-                                        >
-                                            <X className="w-3.5 h-3.5 text-red-400" /> Cancelar conductor
-                                        </button>
-                                    </div>
-                                )}
                             </div>
                         )}
                     </div>
@@ -2659,7 +2885,7 @@ export default function TrackOrder() {
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: '100%' }}
                         transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-                        className="fixed inset-0 z-50 bg-slate-50 flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden"
+                        className="fixed inset-0 z-50 bg-slate-50 flex flex-col h-[100dvh] max-h-[100dvh] overflow-hidden transform-gpu will-change-transform"
                     >
                         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
                             {currentStep === 4 && (transportRequest?.id || order?.transport_request_id) ? (
@@ -2706,7 +2932,7 @@ export default function TrackOrder() {
                             initial={{ y: '100%', opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: '100%', opacity: 0 }}
-                            className="bg-white rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl"
+                            className="bg-white rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto space-y-4 shadow-2xl transform-gpu will-change-transform"
                         >
                             {/* Modal Header */}
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -2787,7 +3013,7 @@ export default function TrackOrder() {
                             initial={{ y: 50, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: 50, opacity: 0 }}
-                            className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-4"
+                            className="bg-white rounded-3xl w-full max-w-md p-6 shadow-2xl border border-slate-100 space-y-4 transform-gpu will-change-transform"
                         >
                             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                                 <div className="flex items-center gap-2 text-rose-600 font-black text-base">
