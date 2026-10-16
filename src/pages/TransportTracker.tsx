@@ -13,6 +13,7 @@ import { sendAppNotification } from '../services/nativeNotificationService';
 import { UN2X3_LOGO } from '../lib/env';
 import { isNightTime, getWeatherByCoordinates, WeatherInfo } from '../lib/weather';
 import RainOverlay from '../components/RainOverlay';
+import ReviewModal from '../components/ReviewModal';
 import { useCurrency } from '../context/CurrencyContext';
 import { useBranding } from '../context/BrandingContext';
 import { compressImage } from '../utils/mediaCompressor';
@@ -35,6 +36,8 @@ export default function TransportTracker() {
     const [submittingRating, setSubmittingRating] = useState(false);
     const [hasRated, setHasRated] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [showAutoReviewModal, setShowAutoReviewModal] = useState(false);
+    const hasAutoHandledPaymentConfirmation = useRef(false);
     // Map expansion
     const [isMapExpanded, setIsMapExpanded] = useState(false);
     // In-app call
@@ -396,6 +399,53 @@ export default function TransportTracker() {
         };
     }, [requestId]);
 
+    // 0. Auto-liberación o apertura única de calificación cuando el conductor confirma el pago
+    useEffect(() => {
+        if (!request) return;
+
+        const isPaymentConfirmed = Boolean(
+            request.driver_paid === true || 
+            request.payment_status === 'confirmed' || 
+            request.payment_status === 'paid'
+        );
+
+        if (!isPaymentConfirmed) return;
+
+        const isAlreadyReviewed = Boolean(
+            request.has_reviewed === true ||
+            request.rating != null ||
+            request.rated_at != null ||
+            request.client_dismissed === true ||
+            hasRated ||
+            localStorage.getItem(`reviewed_service_${request.id}`) === 'true' ||
+            localStorage.getItem(`dismissed_trip_${request.id}`) === 'true'
+        );
+
+        if (isAlreadyReviewed) {
+            // Si el servicio YA fue calificado: Liberar al usuario automáticamente
+            if (!hasAutoHandledPaymentConfirmation.current) {
+                hasAutoHandledPaymentConfirmation.current = true;
+                toast.success("✅ ¡Pago confirmado! Gracias por viajar con Un 2x3", { icon: '✅', duration: 4000 });
+                supabase.from('transport_requests').update({
+                    client_dismissed: true,
+                    updated_at: new Date().toISOString()
+                }).eq('id', request.id).then(() => {});
+
+                localStorage.removeItem('active_transport_req_id');
+                localStorage.setItem(`reviewed_service_${request.id}`, 'true');
+                localStorage.setItem(`dismissed_trip_${request.id}`, 'true');
+                window.dispatchEvent(new CustomEvent('transport_cycle_closed', { detail: { id: request.id } }));
+                navigate('/', { replace: true });
+            }
+        } else {
+            // Si el servicio AÚN NO ha sido calificado: Abrir ReviewModal automáticamente UNA ÚNICA VEZ
+            if (!hasAutoHandledPaymentConfirmation.current) {
+                hasAutoHandledPaymentConfirmation.current = true;
+                setShowAutoReviewModal(true);
+            }
+        }
+    }, [request?.driver_paid, request?.payment_status, request?.has_reviewed, request?.rating, request?.rated_at, request?.client_dismissed, request?.id, hasRated, navigate]);
+
     // Auto-abrir modal de métodos de pago cuando el conductor acepte solicitud de Transporte Rápido
     useEffect(() => {
         if (!request) return;
@@ -750,19 +800,24 @@ export default function TransportTracker() {
         if (requestId) {
             try {
                 await supabase.from('transport_requests').update({
+                    has_reviewed: true,
+                    client_dismissed: true,
                     driver_paid: true,
                     payment_status: 'confirmed',
-                    payment_confirmed_at: new Date().toISOString()
+                    payment_confirmed_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
                 }).eq('id', requestId);
             } catch (e) {
                 console.warn("Error finalizing trip cycle:", e);
             }
+            localStorage.setItem(`reviewed_service_${requestId}`, 'true');
             localStorage.setItem(`dismissed_trip_${requestId}`, 'true');
         }
         localStorage.removeItem('active_transport_req_id');
         window.dispatchEvent(new CustomEvent('transport_cycle_closed', { detail: { id: requestId } }));
-        toast.success("¡Ciclo de viaje finalizado con éxito!", { icon: '✅' });
-        navigate('/');
+        toast.success("✅ ¡Pago confirmado! Gracias por viajar con Un 2x3", { icon: '✅', duration: 4000 });
+        setShowAutoReviewModal(false);
+        navigate('/', { replace: true });
     };
 
     const handleRateTrip = async () => {
@@ -770,6 +825,8 @@ export default function TransportTracker() {
         setSubmittingRating(true);
         try {
             await supabase.from('transport_requests').update({
+                has_reviewed: true,
+                client_dismissed: true,
                 rating,
                 ratingTags: selectedTags,
                 rating_tags: selectedTags,
@@ -779,6 +836,26 @@ export default function TransportTracker() {
                 rated_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             }).eq('id', requestId);
+
+            // Upsert en public.reviews con onConflict: 'ride_id'
+            try {
+                const driverIdVal = request?.driverId || (request as any)?.driver_id;
+                await supabase.from('reviews').upsert({
+                    user_id: request?.user_id || (request as any)?.userId,
+                    user_name: request?.user_name || (request as any)?.userName || 'Usuario',
+                    driver_id: driverIdVal || null,
+                    ride_id: requestId,
+                    rating,
+                    driver_rating: rating,
+                    comment: comment.trim() || `Calificación al servicio (${rating}★)`,
+                    created_at: new Date().toISOString()
+                }, { onConflict: 'ride_id' });
+            } catch (revErr) {
+                console.warn("Error upserting ride review from tracker:", revErr);
+            }
+
+            localStorage.setItem(`reviewed_service_${requestId}`, 'true');
+            localStorage.setItem(`dismissed_trip_${requestId}`, 'true');
 
             // Dynamically recalculate driver's overall rating
             const driverId = request?.driverId || (request as any)?.driver_id;
@@ -804,6 +881,15 @@ export default function TransportTracker() {
 
             setHasRated(true);
             toast.success("¡Gracias por tu calificación!");
+
+            const isPaymentConfirmed = request?.driver_paid === true || request?.payment_status === 'confirmed' || request?.payment_status === 'paid';
+            if (isPaymentConfirmed) {
+                localStorage.removeItem('active_transport_req_id');
+                window.dispatchEvent(new CustomEvent('transport_cycle_closed', { detail: { id: requestId } }));
+                toast.success("✅ ¡Pago confirmado! Gracias por viajar con Un 2x3", { icon: '✅', duration: 4000 });
+                navigate('/', { replace: true });
+                return;
+            }
         } catch (error) {
             console.error("Error rating trip:", error);
             toast.error("Error al enviar calificación");
@@ -2746,7 +2832,7 @@ export default function TransportTracker() {
                 {/* Modal de Consejos de Seguridad y Confianza */}
                 {showTipsModal && (
                     <div className="fixed inset-0 z-[120] bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in pointer-events-auto">
-                        <div className="bg-white rounded-3xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden animate-scale-in">
+                        <div className="bg-white rounded-3xl w-full max-w-md max-h-[82vh] flex flex-col shadow-2xl border border-slate-100 overflow-hidden animate-scale-in">
                             {/* Header (Fijo superior) */}
                             <div className="p-5 border-b border-slate-100 flex items-center justify-between shrink-0 bg-amber-50/60">
                                 <div className="flex items-center gap-3">
@@ -2754,7 +2840,7 @@ export default function TransportTracker() {
                                         🛡️
                                     </div>
                                     <div>
-                                        <h3 className="text-base font-black text-slate-900 leading-tight">Consejos y Confianza</h3>
+                                        <h3 className="text-base font-black text-slate-900 leading-tight">Consejos de Seguridad Un 2x3</h3>
                                         <p className="text-xs font-bold text-slate-500 mt-0.5">Cómo funciona tu viaje en Un 2x3</p>
                                     </div>
                                 </div>
@@ -2766,8 +2852,8 @@ export default function TransportTracker() {
                                 </button>
                             </div>
 
-                            {/* List of Tips (Cuerpo desplazable independiente) */}
-                            <div className="p-5 overflow-y-auto flex-1 space-y-3 text-xs overscroll-contain">
+                            {/* List of Tips (Cuerpo intermedio desplazable) */}
+                            <div className="overflow-y-auto pt-4 pb-6 px-5 space-y-3 text-xs overscroll-contain flex-1">
                                 <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200/80 flex items-start gap-3">
                                     <div className="w-7 h-7 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center shrink-0 font-black text-xs shadow-xs">
                                         1
@@ -2836,11 +2922,23 @@ export default function TransportTracker() {
                                     onClick={() => setShowTipsModal(false)}
                                     className="w-full py-3.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 font-black text-xs uppercase tracking-wider rounded-2xl shadow-xl transition-all"
                                 >
-                                    Entendido, ¡confío en el servicio!
+                                    ENTENDIDO, ¡CONFÍO EN EL SERVICIO!
                                 </button>
                             </div>
                         </div>
                     </div>
+                )}
+
+                {/* Modal de Calificación Única de Servicio (Auto-apertura al confirmar pago) */}
+                {requestId && (
+                    <ReviewModal
+                        isOpen={showAutoReviewModal}
+                        onClose={handleFinalizeAndExit}
+                        orderId={requestId}
+                        restaurantId=""
+                        orderInfo={request}
+                        onReviewSubmitted={handleFinalizeAndExit}
+                    />
                 )}
         </div>
     );

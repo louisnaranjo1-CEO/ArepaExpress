@@ -297,8 +297,6 @@ export default function TransportRequests() {
         return true;
     });
 
-
-
     const getStatusBadge = (status: string) => {
         const norm = (status || '').toUpperCase().trim();
         switch (norm) {
@@ -338,8 +336,6 @@ export default function TransportRequests() {
         }
     };
 
-
-
     if (loading) {
         return (
             <div className="flex flex-col items-center justify-center min-h-[400px] w-full py-20">
@@ -355,7 +351,7 @@ export default function TransportRequests() {
             <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
                 <div>
                     <h1 className="text-2xl font-black text-slate-900">Gestión de Viajes (Taxis)</h1>
-                    <p className="text-slate-500 font-medium mt-1">Supervisa viajes en tiempo real y consulta comprobantes.</p>
+                    <p className="text-slate-500 font-medium mt-1">Supervisa viajes en tiempo real y revisa comprobantes de pago.</p>
                 </div>
                 <div className="flex bg-slate-100 p-1 rounded-xl">
                     <button

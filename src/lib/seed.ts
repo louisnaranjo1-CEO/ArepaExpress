@@ -180,6 +180,10 @@ const MOCK_RESTAURANTS: Restaurant[] = [
 ];
 
 export const seedDatabase = async () => {
+    if (import.meta.env.PROD) {
+        console.warn("⚠️ seedDatabase está estrictamente desactivado en entorno de producción.");
+        return false;
+    }
     try {
         const batch = writeBatch(db);
 

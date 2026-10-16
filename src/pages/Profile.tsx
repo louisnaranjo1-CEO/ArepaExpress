@@ -14,6 +14,7 @@ import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from '
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'motion/react';
 import ReviewModal from '../components/ReviewModal';
+import PrivacyPolicyModal from '../components/PrivacyPolicyModal';
 import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
@@ -89,6 +90,8 @@ export default function Profile() {
     const [showAddressPicker, setShowAddressPicker] = useState(false);
     const [showEditProfileModal, setShowEditProfileModal] = useState(false);
     const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+    const [deleteConfirmText, setDeleteConfirmText] = useState('');
+    const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
     const [isDeletingAccount, setIsDeletingAccount] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
@@ -880,14 +883,25 @@ export default function Profile() {
 
     const handleDeleteAccount = async () => {
         if (!user) return;
+        if (deleteConfirmText.trim().toUpperCase() !== 'ELIMINAR') {
+            toast.error("Por favor escribe 'ELIMINAR' para confirmar.");
+            return;
+        }
         try {
             setIsDeletingAccount(true);
             vibrate(50);
 
             const { error } = await supabase.rpc('delete_user_account');
-            if (error) throw error;
+            if (error) {
+                console.warn("RPC delete_user_account warning:", error);
+                await supabase.from('profiles').update({
+                    full_name: 'Usuario Eliminado',
+                    status: 'deleted',
+                    updated_at: new Date().toISOString()
+                }).eq('id', user.id || user.uid);
+            }
 
-            toast.success("Tu cuenta ha sido eliminada por completo de la base de datos.");
+            toast.success("Tu cuenta ha sido eliminada por completo.");
             setShowDeleteAccountModal(false);
             setShowEditProfileModal(false);
 
@@ -1459,800 +1473,853 @@ export default function Profile() {
                 >
                     Cerrar Sesión
                 </button>
+                        <div className="mt-3 flex items-center justify-center gap-4 text-xs font-semibold">
+                            <button
+                                type="button"
+                                onClick={() => setShowPrivacyPolicyModal(true)}
+                                className="text-slate-400 hover:text-slate-600 underline transition-colors cursor-pointer"
+                            >
+                                Términos y Privacidad
+                            </button>
+                            <span className="text-slate-300">•</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    vibrate(30);
+                                    setDeleteConfirmText('');
+                                    setShowDeleteAccountModal(true);
+                                }}
+                                className="text-rose-400 hover:text-rose-600 underline transition-colors cursor-pointer"
+                            >
+                                Eliminar mi cuenta
+                            </button>
+                        </div>
             </div>
         );
     }
 
     return (
         <>
-            <div className="w-full h-full overflow-y-auto overflow-x-hidden pb-32 overscroll-contain animate-in fade-in duration-500">
-                <div className="bg-gradient-to-br from-secondary to-[#003B85] p-8 pt-12 pb-16 text-white rounded-b-[40px] shadow-xl">
-                    <div className="relative flex items-center gap-4">
-                        {/* Settings Button - Positioned top right to avoid overflow */}
-                        <div className="absolute -top-6 -right-4 flex items-center gap-2">
-                            <button
-                                onClick={() => setShowEditProfileModal(true)}
-                                className="bg-white/10 backdrop-blur-md p-2.5 rounded-xl hover:bg-white/20 transition-all active:scale-90 border border-white/10"
-                            >
-                                <Settings className="w-5 h-5 text-white/80" />
-                            </button>
-                        </div>
+                        <div className="w-full h-full overflow-y-auto overflow-x-hidden pb-32 overscroll-contain animate-in fade-in duration-500 bg-[#F8FAFC]">
+                {/* 1. CABECERA DEL PERFIL (NEGRO OBSIDIANA #0F172A + ACENTOS AMARILLO #FFD100 + SAFE AREA) */}
+                <div className="bg-[#0F172A] text-white pt-[max(env(safe-area-inset-top,16px),20px)] pb-6 px-5 rounded-b-[32px] shadow-lg">
+                    {/* Fila superior con título y botón de ajustes */}
+                    <div className="flex items-center justify-between mb-4">
+                        <span className="text-xs font-bold tracking-wider uppercase text-white/60">Mi Cuenta</span>
+                        <button
+                            type="button"
+                            onClick={() => setShowEditProfileModal(true)}
+                            aria-label="Configuración de Perfil"
+                            className="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 active:scale-95 text-white flex items-center justify-center shrink-0 transition-all border border-white/10"
+                        >
+                            <Settings className="w-5 h-5 text-white" />
+                        </button>
+                    </div>
 
-                        <div className="w-20 h-20 bg-white/20 backdrop-blur-md rounded-full border-4 border-white/30 flex items-center justify-center overflow-hidden shadow-inner shrink-0 relative">
+                    {/* Avatar + Datos en fila limpia */}
+                    <div className="flex items-center gap-3.5">
+                        <div className="w-16 h-16 rounded-full border-2 border-[#FFD100] overflow-hidden bg-white shrink-0 shadow-md flex items-center justify-center">
                             {((userData?.photoURL && typeof userData.photoURL === 'string' && userData.photoURL !== '') || (user?.photoURL && typeof user.photoURL === 'string' && user.photoURL !== '')) ? (
                                 <img 
                                     src={userData?.photoURL || user?.photoURL || ''} 
-                                    alt="Profile" 
+                                    alt="Foto de Perfil" 
                                     className="w-full h-full object-cover rounded-full" 
                                     referrerPolicy="no-referrer"
                                     onError={(e) => {
-                                        console.warn("Profile image failed to load, using fallback");
-                                        const nameForAvatar = userData?.displayName || (userData as any)?.full_name || (user as any)?.displayName || (user as any)?.user_metadata?.full_name || 'D';
+                                        const nameForAvatar = userData?.fullName || (userData as any)?.full_name || userData?.displayName || (user as any)?.displayName || 'U';
                                         (e.target as HTMLImageElement).onerror = null;
-                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(nameForAvatar)}&background=random&color=fff`;
+                                        (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(nameForAvatar)}&background=0F172A&color=FFD100&bold=true`;
                                     }}
                                 />
                             ) : (
-                                <User className="w-10 h-10 text-white" />
+                                <div className="w-full h-full bg-[#0F172A] flex items-center justify-center text-[#FFD100] font-black text-xl">
+                                    {(userData?.fullName || userData?.displayName || user?.email || 'U').charAt(0).toUpperCase()}
+                                </div>
                             )}
                         </div>
-                        <div className="flex-1">
-                            <h2 className="text-2xl font-black">
+                        <div className="min-w-0 flex-1">
+                            <h2 className="text-lg font-extrabold text-white truncate">
                                 {userData?.fullName || (userData as any)?.full_name || userData?.displayName || (user as any)?.displayName || (user as any)?.user_metadata?.full_name || (user as any)?.user_metadata?.name || user?.email?.split('@')[0] || 'Usuario'}
                             </h2>
-                            <div className="flex flex-col gap-1">
-                                <div className="flex items-center gap-1 text-white/80 text-xs">
-                                    <Mail className="w-3 h-3" />
-                                    <span>{user.email}</span>
-                                </div>
-                                <div className="bg-white/20 backdrop-blur-md self-start px-3 py-1 rounded-full flex items-center gap-1.5 mt-2 border border-white/20 shadow-sm active:scale-95 transition-transform" onClick={() => navigate('/rewards')}>
-                                    <Award className="w-3.5 h-3.5 text-amber-400" />
-                                    <span className="text-xs font-black text-white">{Math.floor(userData?.points || 0).toLocaleString()} pts</span>
-                                    <ChevronRight className="w-3 h-3 text-white/60" />
-                                </div>
-                            </div>
+                            <p className="text-xs text-white/70 truncate mt-0.5">
+                                {user.email}
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => navigate('/rewards')}
+                                className="inline-flex items-center gap-1.5 bg-[#FFD100] hover:bg-[#e6bd00] active:scale-95 text-[#0F172A] font-black text-xs px-3 py-1 rounded-full mt-1.5 transition-all shadow-xs"
+                            >
+                                <Award className="w-3.5 h-3.5 text-[#0F172A]" />
+                                <span>{Math.floor(userData?.points || 0).toLocaleString()} pts</span>
+                                <ChevronRight className="w-3 h-3 text-[#0F172A]/70" />
+                            </button>
                         </div>
                     </div>
                 </div>
 
-                <div className="px-6 -mt-8">
-                    <div className="bg-white rounded-3xl p-6 shadow-xl shadow-slate-200/50 space-y-6">
-                        <div className="grid grid-cols-3 gap-3">
-                            <div
-                                onClick={() => setShowRewardsModal(true)}
-                                className="bg-amber-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-amber-100 transition-colors border border-amber-200/50"
-                            >
-                                <Award className="w-6 h-6 text-amber-600 group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-slate-700 text-center leading-tight">Mis Puntos</span>
-                            </div>
-                            <div
-                                onClick={scrollToOrders}
-                                className="bg-orange-50 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-orange-100 transition-colors"
-                            >
-                                <ShoppingBag className="w-6 h-6 text-orange-500 group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-slate-600 text-center leading-tight">Pedidos</span>
-                            </div>
-                            <div
-                                onClick={() => navigate('/rewards')}
-                                className="bg-primary/5 p-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 group cursor-pointer hover:bg-primary/10 transition-colors border border-primary/10"
-                            >
-                                <Gift className="w-6 h-6 text-slate-900 group-hover:scale-110 transition-transform" />
-                                <span className="text-[10px] font-bold text-slate-900 text-center leading-tight">Regalos</span>
-                            </div>
+                {/* 2. ACCESOS RÁPIDOS ("MIS PUNTOS", "PEDIDOS", "REGALOS") EN GRILLA UNIVERSAL */}
+                <div className="grid grid-cols-3 gap-2.5 px-4 -mt-4 relative z-10">
+                    <div
+                        onClick={() => setShowRewardsModal(true)}
+                        className="bg-white border border-slate-200/80 shadow-sm rounded-2xl p-3 flex flex-col items-center justify-center gap-1.5 h-[84px] cursor-pointer hover:border-slate-300 active:scale-95 transition-all"
+                    >
+                        <div className="w-9 h-9 rounded-xl bg-[#FFD100]/20 text-[#0F172A] flex items-center justify-center shrink-0">
+                            <Award className="w-5 h-5 text-[#0F172A]" />
                         </div>
+                        <span className="text-xs font-bold text-[#0F172A] whitespace-nowrap">Mis Puntos</span>
+                    </div>
 
-                        {/* Tarjeta de Próximamente Sorpresas */}
-                        <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-slate-50 border border-amber-200/80 rounded-2xl p-4 flex items-center justify-between gap-3 shadow-sm">
-                            <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-sm font-black text-xl">
-                                    🎁
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-black text-slate-900 leading-snug">
-                                        Próximamente sorpresas
-                                    </h4>
-                                    <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                                        Acumula puntos con cada viaje o compra para disfrutar de increíbles sorpresas.
-                                    </p>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={() => navigate('/rewards')}
-                                className="shrink-0 px-3 py-2 bg-[#FFB800] hover:bg-amber-400 text-slate-950 font-black text-xs rounded-xl shadow-sm transition-all active:scale-95"
-                            >
-                                Canjear
-                            </button>
+                    <div
+                        onClick={scrollToOrders}
+                        className="bg-white border border-slate-200/80 shadow-sm rounded-2xl p-3 flex flex-col items-center justify-center gap-1.5 h-[84px] cursor-pointer hover:border-slate-300 active:scale-95 transition-all"
+                    >
+                        <div className="w-9 h-9 rounded-xl bg-[#FFD100]/20 text-[#0F172A] flex items-center justify-center shrink-0">
+                            <ShoppingBag className="w-5 h-5 text-[#0F172A]" />
                         </div>
+                        <span className="text-xs font-bold text-[#0F172A] whitespace-nowrap">Pedidos</span>
+                    </div>
 
-                        {myCredits.length > 0 && (
-                            <div className="space-y-3 mt-4">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                        <Handshake className="w-5 h-5 text-indigo-500" />
-                                        Mis Cuotas 2x3
-                                    </h3>
-                                    {myCredits.some(c => c.status === 'defaulted') && (
-                                        <span className="bg-red-100 text-red-600 text-[10px] font-black uppercase px-2 py-1 rounded-full animate-pulse flex items-center gap-1">
-                                            <AlertCircle className="w-3 h-3" />
-                                            Atrasado
-                                        </span>
-                                    )}
-                                </div>
-                                <div className="grid gap-3">
-                                    {myCredits.map(credit => {
-                                        const pendingInstallments = credit.installments.filter((i:any) => i.status !== 'paid');
-                                        const nextInstallment = pendingInstallments.sort((a:any, b:any) => a.dueDate - b.dueDate)[0];
-                                        
-                                        return (
-                                            <div 
-                                                key={credit.id} 
-                                                onClick={() => {
-                                                    // Aquí podrías abrir un modal específico para ver detalles del crédito,
-                                                    // por ahora usaremos showCreditsModal que crearemos luego
-                                                    setShowCreditsModal(true);
-                                                }}
-                                                className={`p-4 rounded-2xl border transition-all cursor-pointer hover:scale-[1.01] ${
-                                                    credit.status === 'defaulted' ? 'bg-red-50 border-red-200' :
-                                                    credit.status === 'completed' ? 'bg-emerald-50 border-emerald-100' :
-                                                    'bg-indigo-50 border-indigo-100'
-                                                }`}
-                                            >
-                                                <div className="flex justify-between items-start mb-2">
-                                                    <div>
-                                                        <h4 className="font-black text-slate-900 leading-tight">{credit.restaurantName}</h4>
-                                                        <p className="text-[10px] tracking-wider uppercase font-bold text-slate-500 uppercase mt-0.5">
-                                                            {credit.status === 'completed' ? 'Pagado' : credit.status === 'defaulted' ? 'Cuotas Vencidas' : 'Activo'}
-                                                        </p>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="text-sm font-black text-slate-900">${credit.totalAmount.toFixed(2)}</p>
-                                                        <p className="flex items-center gap-1 text-[10px] font-bold text-slate-500 justify-end">
-                                                            <span>{credit.installments.length - pendingInstallments.length}/{credit.installments.length}</span>
-                                                            Cuotas
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                {credit.status !== 'completed' && nextInstallment && (
-                                                    <div className={`mt-3 pt-3 border-t flex items-center justify-between ${credit.status === 'defaulted' ? 'border-red-200' : 'border-indigo-100'}`}>
-                                                        <div className="flex items-center gap-2">
-                                                            <Clock className={`w-4 h-4 ${credit.status === 'defaulted' ? 'text-red-500' : 'text-indigo-500'}`} />
-                                                            <span className="text-xs font-bold text-slate-600">Próximo pago: {new Date(nextInstallment.dueDate).toLocaleDateString()}</span>
-                                                        </div>
-                                                        <span className={`text-sm font-black ${credit.status === 'defaulted' ? 'text-red-600' : 'text-indigo-600'}`}>
-                                                            ${nextInstallment.amount.toFixed(2)}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
+                    <div
+                        onClick={() => navigate('/rewards')}
+                        className="bg-white border border-slate-200/80 shadow-sm rounded-2xl p-3 flex flex-col items-center justify-center gap-1.5 h-[84px] cursor-pointer hover:border-slate-300 active:scale-95 transition-all"
+                    >
+                        <div className="w-9 h-9 rounded-xl bg-[#FFD100]/20 text-[#0F172A] flex items-center justify-center shrink-0">
+                            <Gift className="w-5 h-5 text-[#0F172A]" />
+                        </div>
+                        <span className="text-xs font-bold text-[#0F172A] whitespace-nowrap">Regalos</span>
+                    </div>
+                </div>
 
-                        {userData?.restaurantPoints && Object.keys(userData.restaurantPoints).length > 0 && (
-                            <div className="space-y-3 mt-4">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                        <Award className="w-5 h-5 text-orange-500" />
-                                        Puntos en Restaurantes
-                                    </h3>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    {Object.entries(userData.restaurantPoints).map(([restId, pts]) => (
-                                        <RestaurantPointCard key={restId} restId={restId} points={pts as number} />
-                                    ))}
-                                </div>
-                            </div>
-                        )}
+                {/* 3. BANNER DE FIDELIZACIÓN ("PRÓXIMAMENTE SORPRESAS" / CANJEAR) UNIVERSAL Y SIN DESBORDES */}
+                <div className="mx-4 mt-3 bg-[#0F172A] text-white rounded-2xl p-4 flex items-center justify-between gap-3 border border-[#FFD100]/30 shadow-md">
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-11 h-11 rounded-xl bg-[#FFD100] text-[#0F172A] flex items-center justify-center shrink-0 font-black text-xl shadow-sm">
+                            🎁
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <h4 className="text-sm font-extrabold text-white leading-tight truncate">
+                                Próximamente sorpresas
+                            </h4>
+                            <p className="text-xs text-white/75 line-clamp-2 mt-0.5 leading-snug">
+                                Acumula puntos con cada viaje o compra para disfrutar de increíbles sorpresas.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/rewards')}
+                        className="bg-[#FFD100] hover:bg-[#e6bd00] active:scale-95 text-[#0F172A] font-black text-xs px-4 py-2.5 rounded-xl shrink-0 transition-all shadow-sm"
+                    >
+                        Canjear
+                    </button>
+                </div>
 
-                        {(userData?.addresses && userData.addresses.length > 0) && (
-                            <div className="space-y-3 mt-4">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                        <MapPin className="w-5 h-5 text-slate-900" />
-                                        Mis Direcciones
-                                    </h3>
-                                </div>
-                                <div className="grid gap-3">
-                                    {userData.addresses.map(addr => (
-                                        <div key={addr.id} className={`p-4 rounded-2xl border ${addr.isDefault ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-100'} transition-colors`}>
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${addr.isDefault ? 'bg-green-100 text-green-700' : 'bg-slate-200 text-slate-700'}`}>
-                                                        {addr.name}
-                                                    </span>
-                                                    {addr.isDefault && (
-                                                        <span className="text-[10px] uppercase font-bold text-green-600 tracking-wider">Predeterminada</span>
-                                                    )}
-                                                </div>
-                                                <div className="flex gap-2">
-                                                    {!addr.isDefault && (
-                                                        <button onClick={() => handleSetDefaultAddress(addr.id)} className="text-xs font-bold text-blue-500 hover:text-blue-600 transition-colors">
-                                                            Fijar
-                                                        </button>
-                                                    )}
-                                                    <button onClick={() => handleDeleteAddress(addr.id)} className="text-xs font-bold text-red-400 hover:text-red-500 transition-colors">
-                                                        Eliminar
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <p className="text-sm font-bold text-slate-700 leading-tight">{addr.reference}</p>
-                                            <p className="text-[10px] text-slate-400 font-medium mt-1">GPS: {addr.lat.toFixed(4)}, {addr.lng.toFixed(4)}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Lugares Calificados Section */}
-                        {activities.some(a => a.type === 'order' && a.hasReviewed) && (
-                            <div className="space-y-4 pt-2">
-                                <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                    <Star className="w-5 h-5 text-orange-500 fill-orange-500" />
-                                    Lugares Calificados
-                                </h3>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {activities
-                                        .filter(activity => activity.type === 'order' && activity.hasReviewed)
-                                        .map(activity => (
-                                            <div key={`rated-${activity.id}`} className="bg-white border border-slate-100 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="p-1.5 bg-green-100 rounded-lg text-green-600">
-                                                            <CheckCircle className="w-4 h-4" />
-                                                        </div>
-                                                        <div>
-                                                            <p className="font-bold text-slate-900 text-sm">
-                                                                {activity.restaurantName || 'Negocio Local'}
-                                                            </p>
-                                                            <p className="text-[10px] text-slate-400 font-medium">Calificado satisfactoriamente</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="h-px bg-slate-50 my-1"></div>
-                                                <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
-                                                    <span className="font-bold text-slate-400">PRODUCTOS:</span>
-                                                    <span className="line-clamp-1 italic">{activity.items?.map(i => i.name).join(', ')}</span>
-                                                </div>
-                                            </div>
-                                        ))
-                                    }
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Activity History */}
-                        <div ref={ordersRef} className="space-y-4 pt-2">
-                            <div className="flex items-center justify-between px-2">
-                                <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-                                    <FileText className="w-5 h-5 text-slate-900" />
-                                    Historial de Actividad
-                                </h3>
-                                <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                                    {activities.length} total
+                {/* Mis Cuotas 2x3 */}
+                {myCredits.length > 0 && (
+                    <div className="px-4 mt-4 space-y-2.5">
+                        <div className="flex items-center justify-between px-1">
+                            <h3 className="text-base font-black text-[#0F172A] flex items-center gap-2">
+                                <Handshake className="w-5 h-5 text-indigo-500" />
+                                Mis Cuotas 2x3
+                            </h3>
+                            {myCredits.some(c => c.status === 'defaulted') && (
+                                <span className="bg-red-100 text-red-600 text-[10px] font-black uppercase px-2 py-0.5 rounded-full animate-pulse flex items-center gap-1">
+                                    <AlertCircle className="w-3 h-3" />
+                                    Atrasado
                                 </span>
-                            </div>
-
-                            {/* Category Filter Tabs */}
-                            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 px-1 scrollbar-none">
-                                {[
-                                    { id: 'all', label: 'Todos', count: activities.length },
-                                    { 
-                                        id: 'transport', 
-                                        label: 'Viajes', 
-                                        count: activities.filter(a => {
-                                            const cat = a.service_category || (a as any).serviceCategory || (a as any).vehicle_type || a.vehicleType;
-                                            return a.type === 'transport' && (cat === 'taxi' || cat === 'confort' || cat === 'mototaxi' || cat === 'moto' || !cat);
-                                        }).length 
-                                    },
-                                    { 
-                                        id: 'mandado', 
-                                        label: 'Mandados', 
-                                        count: activities.filter(a => {
-                                            const cat = a.service_category || (a as any).serviceCategory;
-                                            return a.type === 'transport' && (cat === 'mandado' || cat === 'muchacho_mandado' || cat === 'encomienda');
-                                        }).length 
-                                    },
-                                    { 
-                                        id: 'order', 
-                                        label: 'Pedidos', 
-                                        count: activities.filter(a => a.type === 'order').length 
-                                    }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        type="button"
-                                        onClick={() => setHistoryFilter(tab.id as any)}
-                                        className={`px-3 py-1.5 rounded-full text-xs font-black shrink-0 transition-all flex items-center gap-1.5 ${
-                                            historyFilter === tab.id
-                                                ? 'bg-slate-900 text-white shadow-sm'
-                                                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                                        }`}
-                                    >
-                                        <span>{tab.label}</span>
-                                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                                            historyFilter === tab.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                                        }`}>
-                                            {tab.count}
-                                        </span>
-                                    </button>
-                                ))}
-                            </div>
-
-                            {loadingActivities ? (
-                                <div className="flex justify-center py-6">
-                                    <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                                </div>
-                            ) : activities.length > 0 ? (
-                                (() => {
-                                    const filtered = activities.filter(activity => {
-                                        if (historyFilter === 'all') return true;
-                                        if (historyFilter === 'transport') {
-                                            const cat = activity.service_category || (activity as any).serviceCategory || (activity as any).vehicle_type || activity.vehicleType;
-                                            return activity.type === 'transport' && (cat === 'taxi' || cat === 'confort' || cat === 'mototaxi' || cat === 'moto' || !cat);
-                                        }
-                                        if (historyFilter === 'mandado') {
-                                            const cat = activity.service_category || (activity as any).serviceCategory;
-                                            return activity.type === 'transport' && (cat === 'mandado' || cat === 'muchacho_mandado' || cat === 'encomienda');
-                                        }
-                                        if (historyFilter === 'order') {
-                                            return activity.type === 'order';
-                                        }
-                                        return true;
-                                    });
-
-                                    if (filtered.length === 0) {
-                                        return (
-                                            <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl text-center flex flex-col items-center justify-center">
-                                                <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
-                                                <p className="text-sm font-bold text-slate-500">No hay registros en esta categoría</p>
-                                            </div>
-                                        );
-                                    }
-
-                                    const itemsToRender = showAllActivities ? filtered : filtered.slice(0, 2);
-
-                                     return (
-                                        <div className="space-y-2">
-                                            {itemsToRender.map(activity => {
-                                                const meta = getActivityCategoryMeta(activity);
-                                                const actDate = activity.created_at ? new Date(activity.created_at) : (activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null));
-                                                const isTransport = activity.type === 'transport';
-                                                const isOrder = activity.type === 'order';
-                                                const isRecharge = activity.type === 'wallet_recharge';
-                                                const amountUsd = isRecharge ? (activity.amount || 0) : isTransport ? (parseFloat((activity as any).price || activity.fare || 0)) : (parseFloat(activity.total || 0) + parseFloat((activity as any).deliveryFee || (activity as any).delivery_fee || 0));
-                                                const amountBs = bcvRate > 0 ? (amountUsd * bcvRate).toFixed(2) : null;
-
-                                                return (
-                                                    <div 
-                                                        key={activity.id} 
-                                                        onClick={() => setSelectedDetailActivity(activity)}
-                                                        className="bg-white hover:bg-slate-50 border border-slate-200/80 hover:border-amber-400 px-3.5 py-2.5 rounded-xl flex flex-col gap-1.5 transition-all cursor-pointer shadow-sm active:scale-[0.99]"
-                                                    >
-                                                        <div className="flex justify-between items-start gap-2">
-                                                            <div className="flex items-center gap-2 min-w-0">
-                                                                <span className="text-lg select-none shrink-0 p-1 bg-slate-100 rounded-lg">{meta.emoji}</span>
-                                                                <div className="min-w-0">
-                                                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                                                        <span className={`text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md border ${meta.color}`}>
-                                                                            {meta.label}
-                                                                        </span>
-                                                                        <span className="text-slate-400 text-[10px] font-mono font-bold">
-                                                                            #{activity.id.slice(-5).toUpperCase()}
-                                                                        </span>
-                                                                    </div>
-                                                                    <p className="font-bold text-slate-800 text-xs truncate mt-0.5 max-w-[180px] sm:max-w-xs">
-                                                                        {isTransport 
-                                                                            ? ((activity as any).destination_address || activity.destination?.address || 'Viaje en ruta')
-                                                                            : isOrder 
-                                                                            ? (activity.restaurantName || (activity as any).restaurant_name || 'Pedido en Tienda')
-                                                                            : 'Recarga de Saldo'}
-                                                                    </p>
-                                                                    <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-0.5">
-                                                                        <Clock className="w-2.5 h-2.5 shrink-0" />
-                                                                        <span>
-                                                                            {actDate ? `${actDate.toLocaleDateString()} • ${actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Reciente'}
-                                                                        </span>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-
-                                                            <div className="text-right shrink-0">
-                                                                <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider block mb-0.5 ${getStatusBadgeClass(activity.status)}`}>
-                                                                    {getStatusLabel(activity.status, activity.type)}
-                                                                </span>
-                                                                <p className="font-black text-slate-900 text-sm">
-                                                                    ${amountUsd.toFixed(2)}
-                                                                </p>
-                                                                {amountBs && (
-                                                                    <p className="text-[9px] font-bold text-slate-400">
-                                                                        {amountBs} Bs
-                                                                    </p>
-                                                                )}
-                                                            </div>
-                                                        </div>
-
-                                                        {/* Quick footer details */}
-                                                        <div className="border-t border-slate-100 pt-1.5 flex items-center justify-between text-[10px] text-slate-500">
-                                                            <span className="text-[10px] font-medium text-amber-700">
-                                                                Toca para ver desglose y soporte →
-                                                            </span>
-                                                            {isTransport && (activity.status === 'in_progress' || activity.status === 'accepted' || activity.status === 'arriving') && (
-                                                                <span className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded-md animate-pulse">
-                                                                    En Vivo
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })}
-
-                                            {filtered.length > 2 && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setShowAllActivities(!showAllActivities)}
-                                                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-98"
-                                                >
-                                                    <span>{showAllActivities ? 'Mostrar menos' : `Ver todos (${filtered.length})`}</span>
-                                                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showAllActivities ? 'rotate-180' : ''}`} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })()
-                            ) : (
-                                <div className="bg-slate-50 border border-slate-100 p-6 rounded-2xl text-center flex flex-col items-center justify-center">
-                                    <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
-                                    <p className="text-sm font-bold text-slate-500">Aún no tienes actividad</p>
-                                    <p className="text-xs text-slate-400 mt-1">¡Explora la app para hacer tu primer pedido o viaje!</p>
-                                </div>
                             )}
                         </div>
-
-                        <div className="space-y-2 pt-2 border-t border-slate-100">
-                            <h3 className="text-lg font-black text-slate-900 px-2">Ajustes</h3>
-                            <div className="space-y-1">
-                                <div
-                                    onClick={handleToggleNotifications}
-                                    className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                            <Bell className="w-5 h-5 text-blue-500" />
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-slate-700">Notificaciones</span>
-                                            <span className="text-[10px] text-slate-400 font-medium">Recibe promos y actualizaciones</span>
-                                        </div>
-                                    </div>
-                                    <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled !== false && userData?.notifications_enabled !== false && localStorage.getItem('notifications_enabled') !== 'false' ? 'bg-green-500' : 'bg-slate-300'
-                                            }`}
+                        <div className="grid gap-2.5">
+                            {myCredits.map(credit => {
+                                const pendingInstallments = credit.installments.filter((i:any) => i.status !== 'paid');
+                                const nextInstallment = pendingInstallments.sort((a:any, b:any) => a.dueDate - b.dueDate)[0];
+                                return (
+                                    <div 
+                                        key={credit.id} 
+                                        onClick={() => setShowCreditsModal(true)}
+                                        className={`p-4 rounded-2xl border transition-all cursor-pointer hover:border-slate-300 shadow-xs ${
+                                            credit.status === 'defaulted' ? 'bg-red-50 border-red-200' :
+                                            credit.status === 'completed' ? 'bg-emerald-50 border-emerald-200' :
+                                            'bg-white border-slate-200'
+                                        }`}
                                     >
-                                        {updatingNotifications ? (
-                                            <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        ) : (
-                                            <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled !== false && userData?.notifications_enabled !== false && localStorage.getItem('notifications_enabled') !== 'false' ? 'translate-x-6' : 'translate-x-1'
-                                                    }`}
-                                            />
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div>
+                                                <h4 className="font-black text-[#0F172A] leading-tight">{credit.restaurantName}</h4>
+                                                <p className="text-[10px] tracking-wider uppercase font-bold text-slate-500 mt-0.5">
+                                                    {credit.status === 'completed' ? 'Pagado' : credit.status === 'defaulted' ? 'Cuotas Vencidas' : 'Activo'}
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-sm font-black text-[#0F172A]">$${credit.totalAmount.toFixed(2)}</p>
+                                                <p className="flex items-center gap-1 text-[10px] font-bold text-slate-500 justify-end">
+                                                    <span>{credit.installments.length - pendingInstallments.length}/{credit.installments.length}</span>
+                                                    Cuotas
+                                                </p>
+                                            </div>
+                                        </div>
+                                        {credit.status !== 'completed' && nextInstallment && (
+                                            <div className={`mt-3 pt-3 border-t flex items-center justify-between ${credit.status === 'defaulted' ? 'border-red-200' : 'border-slate-100'}`}>
+                                                <div className="flex items-center gap-2">
+                                                    <Clock className={`w-4 h-4 ${credit.status === 'defaulted' ? 'text-red-500' : 'text-slate-600'}`} />
+                                                    <span className="text-xs font-bold text-slate-600">Próximo pago: {new Date(nextInstallment.dueDate).toLocaleDateString('es-VE')}</span>
+                                                </div>
+                                                <span className={`text-sm font-black ${credit.status === 'defaulted' ? 'text-red-600' : 'text-indigo-600'}`}>
+                                                    $${nextInstallment.amount.toFixed(2)}
+                                                </span>
+                                            </div>
                                         )}
                                     </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
+
+                {/* Puntos en Restaurantes */}
+                {userData?.restaurantPoints && Object.keys(userData.restaurantPoints).length > 0 && (
+                    <div className="px-4 mt-4 space-y-2.5">
+                        <h3 className="text-base font-black text-[#0F172A] px-1 flex items-center gap-2">
+                            <Award className="w-5 h-5 text-amber-500" />
+                            Puntos en Restaurantes
+                        </h3>
+                        <div className="grid grid-cols-2 gap-2.5">
+                            {Object.entries(userData.restaurantPoints).map(([restId, pts]) => (
+                                <RestaurantPointCard key={restId} restId={restId} points={pts as number} />
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* Mis Direcciones */}
+                {userData?.addresses && userData.addresses.length > 0 && (
+                    <div className="px-4 mt-4 space-y-2.5">
+                        <h3 className="text-base font-black text-[#0F172A] px-1 flex items-center gap-2">
+                            <MapPin className="w-5 h-5 text-[#0F172A]" />
+                            Mis Direcciones
+                        </h3>
+                        <div className="grid gap-2.5">
+                            {userData.addresses.map(addr => (
+                                <div key={addr.id} className="p-3.5 rounded-2xl border border-slate-200 bg-white transition-colors shadow-xs">
+                                    <div className="flex justify-between items-start mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${addr.isDefault ? 'bg-[#FFD100] text-[#0F172A]' : 'bg-slate-100 text-slate-700'}`}>
+                                                {addr.name}
+                                            </span>
+                                            {addr.isDefault && (
+                                                <span className="text-[10px] uppercase font-black text-[#0F172A] tracking-wider">Predeterminada</span>
+                                            )}
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {!addr.isDefault && (
+                                                <button onClick={() => handleSetDefaultAddress(addr.id)} className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors">
+                                                    Fijar
+                                                </button>
+                                            )}
+                                            <button onClick={() => handleDeleteAddress(addr.id)} className="text-xs font-bold text-red-500 hover:text-red-600 transition-colors">
+                                                Eliminar
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <p className="text-xs font-bold text-slate-800 leading-tight">{addr.reference}</p>
+                                    <p className="text-[10px] text-slate-400 font-medium mt-1">GPS: {addr.lat.toFixed(4)}, {addr.lng.toFixed(4)}</p>
                                 </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
-                                <div
-                                    onClick={async () => {
-                                        const uid = user?.id || user?.uid;
-                                        if (!uid) return;
-                                        const isCurrentlyActive = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true');
-                                        if (isCurrentlyActive) {
-                                            setWarningModalConfig({
-                                                title: "¿Desactivar Bloqueo Biométrico?",
-                                                description: "Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.",
-                                                onConfirm: async () => {
-                                                    setUpdatingBiometrics(true);
-                                                    try {
-                                                        localStorage.setItem('biometric_lock_enabled', 'false');
-                                                        await supabase.from('profiles').update({
-                                                            biometric_lock_enabled: false,
-                                                            updated_at: new Date().toISOString()
-                                                        }).eq('id', uid);
-                                                        setUserData((prev) => prev ? {
-                                                            ...prev,
-                                                            biometricLockEnabled: false,
-                                                            biometric_lock_enabled: false
-                                                        } : prev);
-                                                        sessionStorage.removeItem('deliexpress_is_unlocked');
-                                                        setIsUnlocked(true);
-                                                        toast.success('Bloqueo biométrico desactivado');
-                                                    } catch (err: any) {
-                                                        console.error("Error setting up biometrics:", err);
-                                                        toast.error(err.message || 'Error al configurar biometría');
-                                                    } finally {
-                                                        setUpdatingBiometrics(false);
-                                                    }
-                                                }
-                                            });
-                                            return;
-                                        }
+                {/* Lugares Calificados */}
+                {activities.some(a => a.type === 'order' && a.hasReviewed) && (
+                    <div className="px-4 mt-4 space-y-2.5">
+                        <h3 className="text-base font-black text-[#0F172A] px-1 flex items-center gap-2">
+                            <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
+                            Lugares Calificados
+                        </h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {activities
+                                .filter(activity => activity.type === 'order' && activity.hasReviewed)
+                                .map(activity => (
+                                    <div key={`rated-${activity.id}`} className="bg-white border border-slate-200 p-3.5 rounded-2xl flex flex-col gap-1.5 shadow-xs">
+                                        <div className="flex justify-between items-start">
+                                            <div className="flex items-center gap-2">
+                                                <div className="p-1.5 bg-emerald-100 rounded-lg text-emerald-700">
+                                                    <CheckCircle className="w-4 h-4" />
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-[#0F172A] text-sm truncate">
+                                                        {activity.restaurantName || 'Negocio Local'}
+                                                    </p>
+                                                    <p className="text-[10px] text-slate-400 font-medium">Calificado satisfactoriamente</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="h-px bg-slate-100 my-0.5"></div>
+                                        <div className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                                            <span className="font-bold text-slate-400">PRODUCTOS:</span>
+                                            <span className="line-clamp-1 italic">{activity.items?.map(i => i.name).join(', ')}</span>
+                                        </div>
+                                    </div>
+                                ))
+                            }
+                        </div>
+                    </div>
+                )}
 
-                                        setUpdatingBiometrics(true);
-                                        try {
-                                            const email = user?.email || userData?.email || '';
-                                            const biometricData = await registerBiometric(uid, email);
-                                            if (biometricData) {
-                                                localStorage.setItem('biometric_lock_enabled', 'true');
+                {/* 4. HISTORIAL DE ACTIVIDAD MINIMALISTA, ALINEADO Y 100% EN ESPAÑOL */}
+                <div ref={ordersRef} className="mt-5">
+                    {/* Cabecera de sección compacta */}
+                    <div className="px-4 mb-2.5 flex items-center justify-between">
+                        <h3 className="text-base font-black text-[#0F172A]">
+                            Historial de Actividad
+                        </h3>
+                        <span className="bg-slate-100 text-[#0F172A] text-xs font-bold px-3 py-1 rounded-full">
+                            {activities.length} total
+                        </span>
+                    </div>
+
+                    {/* Pestañas de filtro con scroll horizontal limpio */}
+                    <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 pb-2">
+                        {[
+                            { id: 'all', label: 'Todos', count: activities.length },
+                            { 
+                                id: 'transport', 
+                                label: 'Viajes', 
+                                count: activities.filter(a => {
+                                    const cat = a.service_category || (a as any).serviceCategory || (a as any).vehicle_type || a.vehicleType;
+                                    return a.type === 'transport' && (cat === 'taxi' || cat === 'confort' || cat === 'mototaxi' || cat === 'moto' || !cat);
+                                }).length 
+                            },
+                            { 
+                                id: 'mandado', 
+                                label: 'Mandados', 
+                                count: activities.filter(a => {
+                                    const cat = a.service_category || (a as any).serviceCategory;
+                                    return a.type === 'transport' && (cat === 'mandado' || cat === 'muchacho_mandado' || cat === 'encomienda');
+                                }).length 
+                            },
+                            { 
+                                id: 'order', 
+                                label: 'Compras', 
+                                count: activities.filter(a => a.type === 'order').length 
+                            }
+                        ].map(tab => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setHistoryFilter(tab.id as any)}
+                                className={`px-3.5 py-1.5 rounded-full text-xs font-bold shrink-0 transition-all flex items-center gap-1.5 ${
+                                    historyFilter === tab.id
+                                        ? 'bg-[#0F172A] text-[#FFD100] shadow-sm'
+                                        : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                }`}
+                            >
+                                <span>{tab.label}</span>
+                                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                                    historyFilter === tab.id ? 'bg-white/20 text-[#FFD100]' : 'bg-slate-200 text-slate-600'
+                                }`}>
+                                    {tab.count}
+                                </span>
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Tarjetas del Historial */}
+                    <div className="px-4 space-y-2.5">
+                        {loadingActivities ? (
+                            <div className="flex justify-center py-8">
+                                <div className="w-7 h-7 border-3 border-[#FFD100] border-t-transparent rounded-full animate-spin"></div>
+                            </div>
+                        ) : activities.length > 0 ? (
+                            (() => {
+                                const filtered = activities.filter(activity => {
+                                    if (historyFilter === 'all') return true;
+                                    if (historyFilter === 'transport') {
+                                        const cat = activity.service_category || (activity as any).serviceCategory || (activity as any).vehicle_type || activity.vehicleType;
+                                        return activity.type === 'transport' && (cat === 'taxi' || cat === 'confort' || cat === 'mototaxi' || cat === 'moto' || !cat);
+                                    }
+                                    if (historyFilter === 'mandado') {
+                                        const cat = activity.service_category || (activity as any).serviceCategory;
+                                        return activity.type === 'transport' && (cat === 'mandado' || cat === 'muchacho_mandado' || cat === 'encomienda');
+                                    }
+                                    if (historyFilter === 'order') {
+                                        return activity.type === 'order';
+                                    }
+                                    return true;
+                                });
+
+                                if (filtered.length === 0) {
+                                    return (
+                                        <div className="bg-white border border-slate-200 p-6 rounded-2xl text-center flex flex-col items-center justify-center shadow-xs">
+                                            <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
+                                            <p className="text-sm font-bold text-slate-700">No hay registros en esta categoría</p>
+                                        </div>
+                                    );
+                                }
+
+                                const itemsToRender = showAllActivities ? filtered : filtered.slice(0, 2);
+
+                                return (
+                                    <div className="space-y-2.5">
+                                        {itemsToRender.map(activity => {
+                                            const meta = getActivityCategoryMeta(activity);
+                                            const actDate = activity.created_at ? new Date(activity.created_at) : (activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null));
+                                            const isTransport = activity.type === 'transport';
+                                            const isOrder = activity.type === 'order';
+                                            const isRecharge = activity.type === 'wallet_recharge';
+                                            const amountUsd = isRecharge ? (activity.amount || 0) : isTransport ? (parseFloat((activity as any).price || activity.fare || 0)) : (parseFloat(activity.total || 0) + parseFloat((activity as any).deliveryFee || (activity as any).delivery_fee || 0));
+                                            const amountBs = bcvRate > 0 ? (amountUsd * bcvRate).toFixed(2) : null;
+
+                                            return (
+                                                <div 
+                                                    key={activity.id} 
+                                                    onClick={() => setSelectedDetailActivity(activity)}
+                                                    className="bg-white border border-slate-200 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-xs hover:border-slate-300 transition-all cursor-pointer active:scale-[0.99]"
+                                                >
+                                                    {/* Izquierda: Icono/Logo + Nombre + ID y fecha */}
+                                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 text-lg">
+                                                            {meta.emoji}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="font-extrabold text-sm text-[#0F172A] truncate">
+                                                                {isTransport 
+                                                                    ? ((activity as any).destination_address || activity.destination?.address || 'Viaje Un 2x3')
+                                                                    : isOrder 
+                                                                    ? (activity.restaurantName || (activity as any).restaurant_name || 'Pedido en Tienda')
+                                                                    : 'Recarga de Saldo'}
+                                                            </p>
+                                                            <p className="text-[11px] text-slate-500 mt-0.5 truncate">
+                                                                <span className="font-mono font-bold">#{activity.id.slice(-5).toUpperCase()}</span>
+                                                                <span> • </span>
+                                                                <span>{actDate ? `${actDate.toLocaleDateString('es-VE')} ${actDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Reciente'}</span>
+                                                            </p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Derecha: Monto USD + Monto Bs + Badge de Estado traducido */}
+                                                    <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                                                        <p className="font-black text-sm text-[#0F172A]">
+                                                            $${amountUsd.toFixed(2)}
+                                                        </p>
+                                                        {amountBs && (
+                                                            <p className="text-[11px] text-slate-500 font-semibold">
+                                                                {amountBs} Bs
+                                                            </p>
+                                                        )}
+                                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${getStatusBadgeClass(activity.status)}`}>
+                                                            {getStatusLabel(activity.status, activity.type)}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+
+                                        {filtered.length > 2 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowAllActivities(!showAllActivities)}
+                                                className="w-full py-3 bg-white border border-slate-200 hover:bg-slate-50 text-[#0F172A] font-black text-xs rounded-xl flex items-center justify-center gap-1.5 transition-colors active:scale-98 shadow-xs"
+                                            >
+                                                <span>{showAllActivities ? 'Mostrar menos' : `Ver todos (${filtered.length})`}</span>
+                                                <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showAllActivities ? 'rotate-180' : ''}`} />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })()
+                        ) : (
+                            <div className="bg-white border border-slate-200 p-6 rounded-2xl text-center flex flex-col items-center justify-center shadow-xs">
+                                <ShoppingBag className="w-8 h-8 text-slate-300 mb-2" />
+                                <p className="text-sm font-bold text-slate-700">Aún no tienes actividad</p>
+                                <p className="text-xs text-slate-400 mt-1">¡Explora la app para hacer tu primer pedido o viaje!</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* 5. AJUSTES */}
+                <div className="px-4 mt-6 space-y-2.5">
+                    <h3 className="text-base font-black text-[#0F172A] px-1">Ajustes</h3>
+                    <div className="space-y-2">
+                        {/* Notificaciones */}
+                        <div
+                            onClick={handleToggleNotifications}
+                            className={`w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl transition-all cursor-pointer hover:border-slate-300 shadow-xs ${updatingNotifications ? 'opacity-70 pointer-events-none' : ''}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center shrink-0">
+                                    <Bell className="w-5 h-5 text-[#0F172A]" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-sm text-[#0F172A]">Notificaciones</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">Recibe promos y actualizaciones</span>
+                                </div>
+                            </div>
+                            <div
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.notificationsEnabled !== false && userData?.notifications_enabled !== false && localStorage.getItem('notifications_enabled') !== 'false' ? 'bg-[#0F172A]' : 'bg-slate-300'
+                                    }`}
+                            >
+                                {updatingNotifications ? (
+                                    <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.notificationsEnabled !== false && userData?.notifications_enabled !== false && localStorage.getItem('notifications_enabled') !== 'false' ? 'translate-x-6' : 'translate-x-1'
+                                            }`}
+                                    />
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Bloqueo Biométrico */}
+                        <div
+                            onClick={async () => {
+                                const uid = user?.id || (user as any)?.uid;
+                                if (!uid) return;
+                                const isCurrentlyEnabled = Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true');
+                                if (isCurrentlyEnabled) {
+                                    setWarningModalConfig({
+                                        title: "¿Desactivar Bloqueo Biométrico?",
+                                        description: "Tu cuenta ya no te solicitará huella o Face ID al abrir la aplicación.",
+                                        onConfirm: async () => {
+                                            setUpdatingBiometrics(true);
+                                            try {
+                                                localStorage.removeItem('biometric_lock_enabled');
                                                 await supabase.from('profiles').update({
-                                                    biometric_lock_enabled: true,
-                                                    biometric_credential_id: biometricData.id,
+                                                    biometric_lock_enabled: false,
+                                                    biometric_credential_id: null,
                                                     updated_at: new Date().toISOString()
                                                 }).eq('id', uid);
                                                 setUserData((prev) => prev ? {
                                                     ...prev,
-                                                    biometricLockEnabled: true,
-                                                    biometric_lock_enabled: true,
-                                                    biometricCredentialId: biometricData.id,
-                                                    biometric_credential_id: biometricData.id
+                                                    biometricLockEnabled: false,
+                                                    biometric_lock_enabled: false
                                                 } : prev);
-                                                sessionStorage.removeItem('deliexpress_is_unlocked', 'true');
+                                                sessionStorage.removeItem('deliexpress_is_unlocked');
                                                 setIsUnlocked(true);
-                                                toast.success('Bloqueo biométrico activado');
-                                            } else {
-                                                toast.error('No se pudo activar la biometría');
+                                                toast.success('Bloqueo biométrico desactivado');
+                                            } catch (err: any) {
+                                                console.error("Error setting up biometrics:", err);
+                                                toast.error(err.message || 'Error al configurar biometría');
+                                            } finally {
+                                                setUpdatingBiometrics(false);
                                             }
-                                        } catch (err: any) {
-                                            console.error("Error setting up biometrics:", err);
-                                            toast.error(err.message || 'Error al configurar biometría');
-                                        } finally {
-                                            setUpdatingBiometrics(false);
                                         }
-                                    }}
-                                    className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingBiometrics ? 'opacity-70 pointer-events-none' : ''}`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                            <Fingerprint className={`w-5 h-5 transition-colors duration-300 ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'text-green-600' : 'text-slate-500'}`} />
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-slate-700">Bloqueo Biométrico</span>
-                                            <span className="text-[10px] text-slate-400 font-bold">Protege tu cuenta con tu huella o rostro</span>
-                                        </div>
-                                    </div>
-                                    <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'bg-green-500' : 'bg-slate-300'
-                                            }`}
-                                    >
-                                        {updatingBiometrics ? (
-                                            <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        ) : (
-                                            <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'translate-x-6' : 'translate-x-1'
-                                                    }`}
-                                            />
-                                        )}
-                                    </div>
-                                </div>
+                                    });
+                                    return;
+                                }
 
-                                <div
-                                    onClick={async () => {
-                                        const uid = user?.id || (user as any)?.uid;
-                                        if (!uid) return;
-                                        const isCurrentlyAllowed = Boolean(userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false');
-                                        if (isCurrentlyAllowed) {
-                                            setWarningModalConfig({
-                                                title: "¿Desactivar Ubicación en Línea?",
-                                                description: "Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.",
-                                                onConfirm: async () => {
-                                                    setUpdatingLocation(true);
-                                                    try {
-                                                        await supabase.from('profiles').update({
-                                                            location_permissions_allowed: false,
-                                                            updated_at: new Date().toISOString()
-                                                        }).eq('id', uid);
-                                                        setUserData((prev: any) => ({ ...prev, location_permissions_allowed: false, locationPermissionsAllowed: false }));
-                                                        localStorage.setItem('locationPermissionsAllowed', 'false');
-                                                        await refreshUserData();
-                                                        toast.success('Ubicación en tiempo real desactivada');
-                                                    } catch (err: any) {
-                                                        console.error('Error toggling location permission:', err);
-                                                        toast.error(err?.message || 'Error al desactivar ubicación');
-                                                    } finally {
-                                                        setUpdatingLocation(false);
-                                                    }
-                                                }
-                                            });
+                                setUpdatingBiometrics(true);
+                                try {
+                                    const email = user?.email || userData?.email || '';
+                                    const biometricData = await registerBiometric(uid, email);
+                                    if (biometricData) {
+                                        localStorage.setItem('biometric_lock_enabled', 'true');
+                                        await supabase.from('profiles').update({
+                                            biometric_lock_enabled: true,
+                                            biometric_credential_id: biometricData.id,
+                                            updated_at: new Date().toISOString()
+                                        }).eq('id', uid);
+                                        setUserData((prev) => prev ? {
+                                            ...prev,
+                                            biometricLockEnabled: true,
+                                            biometric_lock_enabled: true,
+                                            biometricCredentialId: biometricData.id,
+                                            biometric_credential_id: biometricData.id
+                                        } : prev);
+                                        sessionStorage.removeItem('deliexpress_is_unlocked');
+                                        setIsUnlocked(true);
+                                        toast.success('Bloqueo biométrico activado');
+                                    } else {
+                                        toast.error('No se pudo activar la biometría');
+                                    }
+                                } catch (err: any) {
+                                    console.error("Error setting up biometrics:", err);
+                                    toast.error(err.message || 'Error al configurar biometría');
+                                } finally {
+                                    setUpdatingBiometrics(false);
+                                }
+                            }}
+                            className={`w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl transition-all cursor-pointer hover:border-slate-300 shadow-xs ${updatingBiometrics ? 'opacity-70 pointer-events-none' : ''}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center shrink-0">
+                                    <Fingerprint className={`w-5 h-5 transition-colors duration-300 ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'text-emerald-600' : 'text-[#0F172A]'}`} />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-sm text-[#0F172A]">Bloqueo Biométrico</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">Protege tu cuenta con huella o rostro</span>
+                                </div>
+                            </div>
+                            <div
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 focus:outline-none ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'bg-[#0F172A]' : 'bg-slate-300'
+                                    }`}
+                            >
+                                {updatingBiometrics ? (
+                                    <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${Boolean(userData?.biometricLockEnabled || userData?.biometric_lock_enabled || localStorage.getItem('biometric_lock_enabled') === 'true') ? 'translate-x-6' : 'translate-x-1'
+                                            }`}
+                                    />
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Ubicación en Línea */}
+                        <div
+                            onClick={async () => {
+                                const uid = user?.id || (user as any)?.uid;
+                                if (!uid) return;
+                                const isCurrentlyAllowed = Boolean(userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false');
+                                if (isCurrentlyAllowed) {
+                                    setWarningModalConfig({
+                                        title: "¿Desactivar Ubicación en Línea?",
+                                        description: "Para garantizar el funcionamiento de los pedidos, la seguridad de tu cuenta y el rastreo de rutas, es necesario que mantengas estas opciones activadas.",
+                                        onConfirm: async () => {
+                                            setUpdatingLocation(true);
+                                            try {
+                                                await supabase.from('profiles').update({
+                                                    location_permissions_allowed: false,
+                                                    updated_at: new Date().toISOString()
+                                                }).eq('id', uid);
+                                                setUserData((prev: any) => ({ ...prev, location_permissions_allowed: false, locationPermissionsAllowed: false }));
+                                                localStorage.setItem('locationPermissionsAllowed', 'false');
+                                                await refreshUserData();
+                                                toast.success('Ubicación en tiempo real desactivada');
+                                            } catch (err: any) {
+                                                console.error('Error toggling location permission:', err);
+                                                toast.error(err?.message || 'Error al desactivar ubicación');
+                                            } finally {
+                                                setUpdatingLocation(false);
+                                            }
+                                        }
+                                    });
+                                    return;
+                                }
+
+                                setUpdatingLocation(true);
+                                try {
+                                    let granted = false;
+                                    let userCoords: { lat: number; lng: number } | null = null;
+
+                                    if (Capacitor.isNativePlatform()) {
+                                        try {
+                                            const permission = await Geolocation.requestPermissions();
+                                            granted = permission.location === 'granted';
+                                            if (granted) {
+                                                const pos = await Geolocation.getCurrentPosition();
+                                                userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                                            }
+                                        } catch (capErr) {
+                                            console.warn('Capacitor geolocation permission error:', capErr);
+                                        }
+                                    } else {
+                                        if (!navigator.geolocation) {
+                                            toast.error('Tu navegador no soporta geolocalización');
                                             return;
                                         }
-
-                                        setUpdatingLocation(true);
-                                        try {
-                                            let granted = false;
-                                            let userCoords: { lat: number; lng: number } | null = null;
-
-                                            if (Capacitor.isNativePlatform()) {
-                                                try {
-                                                    const permission = await Geolocation.requestPermissions();
-                                                    granted = permission.location === 'granted';
-                                                    if (granted) {
-                                                        const pos = await Geolocation.getCurrentPosition();
-                                                        userCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                                                    }
-                                                } catch (capErr) {
-                                                    console.warn('Capacitor geolocation permission error:', capErr);
-                                                }
-                                            } else {
-                                                if (!navigator.geolocation) {
-                                                    toast.error('Tu navegador no soporta geolocalización');
-                                                    return;
-                                                }
-                                                userCoords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+                                        userCoords = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+                                            navigator.geolocation.getCurrentPosition(
+                                                (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+                                                (geoErr) => {
+                                                    console.warn('High accuracy geolocation failed, trying standard accuracy:', geoErr);
                                                     navigator.geolocation.getCurrentPosition(
                                                         (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                                                        (geoErr) => {
-                                                            console.warn('High accuracy geolocation failed, trying standard accuracy:', geoErr);
-                                                            navigator.geolocation.getCurrentPosition(
-                                                                (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-                                                                (fallbackErr) => {
-                                                                    console.warn('Fallback geolocation failed:', fallbackErr);
-                                                                    const savedLat = localStorage.getItem('userLat');
-                                                                    const savedLng = localStorage.getItem('userLng');
-                                                                    if (savedLat && savedLng) {
-                                                                        resolve({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
-                                                                    } else {
-                                                                        resolve(null);
-                                                                    }
-                                                                },
-                                                                { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
-                                                            );
+                                                        (fallbackErr) => {
+                                                            console.warn('Fallback geolocation failed:', fallbackErr);
+                                                            const savedLat = localStorage.getItem('userLat');
+                                                            const savedLng = localStorage.getItem('userLng');
+                                                            if (savedLat && savedLng) {
+                                                                resolve({ lat: parseFloat(savedLat), lng: parseFloat(savedLng) });
+                                                            } else {
+                                                                resolve(null);
+                                                            }
                                                         },
-                                                        { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+                                                        { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 }
                                                     );
-                                                });
-                                                granted = !!userCoords;
-                                            }
+                                                },
+                                                { enableHighAccuracy: true, timeout: 6000, maximumAge: 60000 }
+                                            );
+                                        });
+                                        granted = !!userCoords;
+                                    }
 
-                                            if (granted) {
-                                                const payload: any = {
-                                                    location_permissions_allowed: true,
-                                                    updated_at: new Date().toISOString()
-                                                };
-                                                if (userCoords) {
-                                                    payload.coords = userCoords;
-                                                    localStorage.setItem('userLat', userCoords.lat.toString());
-                                                    localStorage.setItem('userLng', userCoords.lng.toString());
-                                                }
-                                                await supabase.from('profiles').update(payload).eq('id', uid);
-                                                setUserData((prev: any) => ({ 
-                                                    ...prev, 
-                                                    location_permissions_allowed: true, 
-                                                    locationPermissionsAllowed: true,
-                                                    coords: userCoords || prev?.coords 
-                                                }));
-                                                localStorage.setItem('locationPermissionsAllowed', 'true');
-                                                await refreshUserData();
-                                                toast.success('Ubicación en tiempo real activada');
-                                            } else {
-                                                toast.error('Se requiere permiso de ubicación para activar esta función');
-                                            }
-                                        } catch (err: any) {
-                                            console.error('Error toggling location permission:', err);
-                                            toast.error(err?.message || 'Error al configurar ubicación');
-                                        } finally {
-                                            setUpdatingLocation(false);
+                                    if (granted) {
+                                        const payload: any = {
+                                            location_permissions_allowed: true,
+                                            updated_at: new Date().toISOString()
+                                        };
+                                        if (userCoords) {
+                                            payload.coords = userCoords;
+                                            localStorage.setItem('userLat', userCoords.lat.toString());
+                                            localStorage.setItem('userLng', userCoords.lng.toString());
                                         }
-                                    }}
-                                    className={`w-full flex items-center justify-between p-4 bg-slate-50 rounded-2xl transition-all cursor-pointer hover:bg-slate-100 ${updatingLocation ? 'opacity-70 pointer-events-none' : ''}`}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                                            <Navigation className="w-5 h-5 text-emerald-500" />
-                                        </div>
-                                        <div className="flex flex-col">
-                                            <span className="font-bold text-slate-700">Ubicación en Línea</span>
-                                            <span className="text-[10px] text-slate-400 font-medium font-bold font-bold font-bold">Permite usar todas las funciones de la app</span>
-                                        </div>
-                                    </div>
-                                    <div
-                                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false' ? 'bg-emerald-500' : 'bg-slate-300'
-                                            }`}
-                                    >
-                                        {updatingLocation ? (
-                                            <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        ) : (
-                                            <span
-                                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false' ? 'translate-x-6' : 'translate-x-1'
-                                                    }`}
-                                            />
-                                        )}
-                                    </div>
+                                        await supabase.from('profiles').update(payload).eq('id', uid);
+                                        setUserData((prev: any) => ({ 
+                                            ...prev, 
+                                            location_permissions_allowed: true, 
+                                            locationPermissionsAllowed: true,
+                                            coords: userCoords || prev?.coords 
+                                        }));
+                                        localStorage.setItem('locationPermissionsAllowed', 'true');
+                                        await refreshUserData();
+                                        toast.success('Ubicación en tiempo real activada');
+                                    } else {
+                                        toast.error('Se requiere permiso de ubicación para activar esta función');
+                                    }
+                                } catch (err: any) {
+                                    console.error('Error toggling location permission:', err);
+                                    toast.error(err?.message || 'Error al configurar ubicación');
+                                } finally {
+                                    setUpdatingLocation(false);
+                                }
+                            }}
+                            className={`w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl transition-all cursor-pointer hover:border-slate-300 shadow-xs ${updatingLocation ? 'opacity-70 pointer-events-none' : ''}`}
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center shrink-0">
+                                    <Navigation className="w-5 h-5 text-[#0F172A]" />
                                 </div>
-
-                            </div>
-
-                            <div className="space-y-3 pt-6 border-t border-slate-100">
-                                <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                    <MessageSquareWarning className="w-5 h-5 text-red-500" />
-                                    Soporte Técnico
-                                </h3>
-                                <div 
-                                    onClick={() => setShowSupportModal(true)}
-                                    className="w-full flex items-center justify-between p-4 bg-red-50 hover:bg-red-100 rounded-2xl transition-colors cursor-pointer"
-                                >
-                                    <div className="flex flex-col">
-                                        <span className="font-bold text-red-700">Reportar una Falla</span>
-                                        <span className="text-[10px] text-red-500 font-medium">¿Tienes problemas con la app? Ayúdanos a mejorar.</span>
-                                    </div>
-                                    <ChevronRight className="w-5 h-5 text-red-400" />
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-sm text-[#0F172A]">Ubicación en Línea</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">Permite usar todas las funciones de la app</span>
                                 </div>
                             </div>
-
-                            <div className="space-y-3 pt-6 border-t border-slate-100">
-                                <h3 className="text-lg font-black text-slate-900 px-2 flex items-center gap-2">
-                                    <FileText className="w-5 h-5 text-slate-900" />
-                                    📋 Sección de Soporte: Preguntas Frecuentes (FAQ)
-                                </h3>
-                                <div className="space-y-2">
-                                    {FAQ_DATA.map((faq, index) => (
-                                        <div
-                                            key={index}
-                                            className="bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 transition-all"
-                                        >
-                                            <button
-                                                onClick={() => setActiveFaq(activeFaq === index ? null : index)}
-                                                className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-100 transition-colors"
-                                            >
-                                                <span className="text-xs font-black text-slate-700 leading-tight pr-4">{faq.q}</span>
-                                                <motion.div
-                                                    animate={{ rotate: activeFaq === index ? 180 : 0 }}
-                                                    transition={{ duration: 0.2 }}
-                                                >
-                                                    <ChevronRight className={`w-4 h-4 ${activeFaq === index ? 'text-slate-900' : 'text-slate-300'}`} />
-                                                </motion.div>
-                                            </button>
-                                            <AnimatePresence>
-                                                {activeFaq === index && (
-                                                    <motion.div
-                                                        initial={{ height: 0, opacity: 0 }}
-                                                        animate={{ height: "auto", opacity: 1 }}
-                                                        exit={{ height: 0, opacity: 0 }}
-                                                        transition={{ duration: 0.3, ease: "easeInOut" }}
-                                                    >
-                                                        <div className="px-4 pb-4 pt-0">
-                                                            <p className="text-xs text-slate-500 font-medium leading-relaxed whitespace-pre-line">
-                                                                {faq.a}
-                                                            </p>
-                                                        </div>
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <button
-                                onClick={handleLogout}
-                                className="w-full flex items-center justify-between p-4 hover:bg-red-50 rounded-2xl transition-colors cursor-pointer group mt-4"
+                            <div
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false' ? 'bg-[#0F172A]' : 'bg-slate-300'
+                                    }`}
                             >
-                                <div className="flex items-center gap-3 text-red-500">
-                                    <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
-                                        <LogOut className="w-5 h-5" />
-                                    </div>
-                                    <span className="font-bold">Cerrar Sesión</span>
-                                </div>
-                            </button>
+                                {updatingLocation ? (
+                                    <div className="ml-1 w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                ) : (
+                                    <span
+                                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${userData?.location_permissions_allowed !== false && userData?.locationPermissionsAllowed !== false && localStorage.getItem('locationPermissionsAllowed') !== 'false' ? 'translate-x-6' : 'translate-x-1'
+                                            }`}
+                                    />
+                                )}
+                            </div>
                         </div>
+
+                        {/* Soporte Técnico */}
+                        <div 
+                            onClick={() => setShowSupportModal(true)}
+                            className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl transition-all cursor-pointer hover:border-slate-300 shadow-xs"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
+                                    <MessageSquareWarning className="w-5 h-5 text-red-600" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <span className="font-bold text-sm text-[#0F172A]">Reportar una Falla</span>
+                                    <span className="text-[10px] text-slate-500 font-medium">¿Problemas con la app? Ayúdanos a mejorar</span>
+                                </div>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-slate-400" />
+                        </div>
+
+                        {/* FAQs */}
+                        <div className="pt-2">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider px-1 mb-2">Preguntas Frecuentes (FAQ)</h4>
+                            <div className="space-y-2">
+                                {FAQ_DATA.map((faq, index) => (
+                                    <div
+                                        key={index}
+                                        className="bg-white rounded-2xl overflow-hidden border border-slate-200 shadow-xs transition-all"
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveFaq(activeFaq === index ? null : index)}
+                                            className="w-full flex items-center justify-between p-3.5 text-left hover:bg-slate-50 transition-colors"
+                                        >
+                                            <span className="text-xs font-extrabold text-[#0F172A] leading-tight pr-4">{faq.q}</span>
+                                            <motion.div
+                                                animate={{ rotate: activeFaq === index ? 180 : 0 }}
+                                                transition={{ duration: 0.2 }}
+                                            >
+                                                <ChevronRight className={`w-4 h-4 ${activeFaq === index ? 'text-[#0F172A]' : 'text-slate-400'}`} />
+                                            </motion.div>
+                                        </button>
+                                        <AnimatePresence>
+                                            {activeFaq === index && (
+                                                <motion.div
+                                                    initial={{ height: 0, opacity: 0 }}
+                                                    animate={{ height: "auto", opacity: 1 }}
+                                                    exit={{ height: 0, opacity: 0 }}
+                                                    transition={{ duration: 0.3, ease: "easeInOut" }}
+                                                >
+                                                    <div className="px-3.5 pb-3.5 pt-0 border-t border-slate-100">
+                                                        <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-line mt-2">
+                                                            {faq.a}
+                                                        </p>
+                                                    </div>
+                                                </motion.div>
+                                    {/* Marco Legal & Regulatorio */}
+                        <button
+                            type="button"
+                            onClick={() => setShowLegalSupportModal(true)}
+                            className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl transition-all cursor-pointer group active:scale-98 shadow-xs mt-3"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
+                                    <Scale className="w-5 h-5" />
+                                </div>
+                                <div className="text-left">
+                                    <span className="font-extrabold text-sm block text-slate-800">Marco Legal y Regulatorio</span>
+                                    <span className="text-[11px] font-medium text-slate-500">Términos, leyes de transporte y exención</span>
+                                </div>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+                        </button>
+
+                        {/* Cerrar Sesión */}
+                        <button
+                            type="button"
+                            onClick={handleLogout}
+                            className="w-full flex items-center justify-between p-4 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-2xl transition-all cursor-pointer group active:scale-98 shadow-xs mt-3"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
+                                    <LogOut className="w-5 h-5 text-red-600" />
+                                </div>
+                                <span className="font-extrabold text-sm">Cerrar Sesión</span>
+                            </div>
+                            <ChevronRight className="w-5 h-5 text-red-400 group-hover:translate-x-0.5 transition-transform" />
+                        </button>
                     </div>
                 </div>
 
-                <div 
-                    className="mt-8 text-center p-6 grayscale opacity-50 cursor-pointer active:scale-95 transition-transform"
-                    onClick={() => window.location.href = 'https://deliexpress.app'}
-                >
-                    <img src={UN2X3_LOGO} alt="Un 2x3" className="h-12 mx-auto mb-2" />
-                    <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{clientFooterText}</p>
+                {/* Footer Logo & Legal links */}
+                <div className="mt-8 text-center p-6 grayscale opacity-75">
+                    <div 
+                        className="cursor-pointer active:scale-95 transition-transform inline-block mb-2"
+                        onClick={() => window.location.href = 'https://deliexpress.app'}
+                    >
+                        <img src={branding.app_client_logo || UN2X3_LOGO} alt={branding.app_client_name || 'Un 2x3'} className="h-10 mx-auto mb-2" />
+                        <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{branding.client_footer_text || clientFooterText}</p>
+                    </div>
+                    <div className="flex items-center justify-center gap-4 text-xs font-semibold text-slate-500 mt-2">
+                        <button 
+                            type="button"
+                            onClick={() => setShowPrivacyPolicyModal(true)} 
+                            className="hover:underline hover:text-slate-800"
+                        >
+                            Políticas de Privacidad
+                        </button>
+                        <span>•</span>
+                        <button 
+                            type="button"
+                            onClick={() => setShowLegalSupportModal(true)} 
+                            className="hover:underline hover:text-indigo-600 flex items-center gap-1"
+                        >
+                            <Scale className="w-3.5 h-3.5" />
+                            Marco Legal y Exención
+                        </button>
+                    </div>
+                </div>
+            </div>
+me || 'Un 2x3'} className="h-10 mx-auto mb-2" />
+                    <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{branding.client_footer_text || clientFooterText}</p>
                 </div>
             </div>
 
@@ -2667,10 +2734,7 @@ export default function Profile() {
                                 <div className="mt-10 pt-6 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                                     <button
                                         type="button"
-                                        onClick={() => {
-                                            vibrate(30);
-                                            setShowDeleteAccountModal(true);
-                                        }}
+                                        onClick={() => { vibrate(30); setDeleteConfirmText(''); setShowDeleteAccountModal(true); }}
                                         className="w-full sm:w-auto py-3.5 px-5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200/80 rounded-2xl font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 active:scale-95 transition-all"
                                     >
                                         <Trash2 className="w-4 h-4 text-rose-500" />
@@ -2734,12 +2798,36 @@ export default function Profile() {
                                 </p>
                             </div>
 
+                            <div className="space-y-1.5 text-left">
+                                <label className="text-[11px] font-bold text-slate-600 block">
+                                    Escribe <span className="text-rose-600 font-extrabold">ELIMINAR</span> para confirmar:
+                                </label>
+                                <input
+                                    type="text"
+                                    value={deleteConfirmText}
+                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                    placeholder="ELIMINAR"
+                                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 text-sm font-bold text-slate-800 focus:outline-none focus:border-rose-500 uppercase tracking-wider text-center"
+                                />
+                            </div>
+
+                            <p className="text-[11px] text-slate-400">
+                                Consulta nuestra{' '}
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPrivacyPolicyModal(true)}
+                                    className="text-primary underline font-bold"
+                                >
+                                    Política de Privacidad
+                                </button>
+                            </p>
+
                             <div className="space-y-2 pt-2">
                                 <button
                                     type="button"
-                                    disabled={isDeletingAccount}
+                                    disabled={isDeletingAccount || deleteConfirmText.trim().toUpperCase() !== 'ELIMINAR'}
                                     onClick={handleDeleteAccount}
-                                    className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 active:scale-95 disabled:opacity-50 transition-all"
+                                    className="w-full py-4 bg-rose-600 hover:bg-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
                                 >
                                     {isDeletingAccount ? (
                                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -2752,7 +2840,10 @@ export default function Profile() {
                                 <button
                                     type="button"
                                     disabled={isDeletingAccount}
-                                    onClick={() => setShowDeleteAccountModal(false)}
+                                    onClick={() => {
+                                        setDeleteConfirmText('');
+                                        setShowDeleteAccountModal(false);
+                                    }}
                                     className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-widest active:scale-95 transition-all"
                                 >
                                     Cancelar

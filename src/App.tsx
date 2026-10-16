@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import SplashScreen from './components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
@@ -178,6 +179,7 @@ function AppContent() {
                         <Route path="/taxi" element={<Taxi />} />
                         <Route path="/services" element={<Services />} />
                         <Route path="/reset-password" element={<ResetPassword />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
                     </Routes>
                 </div>
                 {!isTrackRoute && <BottomNav />}
@@ -193,6 +195,9 @@ export default function ClientApp() {
     return (
         <Router>
             <Toaster position="top-center" reverseOrder={false} />
+            {!splashFinished && (
+                <SplashScreen onFinish={() => setSplashFinished(true)} />
+            )}
             <RedirectHandler>
                 <CartProvider>
                     <AppContent />

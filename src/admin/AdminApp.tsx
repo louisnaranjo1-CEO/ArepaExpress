@@ -1,3 +1,4 @@
+import SplashScreen from '../components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import AdminAuth from './AdminAuth';
@@ -72,6 +73,9 @@ export default function AdminApp() {
 
     return (
         <Router basename={basename}>
+            {!splashFinished && (
+                <SplashScreen onFinish={() => setSplashFinished(true)} />
+            )}
             <AdminRoutes />
         </Router>
     );

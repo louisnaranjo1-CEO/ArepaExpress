@@ -184,6 +184,10 @@ const MOCK_RESTAURANTS: Restaurant[] = [
 ];
 
 export const seedDatabase = async () => {
+    if (import.meta.env.PROD) {
+        console.warn("⚠️ seedDatabase está estrictamente desactivado en entorno de producción.");
+        return false;
+    }
     try {
         for (const restaurant of MOCK_RESTAURANTS) {
             const { products, ...restaurantData } = restaurant;

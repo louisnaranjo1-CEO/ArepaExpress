@@ -94,7 +94,7 @@ export default function LocationRequiredModal({
                         {/* Privacy Footer */}
                         <div className="px-8 py-4 bg-gray-50 border-t border-gray-100 flex items-center justify-center gap-2">
                             <Navigation className="w-4 h-4 text-gray-400" />
-                            <span className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Seguridad Arepa Express</span>
+                            <span className="text-xs text-gray-400 uppercase tracking-widest font-semibold">Seguridad Un 2x3</span>
                         </div>
                     </motion.div>
                 </div>

@@ -1,3 +1,4 @@
+import SplashScreen from '../components/SplashScreen';
 import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
@@ -103,6 +104,9 @@ export default function AdminApp() {
 
     return (
         <Router basename={basename}>
+            {!splashFinished && (
+                <SplashScreen onFinish={() => setSplashFinished(true)} />
+            )}
             <AdminRoutes />
         </Router>
     );

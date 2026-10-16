@@ -13,8 +13,8 @@ interface LocationRequiredModalProps {
 export default function LocationRequiredModal({ 
     isOpen, 
     onClose, 
-    title = "Ubicación Requerida", 
-    description = "Para poder brindarte un servicio preciso de transporte o delivery, necesitamos acceder a tu ubicación en tiempo real." 
+    title = "Permiso de Ubicación en Tiempo Real", 
+    description = "Un 2x3 Conductor recopila datos de ubicación en tiempo real para asignarte servicios cercanos y mostrar tu recorrido al cliente durante el viaje o entrega, incluso cuando la aplicación está en segundo plano." 
 }: LocationRequiredModalProps) {
     const { branding } = useBranding();
     const navigate = useNavigate();
@@ -45,7 +45,7 @@ export default function LocationRequiredModal({
                         className="relative w-full max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl"
                     >
                         {/* Header Image/Icon */}
-                        <div className="h-32 bg-gradient-to-br from-primary to-primary-dark flex items-center justify-center relative">
+                        <div className="h-32 bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center relative">
                             <motion.div
                                 animate={{ 
                                     scale: [1, 1.1, 1],
@@ -65,28 +65,36 @@ export default function LocationRequiredModal({
                             </button>
                         </div>
 
-                        <div className="p-8 text-center">
-                            <h3 className="text-2xl font-bold text-gray-900 mb-3">{title}</h3>
-                            <p className="text-gray-600 mb-8 leading-relaxed">
+                        <div className="p-6 md:p-8 text-center">
+                            <h3 className="text-xl font-bold text-gray-900 mb-2">{title}</h3>
+                            
+                            {/* Google Play Prominent Disclosure Box */}
+                            <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 text-left my-4 shadow-xs">
+                                <div className="flex items-start gap-3">
+                                    <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                                    <div className="text-xs text-amber-950 leading-relaxed font-medium">
+                                        <span className="font-bold block mb-1 text-amber-900">Divulgación Destacada (Google Play):</span>
+                                        Un 2x3 Conductor recopila datos de ubicación en tiempo real para asignarte servicios cercanos y mostrar tu recorrido al cliente durante el viaje o entrega, incluso cuando la aplicación está en segundo plano o cerrada.
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p className="text-xs text-gray-500 mb-6 leading-relaxed">
                                 {description}
-                                <br />
-                                <span className="text-sm font-medium text-slate-900 mt-2 block italic">
-                                    "Tu privacidad es nuestra prioridad, puedes apagarla cuando gustes."
-                                </span>
                             </p>
 
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 <button
                                     onClick={handleGoToSettings}
-                                    className="w-full py-4 bg-primary text-slate-900 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:bg-primary-dark transition-all flex items-center justify-center gap-2 group"
+                                    className="w-full py-3.5 bg-amber-400 text-slate-900 rounded-2xl font-bold shadow-lg shadow-amber-400/20 hover:bg-amber-500 transition-all flex items-center justify-center gap-2 group"
                                 >
-                                    <ShieldAlert className="w-5 h-5 group-hover:scale-110 transition-transform" />
-                                    Activar Ubicación en Perfil
+                                    <Navigation className="w-5 h-5 group-hover:scale-110 transition-transform" />
+                                    Entendido y Configurar Ubicación
                                 </button>
                                 
                                 <button
                                     onClick={onClose}
-                                    className="w-full py-3 text-gray-500 font-medium hover:text-gray-700 transition-colors"
+                                    className="w-full py-2.5 text-gray-500 text-sm font-medium hover:text-gray-700 transition-colors"
                                 >
                                     Quizás más tarde
                                 </button>

@@ -1,3 +1,4 @@
+import SplashScreen from '../components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import React from 'react';
 import CashierLogin from './pages/CashierLogin';
@@ -12,6 +13,9 @@ export default function CashierApp() {
     return (
         <>
             <Toaster position="top-right" reverseOrder={false} />
+            {!splashFinished && (
+                <SplashScreen onFinish={() => setSplashFinished(true)} />
+            )}
             <Router basename={basename}>
                 <Routes>
                     <Route path="/login" element={<CashierLogin />} />

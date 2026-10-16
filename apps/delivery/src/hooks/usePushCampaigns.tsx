@@ -126,7 +126,7 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                             status: 'completed',
                             executed_at: new Date().toISOString(),
                             expired_at: new Date().toISOString(),
-                            updated_at: new Date().toISOString()
+                            
                         })
                         .eq('id', cid)
                         .is('executed_at', null)
@@ -174,11 +174,13 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                           <div className="absolute inset-0 bg-gradient-to-b from-amber-500/10 via-transparent to-black pointer-events-none" />
                           
                           <button 
+                            type="button"
                             onClick={(e) => { e.stopPropagation(); toast.dismiss(t.id); }} 
-                            className="absolute top-3 right-3 bg-black/60 hover:bg-amber-400 text-white hover:text-black rounded-full p-2 z-30 transition-all duration-200 backdrop-blur-md shadow-lg"
+                            className="absolute top-3 right-3 w-9 h-9 rounded-full bg-[#0F172A]/80 hover:bg-[#0F172A] text-white border border-white/20 shadow-lg flex items-center justify-center z-20 transition-all duration-200 backdrop-blur-md active:scale-90"
                             title="Cerrar"
+                            aria-label="Cerrar"
                           >
-                            <X className="w-4 h-4"/>
+                            <X className="w-4 h-4 text-white"/>
                           </button>
                           
                           {imgUrl ? (
@@ -260,7 +262,7 @@ export function usePushCampaigns(userData: any, userId: string | undefined) {
                           </div>
                         </div>
                     ), {
-                        duration: 18000,
+                        duration: Infinity,
                         position: 'top-center'
                     });
                 }

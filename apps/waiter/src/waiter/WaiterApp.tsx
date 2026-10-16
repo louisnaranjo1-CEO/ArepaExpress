@@ -1,3 +1,5 @@
+import React, { useState } from 'react';
+import SplashScreen from '../components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 
 import { CartProvider } from '../context/CartContext';
@@ -21,6 +23,9 @@ const WaiterProtectedRoute = () => {
 export default function WaiterApp() {
     return (
         <Router>
+            {!splashFinished && (
+                <SplashScreen onFinish={() => setSplashFinished(true)} />
+            )}
             <CartProvider>
                 <div className="min-h-screen bg-slate-50 font-sans w-full max-w-lg mx-auto shadow-2xl relative overflow-hidden flex flex-col">
                     <Routes>

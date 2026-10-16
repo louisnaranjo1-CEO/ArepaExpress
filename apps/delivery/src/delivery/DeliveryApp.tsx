@@ -1,3 +1,4 @@
+import SplashScreen from '../components/SplashScreen';
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -169,6 +170,9 @@ export default function DeliveryApp() {
 
     return (
         <Router basename={basename}>
+            {!splashFinished && (
+                <SplashScreen onFinish={() => setSplashFinished(true)} />
+            )}
             <DeliveryRoutes />
             <GlobalCallReceiver />
         </Router>

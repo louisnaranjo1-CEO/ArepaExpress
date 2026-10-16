@@ -27,6 +27,27 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
     const MAX_PHOTOS = 3;
     const MAX_FILE_SIZE_MB = 2;
 
+    React.useEffect(() => {
+        if (!isOpen || !orderId) return;
+        if (localStorage.getItem('reviewed_service_' + orderId) === 'true') {
+            toast("Este servicio ya fue calificado.", { icon: '⭐' });
+            onClose();
+            return;
+        }
+        supabase
+            .from('reviews')
+            .select('id')
+            .or(`ride_id.eq.${orderId},order_id.eq.${orderId}`)
+            .limit(1)
+            .then(({ data }) => {
+                if (data && data.length > 0) {
+                    localStorage.setItem('reviewed_service_' + orderId, 'true');
+                    toast("Este servicio ya fue calificado. ¡Gracias!", { icon: '⭐' });
+                    onClose();
+                }
+            });
+    }, [isOpen, orderId, onClose]);
+
     if (!isOpen) return null;
 
     const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -121,10 +142,10 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
                 restaurant_id: restaurantId
             };
 
-            const { error: insertErr } = await supabase.from('reviews').insert([reviewData]);
+            const { error: insertErr } = await supabase.from('reviews').upsert(reviewData, { onConflict: 'order_id' });
             if (insertErr) throw insertErr;
 
-            // Update order to mark as reviewed and completed if delivered
+            // Update order to mark as reviewed, client_dismissed, and completed if delivered
             const { data: orderSnap } = await supabase
                 .from('orders')
                 .select('status')
@@ -133,7 +154,10 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
 
             const updateData: any = {
                 has_reviewed: true,
-                hasReviewed: true
+                hasReviewed: true,
+                client_dismissed: true,
+                rating,
+                updated_at: new Date().toISOString()
             };
             
             if (orderSnap && orderSnap.status === 'delivered') {
@@ -141,6 +165,8 @@ export default function ReviewModal({ isOpen, onClose, restaurantId, orderId, on
             }
             
             await supabase.from('orders').update(updateData).eq('id', orderId);
+            localStorage.setItem('reviewed_service_' + orderId, 'true');
+            localStorage.setItem('dismissed_trip_' + orderId, 'true');
 
             // Notify business in real time about the new review
             try {

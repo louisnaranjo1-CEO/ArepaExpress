@@ -222,7 +222,7 @@ export default function LiquidationsManager() {
             return;
         }
         const bsAmount = (driver.totalUnpaid * bcvRate).toFixed(2);
-        const text = `Pago Móvil Arepa Express\nBanco: ${driver.paymentMobile.bank}\nCédula: ${driver.paymentMobile.cedula}\nTeléfono: ${driver.paymentMobile.phone}\nMonto: ${bsAmount} Bs`;
+        const text = `Pago Móvil Un 2x3\nBanco: ${driver.paymentMobile.bank}\nCédula: ${driver.paymentMobile.cedula}\nTeléfono: ${driver.paymentMobile.phone}\nMonto: ${bsAmount} Bs`;
         
         navigator.clipboard.writeText(text).then(() => {
             toast.success("Información copiada al portapapeles");

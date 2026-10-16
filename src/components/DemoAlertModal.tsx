@@ -8,6 +8,7 @@ interface DemoAlertModalProps {
 }
 
 const DemoAlertModal: React.FC<DemoAlertModalProps> = ({ isOpen, onClose }) => {
+  if (import.meta.env.PROD) return null;
   return (
     <AnimatePresence>
       {isOpen && (

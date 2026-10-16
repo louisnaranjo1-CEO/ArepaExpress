@@ -1,7 +1,8 @@
+import SplashScreen from '../components/SplashScreen';
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { checkDeviceAuthorization, authorizeCurrentDevice } from '../lib/adminSecurity';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import CpanelLayout from './components/CpanelLayout';
 import Login from './pages/Login';
 import DeviceChallengeModal from './components/DeviceChallengeModal';
@@ -29,6 +30,7 @@ import EmergenciesManager from './pages/EmergenciesManager';
 import CommonProductsManager from './pages/CommonProductsManager';
 
 export default function CpanelApp() {
+    const [splashFinished, setSplashFinished] = useState(false);
     const isDevAdminPath = window.location.pathname.startsWith('/cpanel');
     const isCpanelSubdomain = window.location.hostname.startsWith('cpanel.');
     const basename = isDevAdminPath && !isCpanelSubdomain ? '/cpanel' : '/';
@@ -236,17 +238,25 @@ export default function CpanelApp() {
     // Paso 2: Si está autenticado pero el dispositivo NO está autorizado, mostrar bloqueo de dispositivo
     if (isAuthenticated && !isDeviceAuthorized) {
         return (
-            <DeviceChallengeModal
+            <>
+                {!splashFinished && (
+                    <SplashScreen onFinish={() => setSplashFinished(true)} />
+                )}
+                <DeviceChallengeModal
                 user={currentAdminUser}
                 onAuthorized={() => setIsDeviceAuthorized(true)}
                 onLogout={logout}
             />
+            </>
         );
     }
 
     // Paso 3: Dispositivo autorizado -> Permitir acceso al panel completo
     return (
         <Router basename={basename}>
+            {!splashFinished && (
+                <SplashScreen onFinish={() => setSplashFinished(true)} />
+            )}
             <CpanelLayout onLogout={logout} adminUser={currentAdminUser}>
                 <Routes>
                     <Route path="/" element={<Dashboard />} />
@@ -271,6 +281,7 @@ export default function CpanelApp() {
                     <Route path="/marketing" element={<MarketingManager />} />
                     <Route path="/icons" element={<IconsManager />} />
                     <Route path="/support" element={<SupportTicketsManager />} />
+                    <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </CpanelLayout>
         </Router>

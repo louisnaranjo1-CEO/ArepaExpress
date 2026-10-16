@@ -46,9 +46,42 @@ export default function ReviewModal({
     const MAX_PHOTOS = 3;
     const MAX_FILE_SIZE_MB = 2;
 
-    // Fetch order details if not provided to identify driver and delivery method
+    // Fetch order/trip details and strictly verify unique review (PROHIBIDO CALIFICAR MÁS DE 1 VEZ)
     useEffect(() => {
         if (!isOpen || !orderId) return;
+
+        // 1. Local storage & session storage check
+        if (
+            localStorage.getItem('reviewed_service_' + orderId) === 'true' ||
+            sessionStorage.getItem('reviewed_order_' + orderId) === 'true'
+        ) {
+            toast("Este servicio ya fue calificado. ¡Gracias!", { icon: '⭐' });
+            onClose();
+            return;
+        }
+
+        // 2. Database unique review check
+        const verifyUniqueReview = async () => {
+            try {
+                const { data } = await supabase
+                    .from('reviews')
+                    .select('id')
+                    .or(`ride_id.eq.${orderId},order_id.eq.${orderId}`)
+                    .limit(1);
+
+                if (data && data.length > 0) {
+                    localStorage.setItem('reviewed_service_' + orderId, 'true');
+                    toast("Este servicio ya fue calificado. ¡Gracias!", { icon: '⭐' });
+                    onClose();
+                    return;
+                }
+            } catch (e) {
+                console.warn("Review verification check:", e);
+            }
+        };
+
+        verifyUniqueReview();
+
         if (!orderInfo) {
             supabase
                 .from('orders')
@@ -56,12 +89,44 @@ export default function ReviewModal({
                 .eq('id', orderId)
                 .maybeSingle()
                 .then(({ data }) => {
-                    if (data) setLiveOrder(data);
+                    if (data) {
+                        if (data.has_reviewed) {
+                            localStorage.setItem('reviewed_service_' + orderId, 'true');
+                            toast("Este servicio ya fue calificado. ¡Gracias!", { icon: '⭐' });
+                            onClose();
+                            return;
+                        }
+                        setLiveOrder(data);
+                    } else {
+                        // Buscar en transport_requests si no existe en orders
+                        supabase
+                            .from('transport_requests')
+                            .select('*')
+                            .eq('id', orderId)
+                            .maybeSingle()
+                            .then(({ data: trData }) => {
+                                if (trData) {
+                                    if (trData.has_reviewed || trData.rating != null) {
+                                        localStorage.setItem('reviewed_service_' + orderId, 'true');
+                                        toast("Este servicio ya fue calificado. ¡Gracias!", { icon: '⭐' });
+                                        onClose();
+                                        return;
+                                    }
+                                    setLiveOrder(trData);
+                                }
+                            });
+                    }
                 });
         } else {
+            if (orderInfo.has_reviewed || orderInfo.rating != null) {
+                localStorage.setItem('reviewed_service_' + orderId, 'true');
+                toast("Este servicio ya fue calificado. ¡Gracias!", { icon: '⭐' });
+                onClose();
+                return;
+            }
             setLiveOrder(orderInfo);
         }
-    }, [isOpen, orderId, orderInfo]);
+    }, [isOpen, orderId, orderInfo, onClose]);
 
     if (!isOpen) return null;
 
@@ -71,7 +136,7 @@ export default function ReviewModal({
         (liveOrder?.driver_id || liveOrder?.delivery_driver_id || liveOrder?.driver_name || liveOrder?.driverName)
     );
 
-    const driverName = liveOrder?.driver_name || liveOrder?.driverName || 'Repartidor';
+    const driverName = liveOrder?.driver_name || liveOrder?.driverName || 'Repartidor / Conductor';
 
     const isMobilityService = Boolean(
         liveOrder?.isMobility ||
@@ -121,38 +186,88 @@ export default function ReviewModal({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        // 1. Bloqueo inmediato para evitar doble envío accidental o concurrente
+        if (isSubmitting) return;
+
         if (!user) {
             setError("Debes iniciar sesión para dejar una reseña.");
             return;
         }
 
         if (isMobilityService) {
-                if (driverRating === 0) {
-                    setError(`Por favor, califica el servicio del conductor (${driverName}) con al menos 1 estrella.`);
-                    return;
-                }
-            } else {
-                if (rating === 0) {
-                    setError("Por favor, califica al comercio con al menos 1 estrella.");
-                    return;
-                }
-                if (hasDriver && driverRating === 0) {
-                    setError(`Por favor, califica también el servicio del conductor (${driverName}) con al menos 1 estrella.`);
-                    return;
-                }
-                if (comment.trim().length < 4) {
-                    setError("Por favor, escribe un breve comentario sobre tu experiencia con el comercio.");
-                    return;
-                }
+            if (driverRating === 0 && rating === 0) {
+                setError(`Por favor, califica el servicio del conductor (${driverName}) con al menos 1 estrella.`);
+                return;
             }
+        } else {
+            if (rating === 0) {
+                setError("Por favor, califica al comercio con al menos 1 estrella.");
+                return;
+            }
+            if (hasDriver && driverRating === 0) {
+                setError(`Por favor, califica también el servicio del conductor (${driverName}) con al menos 1 estrella.`);
+                return;
+            }
+            if (comment.trim().length < 4) {
+                setError("Por favor, escribe un breve comentario sobre tu experiencia con el comercio.");
+                return;
+            }
+        }
 
-            setIsSubmitting(true);
-            setError(null);
+        setIsSubmitting(true);
+        setError(null);
 
-            try {
-                // Upload photos if any (only for store reviews)
+        try {
+            const finalRating = isMobilityService ? (driverRating || rating || 5) : (rating || 5);
+            const finalDriverRating = driverRating || (isMobilityService ? finalRating : null);
+            const finalComment = isMobilityService 
+                ? (driverComment.trim() || comment.trim() || `Excelente servicio (${finalRating}★)`) 
+                : comment.trim();
+
+            const authorName = isAnonymous ? 'Cliente Anónimo' : (userData?.displayName || 'Usuario');
+            const authorAvatar = isAnonymous ? '' : (userData?.photoURL || '');
+            const driverIdVal = liveOrder?.driver_id || liveOrder?.delivery_driver_id || liveOrder?.assigned_driver_id || null;
+
+            if (isMobilityService) {
+                // 1. Upsert en public.reviews con onConflict: 'ride_id' (regla estricta de calificación única)
+                const rideReviewData = {
+                    user_id: user.id,
+                    user_name: authorName,
+                    user_avatar: authorAvatar,
+                    is_anonymous: isAnonymous,
+                    driver_id: driverIdVal,
+                    ride_id: orderId,
+                    rating: finalRating,
+                    driver_rating: finalDriverRating,
+                    comment: finalComment,
+                    created_at: new Date().toISOString()
+                };
+
+                const { error: upsertRideErr } = await supabase
+                    .from('reviews')
+                    .upsert(rideReviewData, { onConflict: 'ride_id' });
+
+                if (upsertRideErr) {
+                    console.warn("Ride review upsert warning:", upsertRideErr);
+                }
+
+                // 2. Actualizar directamente public.transport_requests marcando has_reviewed y client_dismissed
+                await supabase.from('transport_requests').update({
+                    has_reviewed: true,
+                    client_dismissed: true,
+                    rating: finalRating,
+                    rating_comment: finalComment,
+                    rated_at: new Date().toISOString(),
+                    status: 'completed',
+                    driver_paid: true,
+                    payment_status: 'confirmed',
+                    payment_confirmed_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).or(`id.eq.${orderId},order_id.eq.${orderId}`);
+            } else {
+                // Subir fotos si existen
                 const photoURLs: string[] = [];
-                if (!isMobilityService && photos.length > 0) {
+                if (photos.length > 0) {
                     for (let i = 0; i < photos.length; i++) {
                         const file = photos[i];
                         const ext = file.name.split('.').pop() || 'jpg';
@@ -161,101 +276,74 @@ export default function ReviewModal({
                             .from('store_assets')
                             .upload(filePath, file, { upsert: true });
 
-                        if (upErr) throw upErr;
-
-                        const { data: pubData } = supabase.storage
-                            .from('store_assets')
-                            .getPublicUrl(filePath);
-
-                        photoURLs.push(pubData.publicUrl);
+                        if (!upErr) {
+                            const { data: pubData } = supabase.storage
+                                .from('store_assets')
+                                .getPublicUrl(filePath);
+                            photoURLs.push(pubData.publicUrl);
+                        }
                     }
                 }
 
-                const authorName = isAnonymous ? 'Cliente Anónimo' : (userData?.displayName || 'Usuario');
-                const authorAvatar = isAnonymous ? '' : (userData?.photoURL || '');
+                // 1. Upsert en public.reviews con onConflict: 'order_id'
+                const orderReviewData = {
+                    user_id: user.id,
+                    user_name: authorName,
+                    user_avatar: authorAvatar,
+                    is_anonymous: isAnonymous,
+                    rating: finalRating,
+                    driver_rating: finalDriverRating,
+                    driver_id: driverIdVal,
+                    comment: finalComment,
+                    photos: photoURLs,
+                    created_at: new Date().toISOString(),
+                    is_hidden: false,
+                    order_id: orderId,
+                    restaurant_id: restaurantId || null
+                };
 
-                // 1. Save store review in Supabase if not mobility
-                if (!isMobilityService && restaurantId) {
-                    const storeReviewData = {
-                        user_id: user.id,
-                        user_name: authorName,
-                        user_avatar: authorAvatar,
-                        is_anonymous: isAnonymous,
-                        rating,
-                        comment: comment.trim(),
-                        photos: photoURLs,
-                        created_at: new Date().toISOString(),
-                        is_hidden: false,
-                        order_id: orderId,
-                        restaurant_id: restaurantId
-                    };
+                const { error: upsertOrderErr } = await supabase
+                    .from('reviews')
+                    .upsert(orderReviewData, { onConflict: 'order_id' });
 
-                    const { error: insertStoreErr } = await supabase.from('reviews').insert([storeReviewData]);
-                    if (insertStoreErr) throw insertStoreErr;
+                if (upsertOrderErr) {
+                    console.warn("Order review upsert warning:", upsertOrderErr);
                 }
 
-                // 2. If driver was rated or is mobility, save driver review
-                const driverIdVal = liveOrder?.driver_id || liveOrder?.delivery_driver_id || liveOrder?.assigned_driver_id;
-                if (driverRating > 0 && driverIdVal) {
-                    try {
-                        await supabase.from('reviews').insert([{
-                            user_id: user.id,
-                            user_name: authorName,
-                            user_avatar: authorAvatar,
-                            is_anonymous: isAnonymous,
-                            driver_id: driverIdVal,
-                            rating: driverRating,
-                            comment: driverComment.trim() || `Calificación al servicio (${driverRating}★)`,
-                            order_id: orderId,
-                            created_at: new Date().toISOString()
-                        }]);
-                    } catch (drvErr) {
-                        console.warn("Could not insert driver review record:", drvErr);
-                    }
+                // 2. Actualizar directamente public.orders
+                await supabase.from('orders').update({
+                    has_reviewed: true,
+                    client_dismissed: true,
+                    rating: finalRating,
+                    status: 'completed',
+                    completed_at: new Date().toISOString(),
+                    delivered_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                }).eq('id', orderId);
 
-                    // Update transport_requests rating directly
-                    try {
-                        await supabase.from('transport_requests').update({
-                            rating: driverRating,
-                            rating_comment: driverComment.trim() || null,
-                            rated_at: new Date().toISOString()
-                        }).or(`id.eq.${orderId},order_id.eq.${orderId}`);
-                    } catch (trRatingErr) {
-                        console.warn("Could not update transport_requests rating:", trRatingErr);
-                    }
-                }
-
-                // 3. Update order: mark as reviewed and completed
-                try {
-                    await supabase.from('orders').update({
-                        has_reviewed: true,
-                        status: 'completed',
-                        completed_at: new Date().toISOString(),
-                        delivered_at: new Date().toISOString(),
-                        updated_at: new Date().toISOString()
-                    }).eq('id', orderId);
-                } catch (ordUpErr) {
-                    console.warn("Could not update order status:", ordUpErr);
-                }
-
-                // Also mark linked transport_request as completed
-                try {
+                // Si existe un transport_request vinculado al delivery
+                if (driverIdVal || liveOrder?.transport_request_id) {
                     await supabase.from('transport_requests').update({
-                        status: 'completed',
-                        completed_at: new Date().toISOString(),
+                        has_reviewed: true,
+                        client_dismissed: true,
+                        rating: finalDriverRating || finalRating,
+                        rating_comment: finalComment,
+                        rated_at: new Date().toISOString(),
                         updated_at: new Date().toISOString()
                     }).or(`id.eq.${orderId},order_id.eq.${orderId}`);
-                } catch (trErr) {
-                    console.warn("Could not update transport_request status:", trErr);
                 }
+            }
 
-                // Persist locally in session to prevent auto-reopen loop
-                sessionStorage.setItem(`reviewed_order_${orderId}`, 'true');
-                localStorage.removeItem('active_order_id');
-                localStorage.removeItem('active_transport_req_id');
+            // 3. Persistir localmente en storage y liberar totalmente el estado del usuario
+            localStorage.setItem('reviewed_service_' + orderId, 'true');
+            localStorage.setItem('dismissed_trip_' + orderId, 'true');
+            sessionStorage.setItem('reviewed_order_' + orderId, 'true');
+            localStorage.removeItem('active_order_id');
+            localStorage.removeItem('active_transport_req_id');
+            window.dispatchEvent(new CustomEvent('transport_cycle_closed', { detail: { id: orderId } }));
 
-            // 4. Otorgar puntos de fidelización por compra al usuario
-            if (user?.id && !liveOrder?.points_credited && !liveOrder?.pointsCredited) {
+            // 4. Otorgar puntos de fidelización si aplica
+            if (user?.id && !liveOrder?.points_credited && !liveOrder?.pointsCredited && !isMobilityService) {
                 const orderTotal = Number(liveOrder?.total || liveOrder?.subtotal || 10);
                 const pointsEarned = Math.round(orderTotal * 2.5);
                 try {
@@ -269,20 +357,22 @@ export default function ReviewModal({
                 }
             }
 
-            // 5. Notify business about the review
-            try {
-                await supabase.from('notifications').insert({
-                    restaurant_id: restaurantId,
-                    user_id: user.id,
-                    type: 'new_review',
-                    title: `¡Nueva reseña (${rating}★)!`,
-                    message: `${authorName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
-                    body: `${authorName} ha valorado tu negocio con ${rating} estrellas: "${comment.slice(0, 80)}${comment.length > 80 ? '...' : ''}"`,
-                    read: false,
-                    created_at: new Date().toISOString()
-                });
-            } catch (notifErr) {
-                console.warn("Could not insert review notification:", notifErr);
+            // 5. Notificar al comercio si aplica
+            if (!isMobilityService && restaurantId) {
+                try {
+                    await supabase.from('notifications').insert({
+                        restaurant_id: restaurantId,
+                        user_id: user.id,
+                        type: 'new_review',
+                        title: `¡Nueva reseña (${finalRating}★)!`,
+                        message: `${authorName} ha valorado tu negocio con ${finalRating} estrellas: "${finalComment.slice(0, 80)}${finalComment.length > 80 ? '...' : ''}"`,
+                        body: `${authorName} ha valorado tu negocio con ${finalRating} estrellas: "${finalComment.slice(0, 80)}${finalComment.length > 80 ? '...' : ''}"`,
+                        read: false,
+                        created_at: new Date().toISOString()
+                    });
+                } catch (notifErr) {
+                    console.warn("Could not insert review notification:", notifErr);
+                }
             }
 
             toast.success("¡Gracias por tu valoración! Ciclo completado 🎉");
@@ -507,7 +597,7 @@ export default function ReviewModal({
                         <div className="pt-2 border-t border-slate-100">
                             <button
                                 type="submit"
-                                disabled={isSubmitting || rating === 0}
+                                disabled={isSubmitting || (isMobilityService ? (driverRating === 0 && rating === 0) : rating === 0)}
                                 className="w-full py-4 bg-primary text-slate-900 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary/20 hover:scale-[1.01] active:scale-95 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                             >
                                 {isSubmitting ? (

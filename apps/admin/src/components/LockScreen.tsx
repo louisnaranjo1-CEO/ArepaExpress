@@ -62,7 +62,7 @@ export default function LockScreen() {
                     <div className="relative w-48 h-48 flex items-center justify-center p-6 animate-scale-in">
                         <img 
                             src={UN2X3_LOGO} 
-                            alt="Arepa Express Official Logo" 
+                            alt="Un 2x3 Official Logo" 
                             className="w-full h-full object-contain filter drop-shadow-xl"
                         />
                     </div>

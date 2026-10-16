@@ -73,12 +73,7 @@ export default function WelcomePopup({ manualState, manualCity }: WelcomePopupPr
                         setIsOpen(true);
                         localStorage.setItem('last_welcome_popup_shown', now.toString());
 
-                        // Handle auto-close duration if set (user requirement)
-                        if (selected.duration && selected.duration > 0) {
-                            setTimeout(() => {
-                                setIsOpen(false);
-                            }, selected.duration * 1000);
-                        }
+                        // Auto-close removed: banner remains until user explicitly closes with X
                     }, 1500);
                 }
             } catch (error) {
@@ -115,10 +110,10 @@ export default function WelcomePopup({ manualState, manualCity }: WelcomePopupPr
                         {/* Close button top-right on the card */}
                         <button
                             onClick={() => setIsOpen(false)}
-                            className="absolute top-4 right-4 z-20 w-9 h-9 bg-black/50 hover:bg-black/80 text-white rounded-full flex items-center justify-center backdrop-blur-md transition-all active:scale-95"
+                            className="absolute top-4 right-4 z-20 w-9 h-9 rounded-full bg-[#0F172A]/80 hover:bg-[#0F172A] text-white border border-white/20 shadow-lg flex items-center justify-center backdrop-blur-md transition-all active:scale-95"
                             aria-label="Cerrar"
                         >
-                            <X className="w-5 h-5" />
+                            <X className="w-5 h-5 text-white" />
                         </button>
 
                         {/* Image Container */}

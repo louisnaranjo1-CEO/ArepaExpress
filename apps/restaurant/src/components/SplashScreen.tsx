@@ -1,18 +1,19 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { UN2X3_LOGO } from '../lib/env';
 import { useBranding } from '../context/BrandingContext';
 
-interface SplashScreenProps {
-  onComplete: () => void;
-  isAuthLoading: boolean;
+export interface SplashScreenProps {
+  onComplete?: () => void;
+  onFinish?: () => void;
+  isAuthLoading?: boolean;
 }
 
-export default function SplashScreen({ onComplete, isAuthLoading }: SplashScreenProps) {
+export default function SplashScreen({ onComplete, onFinish, isAuthLoading = false }: SplashScreenProps) {
   const { branding } = useBranding();
   const [timerDone, setTimerDone] = useState(false);
   const [isFadingOut, setIsFadingOut] = useState(false);
 
-  // Cache instantáneo de localStorage para carga en 0ms
+  // Cache instantáneo de localStorage para carga en 0ms y evitar parpadeo blanco
   const cached = useMemo(() => {
     try {
       const raw = localStorage.getItem('un2x3_app_branding_cache');
@@ -28,34 +29,47 @@ export default function SplashScreen({ onComplete, isAuthLoading }: SplashScreen
     ? Number(branding.splash_duration_ms) 
     : (cached?.splash_duration_ms ? Number(cached.splash_duration_ms) : 1250);
 
-  const splashLogo = branding.splash_screen_logo || cached?.splash_screen_logo || branding.app_restaurant_logo || cached?.app_restaurant_logo || branding.app_client_logo || UN2X3_LOGO;
+  const splashLogo = branding.splash_screen_logo || cached?.splash_screen_logo || branding.app_client_logo || cached?.app_client_logo || UN2X3_LOGO;
 
   const isDark = activeBg === '#0F172A' || activeBg === '#000000';
-  const textColor = isDark ? '#FFFFFF' : '#0F172A';
+  const textColor = branding.splash_text_color || cached?.splash_text_color || (isDark ? '#FFFFFF' : '#0F172A');
+
+  const handleFinish = useCallback(() => {
+    setIsFadingOut(true);
+    try {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        navigator.vibrate(15);
+      }
+    } catch (e) {}
+    const fadeTimer = setTimeout(() => {
+      if (onFinish) onFinish();
+      if (onComplete) onComplete();
+    }, 400);
+    return () => clearTimeout(fadeTimer);
+  }, [onFinish, onComplete]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setTimerDone(true);
     }, activeDuration);
 
-    return () => clearTimeout(timer);
-  }, [activeDuration]);
+    // Failsafe de seguridad absoluto: el splash NUNCA bloqueará al usuario
+    const failsafe = setTimeout(() => {
+      handleFinish();
+    }, Math.max(activeDuration + 1200, 3200));
+
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(failsafe);
+    };
+  }, [activeDuration, handleFinish]);
 
   // Salida fluida con scale(1.08) + opacity 0 e impacto háptico ligero
   useEffect(() => {
     if (timerDone && !isAuthLoading) {
-      setIsFadingOut(true);
-      try {
-        if (typeof navigator !== 'undefined' && navigator.vibrate) {
-          navigator.vibrate(15);
-        }
-      } catch (e) {}
-      const fadeTimer = setTimeout(() => {
-        onComplete();
-      }, 400);
-      return () => clearTimeout(fadeTimer);
+      handleFinish();
     }
-  }, [timerDone, isAuthLoading, onComplete]);
+  }, [timerDone, isAuthLoading, handleFinish]);
 
   return (
     <div 
