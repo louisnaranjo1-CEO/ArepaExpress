@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import SplashScreen from './components/SplashScreen';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import BottomNav from './components/BottomNav';
 import Home from './pages/Home';
 import Search from './pages/Search';
