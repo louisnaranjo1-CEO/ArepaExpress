@@ -2031,11 +2031,11 @@ export default function OrdersRadar() {
                 </div>
             )}
 
-            {/* ── REDISEÑO INTEGRADO DEL CENTRO DE COMANDAS (ESTILO APPS/CLIENT) ── */}
-            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
-                {/* 1. PARTE SUPERIOR: EL MAPA INTERACTIVO EN VIVO */}
-                <div className="relative w-full rounded-[2.5rem] overflow-hidden border border-slate-200/90 shadow-xl bg-slate-950">
-                    <div className={`w-full transition-all duration-300 ${isDriverMapExpanded ? 'h-[65vh]' : 'h-64'}`}>
+            {/* ── REDISEÑO INTEGRADO DEL CENTRO DE COMANDAS: MAPA EN FONDO + TARJETA DESLIZANTE ── */}
+            <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="-mx-3.5 -mt-3 sm:-mx-4 -mb-4 flex flex-col min-h-full">
+                {/* 1. PARTE SUPERIOR: EL MAPA INTERACTIVO EN VIVO (EDGE-TO-EDGE / INMERSIVO) */}
+                <div className="relative w-full overflow-hidden bg-slate-950 shrink-0">
+                    <div className={`w-full transition-all duration-300 ${isDriverMapExpanded ? 'h-[75vh]' : 'h-[44vh] sm:h-[48vh]'}`}>
                         <LiveTripMap
                             origin={activeTransport.origin}
                             destination={activeTransport.destination}
@@ -2048,38 +2048,16 @@ export default function OrdersRadar() {
                         />
                     </div>
 
-                    {/* Controles Flotantes Superiores en el Mapa */}
-                    <div className="absolute top-3 left-3 right-3 flex items-center justify-between pointer-events-none z-10">
-                        {/* Status Pill Flotante con Indicador Pulsante */}
-                        <div className="bg-slate-950/85 backdrop-blur-md text-white px-3.5 py-1.5 rounded-full border border-white/20 shadow-lg flex items-center gap-2 pointer-events-auto">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-                            <span className="text-[11px] font-black tracking-wide uppercase">
-                                {activeTransport.status === 'accepted' && (isFoodDeliveryTransport ? 'En camino a retirar' : 'En camino a recoger')}
-                                {activeTransport.status === 'arriving' && (isFoodDeliveryTransport ? 'Retirando pedido' : 'Esperando al pasajero')}
-                                {activeTransport.status === 'in_progress' && (isFoodDeliveryTransport ? 'En camino a entregar' : 'En viaje al destino')}
-                                {activeTransport.status === 'completed' && 'Esperando confirmación'}
-                            </span>
-                        </div>
-
-                        {/* Timer de Servicio y Botón de Pantalla Completa */}
-                        <div className="flex items-center gap-2 pointer-events-auto">
-                            {(activeTransport.status === 'accepted' || activeTransport.status === 'arriving') && (activeTransport.driver_assigned_at || activeTransport.driverAssignedAt) && (
-                                <div className="bg-slate-950/85 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/20 text-white text-[11px] font-black shadow-lg">
-                                    <ServiceTimer 
-                                        startTime={activeTransport.driver_assigned_at || activeTransport.driverAssignedAt} 
-                                        mode={activeTransport.status === 'accepted' ? 'countdown' : 'stopwatch'} 
-                                    />
-                                </div>
-                            )}
-                            <button
-                                type="button"
-                                onClick={() => setIsDriverMapExpanded(prev => !prev)}
-                                className="w-9 h-9 rounded-full bg-slate-950/85 backdrop-blur-md text-white border border-white/20 flex items-center justify-center text-xs font-black shadow-lg hover:bg-slate-900 active:scale-95 transition-all"
-                                title={isDriverMapExpanded ? "Reducir mapa" : "Expandir mapa"}
-                            >
-                                {isDriverMapExpanded ? "▼" : "▲"}
-                            </button>
-                        </div>
+                    {/* Botón Flotante Discreto para Alternar Tamaño del Mapa */}
+                    <div className="absolute top-3 right-3 z-20 pointer-events-auto">
+                        <button
+                            type="button"
+                            onClick={() => setIsDriverMapExpanded(prev => !prev)}
+                            className="px-3 py-1.5 rounded-full bg-slate-950/80 backdrop-blur-md text-white border border-white/20 flex items-center gap-1.5 text-[11px] font-black shadow-lg hover:bg-slate-900 active:scale-95 transition-all"
+                            title={isDriverMapExpanded ? "Reducir mapa" : "Expandir mapa"}
+                        >
+                            <span>{isDriverMapExpanded ? "▼ Reducir" : "▲ Expandir Mapa"}</span>
+                        </button>
                     </div>
                 </div>
 
@@ -2090,7 +2068,43 @@ export default function OrdersRadar() {
                     const clientPhone = activeTransport.user_phone || activeTransport.userPhone || activeTransport.passenger_phone || activeTransport.client_phone;
 
                     return (
-                        <div className="bg-white p-5 rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 space-y-4 relative overflow-hidden">
+                        <div className="relative z-10 -mt-6 bg-white rounded-t-[2.5rem] shadow-2xl border-t border-slate-100 p-5 pb-8 space-y-4 flex-1">
+                            {/* Manija táctil / Drag handle */}
+                            <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto -mt-1 mb-2" />
+
+                            {/* BARRA SUPERIOR INTEGRADA: ESTADO DEL VIAJE + TIEMPO PARA LLEGAR */}
+                            <div className="flex items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200/80 rounded-2xl shadow-sm">
+                                {/* Estado del Servicio */}
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <span className="relative flex h-3 w-3 shrink-0">
+                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                        <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                                    </span>
+                                    <div className="min-w-0 truncate">
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block leading-tight">
+                                            Estado del Servicio
+                                        </span>
+                                        <span className="text-xs font-black text-slate-900 tracking-wide uppercase truncate block">
+                                            {activeTransport.status === 'accepted' && (isFoodDeliveryTransport ? 'En camino a retirar' : 'En camino a recoger')}
+                                            {activeTransport.status === 'arriving' && (isFoodDeliveryTransport ? 'Retirando pedido' : 'Esperando al pasajero')}
+                                            {activeTransport.status === 'in_progress' && (isFoodDeliveryTransport ? 'En camino a entregar' : 'En viaje al destino')}
+                                            {activeTransport.status === 'completed' && 'Esperando confirmación'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Tiempo para Llegar / Cronómetro */}
+                                {(activeTransport.status === 'accepted' || activeTransport.status === 'arriving') && (activeTransport.driver_assigned_at || activeTransport.driverAssignedAt) ? (
+                                    <div className="shrink-0">
+                                        <ServiceTimer 
+                                            startTime={activeTransport.driver_assigned_at || activeTransport.driverAssignedAt} 
+                                            mode={activeTransport.status === 'accepted' ? 'countdown' : 'stopwatch'} 
+                                            compact={true}
+                                        />
+                                    </div>
+                                ) : null}
+                            </div>
+
                             <div className="flex items-center gap-3.5">
                                 {/* Foto de perfil real del cliente (con fallback a avatar con iniciales) */}
                                 <div className="relative shrink-0">
@@ -2621,10 +2635,11 @@ export default function OrdersRadar() {
                         </div>
 
                         {activeOrder.driverAssignedAt && (
-                            <div className="pt-2">
+                            <div className="pt-2 flex justify-center">
                                 <ServiceTimer 
                                     startTime={activeOrder.driverAssignedAt} 
                                     mode="stopwatch" 
+                                    compact={true}
                                 />
                             </div>
                         )}

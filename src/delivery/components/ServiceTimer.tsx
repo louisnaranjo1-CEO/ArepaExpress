@@ -6,9 +6,10 @@ interface ServiceTimerProps {
   startTime: any; // Firebase Timestamp or Date
   mode: 'countdown' | 'stopwatch';
   onTimeUpdate?: (seconds: number) => void;
+  compact?: boolean;
 }
 
-export default function ServiceTimer({ startTime, mode, onTimeUpdate }: ServiceTimerProps) {
+export default function ServiceTimer({ startTime, mode, onTimeUpdate, compact = false }: ServiceTimerProps) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   useEffect(() => {
@@ -49,6 +50,30 @@ export default function ServiceTimer({ startTime, mode, onTimeUpdate }: ServiceT
     isLate = displaySeconds < 0;
   } else {
     isLate = elapsedSeconds > 60;
+  }
+
+  if (compact) {
+    return (
+      <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all duration-300 shadow-sm ${
+        isLate 
+          ? 'bg-rose-50 border-rose-300 text-rose-700' 
+          : 'bg-slate-950 border-slate-800 text-white'
+      }`}>
+        {isLate ? (
+          <AlertTriangle className="w-4 h-4 text-rose-600 animate-bounce shrink-0" />
+        ) : (
+          <Clock className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
+        )}
+        <div className="flex flex-col text-right">
+          <span className={`text-[8px] font-black uppercase tracking-wider leading-none ${isLate ? 'text-rose-600' : 'text-amber-400/90'}`}>
+            {mode === 'countdown' ? (isLate ? 'TIEMPO EXCEDIDO' : 'TIEMPO PARA LLEGAR') : 'DURACIÓN'}
+          </span>
+          <span className={`text-sm font-black tabular-nums tracking-tight mt-0.5 leading-none ${isLate ? 'text-rose-700' : 'text-white'}`}>
+            {formatTime(displaySeconds)}
+          </span>
+        </div>
+      </div>
+    );
   }
 
   return (

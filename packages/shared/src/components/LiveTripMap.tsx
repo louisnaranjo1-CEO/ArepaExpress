@@ -99,8 +99,6 @@ export default function LiveTripMap({
             interactive
         });
 
-        map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-left');
-
         map.on('load', () => {
             setIsLoaded(true);
             map.resize();
@@ -355,6 +353,18 @@ export default function LiveTripMap({
 
     return (
         <div className="relative w-full h-full overflow-hidden bg-slate-100 select-none transform-gpu will-change-transform">
+            {/* Ocultar logo y atribución de Mapbox para experiencia limpia e inmersiva */}
+            <style>{`
+                .mapboxgl-ctrl-logo,
+                .mapboxgl-ctrl-attrib,
+                .mapboxgl-ctrl-attrib-inner,
+                .mapboxgl-compact {
+                    display: none !important;
+                    opacity: 0 !important;
+                    visibility: hidden !important;
+                    pointer-events: none !important;
+                }
+            `}</style>
             {/* Mapbox Canvas Container */}
             <div ref={mapContainerRef} className="w-full h-full transform-gpu" />
 

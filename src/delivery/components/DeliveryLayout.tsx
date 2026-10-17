@@ -8,6 +8,7 @@ import { setDriverAvailability, AvailabilityStatus } from '../../lib/delivery-se
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useBranding } from '../../context/BrandingContext';
+import ServiceSummaryModal from './ServiceSummaryModal';
 
 interface DeliveryLayoutProps {
     children: React.ReactNode;
@@ -22,6 +23,8 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
     const [updating, setUpdating] = useState(false);
     const [showPicker, setShowPicker] = useState(false);
     const [hasActiveService, setHasActiveService] = useState(false);
+    const [activeServiceData, setActiveServiceData] = useState<any>(null);
+    const [showSummaryModal, setShowSummaryModal] = useState(false);
 
     useGlobalAudioAlerts('delivery', user?.uid);
 
@@ -34,29 +37,40 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
             try {
                 const { data: transports } = await supabase
                     .from('transport_requests')
-                    .select('id')
+                    .select('*')
                     .eq('driver_id', user.uid)
                     .in('status', ['accepted', 'arriving', 'in_progress'])
+                    .order('created_at', { ascending: false })
                     .limit(1);
 
                 if (transports && transports.length > 0) {
-                    if (isMounted) setHasActiveService(true);
+                    if (isMounted) {
+                        setHasActiveService(true);
+                        setActiveServiceData(transports[0]);
+                    }
                     return;
                 }
 
                 const { data: orders } = await supabase
                     .from('orders')
-                    .select('id')
+                    .select('*')
                     .eq('delivery_driver_id', user.uid)
                     .in('status', ['en_camino', 'in_transit'])
+                    .order('created_at', { ascending: false })
                     .limit(1);
 
                 if (orders && orders.length > 0) {
-                    if (isMounted) setHasActiveService(true);
+                    if (isMounted) {
+                        setHasActiveService(true);
+                        setActiveServiceData({ ...orders[0], type: 'order' });
+                    }
                     return;
                 }
 
-                if (isMounted) setHasActiveService(false);
+                if (isMounted) {
+                    setHasActiveService(false);
+                    setActiveServiceData(null);
+                }
             } catch (e) {
                 console.error("Error checking active service:", e);
             }
@@ -253,12 +267,13 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                             </p>
                         </div>
                     </div>
-                    <NavLink
-                        to="/radar"
-                        className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md shrink-0 ml-2"
+                    <button
+                        type="button"
+                        onClick={() => setShowSummaryModal(true)}
+                        className="px-3.5 py-1.5 bg-slate-950 hover:bg-slate-900 active:scale-95 text-amber-400 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-md shrink-0 ml-2 cursor-pointer"
                     >
                         Ver Servicio
-                    </NavLink>
+                    </button>
                 </div>
             )}
 
@@ -294,6 +309,13 @@ export default function DeliveryLayout({ children }: DeliveryLayoutProps) {
                     </NavLink>
                 ))}
             </nav>
+
+            {/* Modal de Resumen del Servicio Activo */}
+            <ServiceSummaryModal
+                isOpen={showSummaryModal}
+                onClose={() => setShowSummaryModal(false)}
+                serviceData={activeServiceData}
+            />
         </div>
     );
 }

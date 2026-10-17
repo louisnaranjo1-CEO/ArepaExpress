@@ -182,4 +182,16 @@ body {
   visibility: hidden !important;
   opacity: 0 !important;
   pointer-events: none !important;
-}
+}
+
+/* Ocultar logo y atribución de Mapbox para experiencia limpia e inmersiva */
+.mapboxgl-ctrl-logo,
+.mapboxgl-ctrl-attrib,
+.mapboxgl-ctrl-attrib-inner,
+.mapboxgl-compact {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
