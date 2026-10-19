@@ -1393,13 +1393,11 @@ export default function Home() {
             </div>
 
             {/* 6. Card Banner & SUDEBAN Legal Disclaimer at the very end of scroll (Matching Image 2) */}
-            <div className="mt-6">
-              <HomePromotionCard
-                cards={cardBanners}
-                disclaimerText={disclaimerText || undefined}
-                showDisclaimer={showDisclaimer}
-              />
-            </div>
+            <HomePromotionCard
+              cards={cardBanners}
+              disclaimerText={disclaimerText || undefined}
+              showDisclaimer={showDisclaimer}
+            />
         </div>
       </main>
       <PointsModal 

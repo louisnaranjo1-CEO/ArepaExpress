@@ -7,17 +7,22 @@ export interface CardBannerItem {
   id?: string;
   title: string;
   subtitle?: string;
+  explanation?: string;
   imageUrl?: string;
   linkUrl?: string;
+  actionType?: string;
+  restaurantId?: string;
   bgColor?: string;
   textColor?: string;
   isActive?: boolean;
+  rawBanner?: any;
 }
 
 interface HomePromotionCardProps {
   cards?: CardBannerItem[];
   disclaimerText?: string;
   showDisclaimer?: boolean;
+  onCardClick?: (card: CardBannerItem) => void;
 }
 
 const DEFAULT_DISCLAIMER =
@@ -27,24 +32,24 @@ export default function HomePromotionCard({
   cards,
   disclaimerText = DEFAULT_DISCLAIMER,
   showDisclaimer = true,
+  onCardClick,
 }: HomePromotionCardProps) {
   const navigate = useNavigate();
 
   // Active cards
-  const activeCards = (cards && cards.length > 0)
-    ? cards.filter(c => c.isActive !== false)
-    : [
-        {
-          id: 'default-ally-card',
-          title: 'Creemos en tu negocio.',
-          subtitle: 'Regístrate como aliado en Un 2x3.',
-          linkUrl: '/profile',
-          bgColor: '#FEF9C3',
-        }
-      ];
+  const activeCards = (cards || []).filter(c => c.isActive !== false);
 
-  const handleCardClick = (linkUrl?: string) => {
+  if (activeCards.length === 0 && (!showDisclaimer || !disclaimerText)) {
+    return null;
+  }
+
+  const handleCardClick = (card: CardBannerItem) => {
     vibrate(20);
+    if (onCardClick) {
+      onCardClick(card);
+      return;
+    }
+    const linkUrl = card.linkUrl;
     if (!linkUrl) return;
     if (linkUrl.startsWith('http://') || linkUrl.startsWith('https://')) {
       window.open(linkUrl, '_blank', 'noopener,noreferrer');
@@ -54,13 +59,14 @@ export default function HomePromotionCard({
   };
 
   return (
-    <section className="px-5 mt-6 mb-4">
+    <section className={`px-5 ${activeCards.length > 0 ? 'mt-6 mb-4' : 'mt-2 mb-4'}`}>
       {/* Cards Row / Carousel */}
-      <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-2 pt-1 -mx-1 px-1 snap-x snap-mandatory">
+      {activeCards.length > 0 && (
+        <div className="flex gap-4 overflow-x-auto hide-scrollbar pb-2 pt-1 -mx-1 px-1 snap-x snap-mandatory">
         {activeCards.map((card, idx) => (
           <div
             key={card.id || idx}
-            onClick={() => handleCardClick(card.linkUrl)}
+            onClick={() => handleCardClick(card)}
             style={{ backgroundColor: card.bgColor || '#FEF9C3' }}
             className="w-[280px] sm:w-[320px] shrink-0 h-[360px] rounded-[2.25rem] border border-amber-200/80 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] p-6 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.98] transition-all snap-start"
           >
@@ -202,10 +208,11 @@ export default function HomePromotionCard({
           </div>
         ))}
       </div>
+      )}
 
       {/* SUDEBAN Legal Disclaimer directly beneath the card */}
       {showDisclaimer && disclaimerText && (
-        <div className="mt-4 px-1">
+        <div className={`${activeCards.length > 0 ? 'mt-4' : 'mt-1'} px-1`}>
           <p className="text-[11px] sm:text-xs text-slate-500 text-justify sm:text-left leading-relaxed font-normal">
             {disclaimerText}
           </p>
