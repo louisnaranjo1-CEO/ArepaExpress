@@ -466,7 +466,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <div className="flex flex-col h-full pt-safe">
                     {/* Sidebar Header */}
                     <div className="p-6 border-b border-white/5 flex items-center justify-between">
-                        <div className="flex items-center gap-3 cursor-pointer active:scale-95 transition-transform" onClick={() => window.location.href = 'https://deliexpress.app'}>
+                        <div className="flex items-center gap-3">
                             <div className="w-14 h-14 flex items-center justify-center p-1 overflow-visible">
                                 <img
                                     src={branding.app_restaurant_logo}

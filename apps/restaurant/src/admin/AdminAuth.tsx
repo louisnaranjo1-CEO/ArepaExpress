@@ -86,8 +86,7 @@ export default function AdminAuth() {
             <div className="w-full max-w-md animate-in fade-in slide-in-from-bottom-8 duration-700">
                 <div className="text-center mb-8">
                     <div 
-                        onClick={() => window.location.href = 'https://deliexpress.app'}
-                        className="flex items-center justify-center h-24 mb-6 hover:rotate-2 transition-transform duration-500 cursor-pointer active:scale-95"
+                        className="flex items-center justify-center h-24 mb-6 hover:rotate-2 transition-transform duration-500 p-2"
                     >
                         <img 
                             src={branding.app_restaurant_logo} 

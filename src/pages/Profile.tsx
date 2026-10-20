@@ -14,13 +14,12 @@ import { Image as ImageIcon, Camera, Smartphone, User as UserIcon, Save } from '
 import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'motion/react';
 import ReviewModal from '../components/ReviewModal';
-import PrivacyPolicyModal from '../components/PrivacyPolicyModal';
-import TermsAndConditionsModal from '../components/TermsAndConditionsModal';
 import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
 import { registerBiometric } from '../utils/security';
 import { useCurrency } from '../context/CurrencyContext';
+import { useBranding } from '../context/BrandingContext';
 import RideChat from '../components/RideChat';
 
 interface SupportTicket {
@@ -38,9 +37,9 @@ interface SupportTicket {
 
 interface ActivityItem {
     id: string;
-    type: 'order' | 'transport' | 'wallet_recharge';
+    type: 'order' | 'transport';
     total?: number;
-    amount?: number; // for recharges
+    amount?: number;
     status: string;
     createdAt: any;
     // Order specific
@@ -69,13 +68,13 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
     if (points <= 0) return null;
 
     return (
-        <div className="bg-orange-50 border border-orange-100 p-3 rounded-2xl flex items-center gap-3 hover:bg-orange-100 transition-colors">
-            <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-orange-500 font-black text-[10px] shadow-sm shadow-orange-500/10 shrink-0">
+        <div className="bg-white border border-slate-200 p-3 rounded-2xl flex items-center gap-3 hover:border-slate-300 transition-colors shadow-xs">
+            <div className="w-10 h-10 bg-[#FFD100]/20 rounded-xl flex items-center justify-center text-[#0F172A] font-black text-xs shadow-xs shrink-0">
                 {Math.floor(points)}
             </div>
             <div className="flex-1 min-w-0">
-                <p className="text-[10px] text-orange-600/70 font-black uppercase tracking-wider">Tus Puntos</p>
-                <p className="text-sm font-black text-slate-800 truncate">{name}</p>
+                <p className="text-[10px] text-slate-500 font-black uppercase tracking-wider">Tus Puntos</p>
+                <p className="text-sm font-black text-[#0F172A] truncate">{name}</p>
             </div>
         </div>
     );
@@ -83,6 +82,7 @@ const RestaurantPointCard: React.FC<{ restId: string, points: number }> = ({ res
 
 export default function Profile() {
     const { user, userData, setUserData, isProfileComplete, refreshUserData, setIsUnlocked } = useAuth();
+    const { branding } = useBranding();
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [isSigningIn, setIsSigningIn] = useState(false);
@@ -93,7 +93,6 @@ export default function Profile() {
     const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
-    const [showTermsModal, setShowTermsModal] = useState(false);
     const [isDeletingAccount, setIsDeletingAccount] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
@@ -140,83 +139,51 @@ export default function Profile() {
         if (activity.type === 'transport') {
             const cat = activity.service_category || activity.serviceCategory || activity.vehicle_type || activity.vehicleType;
             if (cat === 'mototaxi' || cat === 'moto') {
-                return { label: 'Mototaxi Express', emoji: '🛵', color: 'bg-amber-100 text-amber-900 border-amber-300', tag: 'mototaxi' };
+                return { label: 'Mototaxi', emoji: '🛵', color: 'bg-amber-100 text-amber-900 border-amber-300', tag: 'mototaxi' };
             }
             if (cat === 'mandado' || cat === 'muchacho_mandado') {
-                return { label: 'Muchacho e\' Mandao', emoji: '📦', color: 'bg-orange-100 text-orange-900 border-orange-300', tag: 'mandado' };
+                return { label: 'Mandado', emoji: '📦', color: 'bg-orange-100 text-orange-900 border-orange-300', tag: 'mandado' };
             }
             if (cat === 'encomienda') {
-                return { label: 'Encomienda / Paquete', emoji: '📬', color: 'bg-purple-100 text-purple-900 border-purple-300', tag: 'encomienda' };
+                return { label: 'Encomienda', emoji: '📬', color: 'bg-purple-100 text-purple-900 border-purple-300', tag: 'encomienda' };
             }
             if (cat === 'confort') {
-                return { label: 'Taxi Confort VIP', emoji: '🚘', color: 'bg-indigo-100 text-indigo-900 border-indigo-300', tag: 'confort' };
+                return { label: 'Taxi VIP', emoji: '🚘', color: 'bg-indigo-100 text-indigo-900 border-indigo-300', tag: 'confort' };
             }
-            return { label: 'Taxi Tradicional', emoji: '🚕', color: 'bg-yellow-100 text-yellow-900 border-yellow-300', tag: 'taxi' };
+            return { label: 'Taxi', emoji: '🚕', color: 'bg-yellow-100 text-yellow-900 border-yellow-300', tag: 'taxi' };
         }
-        if (activity.type === 'wallet_recharge') {
-            return { label: 'Recarga de Saldo', emoji: '💳', color: 'bg-emerald-100 text-emerald-900 border-emerald-300', tag: 'wallet' };
-        }
-        return { label: activity.restaurantName || activity.restaurant_name ? `Pedido: ${activity.restaurantName || activity.restaurant_name}` : 'Pedido Comida / Tienda', emoji: '🛍️', color: 'bg-rose-100 text-rose-900 border-rose-300', tag: 'order' };
+        return { label: 'Compra', emoji: '🛍️', color: 'bg-slate-100 text-slate-800 border-slate-200', tag: 'order' };
     };
 
     const getStatusBadgeClass = (status: string) => {
-        switch (status) {
-            case 'completed':
-            case 'delivered':
-            case 'paid':
-            case 'approved':
-            case 'sold':
-                return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
-            case 'cancelled':
-            case 'rejected':
-            case 'failed':
-            case 'driver_busy':
-                return 'bg-rose-100 text-rose-700 border border-rose-200';
-            case 'in_progress':
-            case 'in_transit':
-            case 'arriving':
-            case 'accepted':
-            case 'driver_assigned':
-            case 'preparing':
-                return 'bg-blue-100 text-blue-700 border border-blue-200';
-            case 'pending':
-            case 'finding_driver':
-            case 'searching':
-            default:
-                return 'bg-amber-100 text-amber-800 border border-amber-200';
+        const s = (status || '').toLowerCase();
+        if (s.includes('cancel') || s === 'rejected' || s === 'failed' || s === 'driver_busy') {
+            return 'bg-red-50 text-red-700 border border-red-200';
         }
+        if (['completed', 'delivered', 'sold', 'paid', 'approved'].includes(s)) {
+            return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
+        }
+        if (['in_progress', 'in_transit', 'arriving', 'accepted', 'driver_assigned', 'preparing'].includes(s)) {
+            return 'bg-blue-50 text-blue-700 border border-blue-200';
+        }
+        return 'bg-amber-50 text-amber-700 border border-amber-200';
     };
 
     const getStatusLabel = (status: string, type?: string) => {
-        switch (status) {
-            case 'completed':
-            case 'delivered':
-            case 'sold':
-                return 'Completado';
-            case 'cancelled':
-                return 'Cancelado';
-            case 'driver_busy':
-                return 'Conductor Ocupado';
-            case 'rejected':
-                return 'Rechazado';
-            case 'in_progress':
-            case 'in_transit':
-                return 'En Curso';
-            case 'arriving':
-                return 'Llegando';
-            case 'accepted':
-            case 'driver_assigned':
-                return 'Conductor Asignado';
-            case 'preparing':
-                return 'Preparando';
-            case 'finding_driver':
-            case 'searching':
-                return 'Buscando Piloto';
-            case 'pending':
-                return type === 'wallet_recharge' ? 'Pendiente' : 'En Espera';
-            default:
-                return status || 'Procesando';
+        const s = (status || '').toLowerCase();
+        if (s.includes('cancel') || s === 'rejected' || s === 'failed' || s === 'driver_busy') {
+            return 'Cancelado';
         }
+        if (['completed', 'delivered', 'sold', 'paid', 'approved'].includes(s)) {
+            return 'Completado';
+        }
+        if (['in_progress', 'in_transit', 'arriving', 'accepted', 'driver_assigned', 'preparing'].includes(s)) {
+            return 'En curso';
+        }
+        if (['pending', 'finding_driver', 'searching'].includes(s)) {
+            return 'Pendiente';
+        }
+        return 'Pendiente';
     };
 
     // Profile completion form state
@@ -315,6 +282,7 @@ export default function Profile() {
     }, [searchParams, user]);
 
     const scrollToOrders = () => {
+        setHistoryFilter('order');
         ordersRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
@@ -324,12 +292,13 @@ export default function Profile() {
             setLoadingActivities(true);
             try {
                 const uid = user.id || user.uid;
-                // Fetch Orders
+                // Fetch Orders (capped to 50 most recent for fast profile load)
                 const { data: orderData } = await supabase
                     .from('orders')
                     .select('*')
                     .eq('user_id', uid)
-                    .order('created_at', { ascending: false });
+                    .order('created_at', { ascending: false })
+                    .limit(50);
 
                 const fetchedOrders = (orderData || []).map((data: any) => {
                     const restId = data.restaurant_id || data.restaurantId || (data.items && data.items.length > 0 ? (data.items[0].restaurant_id || data.items[0].restaurantId) : null);
@@ -341,12 +310,13 @@ export default function Profile() {
                     } as ActivityItem;
                 });
 
-                // Fetch Transports
+                // Fetch Transports (capped to 50 most recent)
                 const { data: transportData } = await supabase
                     .from('transport_requests')
                     .select('*')
                     .eq('user_id', uid)
-                    .order('created_at', { ascending: false });
+                    .order('created_at', { ascending: false })
+                    .limit(50);
 
                 const fetchedTransports = (transportData || []).map((data: any) => {
                     return {
@@ -356,23 +326,8 @@ export default function Profile() {
                     } as ActivityItem;
                 });
 
-                // Fetch Wallet Recharges
-                const { data: rechargeData } = await supabase
-                    .from('wallet_recharges')
-                    .select('*')
-                    .eq('user_id', uid)
-                    .order('created_at', { ascending: false });
-
-                const fetchedRecharges = (rechargeData || []).map((data: any) => {
-                    return {
-                        id: data.id,
-                        type: 'wallet_recharge',
-                        ...data
-                    } as ActivityItem;
-                });
-
                 // Combine and sort
-                const combined = [...fetchedOrders, ...fetchedTransports, ...fetchedRecharges].sort((a, b) => {
+                const combined = [...fetchedOrders, ...fetchedTransports].sort((a, b) => {
                     const timeA = a.created_at ? new Date(a.created_at).getTime() : (a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt instanceof Date ? a.createdAt.getTime() : 0));
                     const timeB = b.created_at ? new Date(b.created_at).getTime() : (b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt instanceof Date ? b.createdAt.getTime() : 0));
                     return timeB - timeA;
@@ -931,263 +886,195 @@ export default function Profile() {
 
     if (!user) {
         return (
-            <div className="w-full h-full overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center min-h-[80vh] px-6 py-8 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="w-full min-h-[90vh] bg-slate-50 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center px-4 py-8 text-center animate-in fade-in duration-300">
                 <div 
-                    onClick={() => toast('¡Epale! ¿Iniciamos ya?', { icon: '🚀', style: { borderRadius: '15px', background: '#333', color: '#fff' } })}
-                    className="w-80 h-32 flex items-center justify-center mb-8 cursor-pointer active:scale-95 transition-transform p-2 overflow-visible"
+                    onClick={() => {
+                        vibrate(20);
+                        toast('¡Bienvenido a Un 2x3!', { icon: '🚀', style: { borderRadius: '15px', background: '#333', color: '#fff' } });
+                    }}
+                    className="w-48 h-20 flex items-center justify-center mb-4 cursor-pointer active:scale-95 transition-transform p-2"
                 >
                     <img 
-                        src={UN2X3_LOGO} 
-                        alt="Un 2x3 Logo"
-                        className="w-auto h-full object-contain filter drop-shadow-xl"
+                        src={branding.app_client_logo || UN2X3_LOGO} 
+                        alt={`${branding.app_client_name || 'Un 2x3'} Logo`}
+                        className="w-auto h-full object-contain filter drop-shadow-md"
                     />
                 </div>
-                <h1 className="text-3xl font-black text-slate-900 mb-2">¿Epale, que buscamos hoy?</h1>
-                <p className="text-slate-500 mb-8 max-w-[280px]">
-                    Ingresa para guardar tus sitios favoritos, pedir lo que más te gusta o dejar que te llevemos.
-                </p>
-                {error && (
-                    <div className="mb-4 p-4 bg-red-50 text-red-600 rounded-2xl text-xs font-bold animate-in shake-in duration-300">
-                        {error}
+
+                <div className="w-full max-w-sm bg-white rounded-[32px] p-6 shadow-xl border border-slate-100 text-left">
+                    <div className="text-center mb-6">
+                        <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                            {isLoginMode ? '¡Hola de nuevo!' : 'Únete a Un 2x3'}
+                        </h1>
+                        <p className="text-xs text-slate-500 font-medium mt-1">
+                            {isLoginMode 
+                                ? 'Ingresa para pedir comida, taxis y mandados' 
+                                : 'Crea tu cuenta en un 2x3 y empieza a disfrutar'}
+                        </p>
                     </div>
-                )}
-                <div className="space-y-4 w-full max-w-xs relative">
-                    <button
-                        onClick={async () => {
-                            if (isDemoMode()) {
-                                setShowDemoAlert(true);
-                                return;
-                            }
-                            vibrate(50);
-                            await handleGoogleSignIn();
-                        }}
-                        disabled={isSigningIn}
-                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2"
-                    >
-                        {isSigningIn ? (
-                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        ) : (
-                            <>
-                                <svg className="w-5 h-5" viewBox="0 0 24 24">
-                                    <path
-                                        fill="currentColor"
-                                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                                    />
-                                    <path
-                                        fill="currentColor"
-                                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                                    />
-                                    <path
-                                        fill="currentColor"
-                                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                                    />
-                                    <path
-                                        fill="currentColor"
-                                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                                    />
-                                </svg>
-                                Entrar con Google
-                            </>
-                        )}
-                    </button>
-                    {isForcedRegister ? (
-                        <button
-                            onClick={() => {
-                                if (isDemoMode()) {
-                                    setShowDemoAlert(true);
-                                    return;
-                                }
-                                vibrate(30);
-                                setIsLoginMode(false);
-                                setShowEmailModal(true);
-                            }}
-                            className="w-full bg-white text-slate-900 border-2 border-primary py-4 rounded-2xl font-bold hover:bg-primary/5 transition-colors flex items-center justify-center gap-2"
-                        >
-                            <Mail className="w-5 h-5 opacity-80" />
-                            Crear Cuenta con Correo
-                        </button>
-                    ) : (
-                        <>
+
+                    {/* Segmented Mode Selector */}
+                    {!isForcedRegister && (
+                        <div className="bg-slate-100 p-1 rounded-2xl mb-6 flex relative">
                             <button
+                                type="button"
                                 onClick={() => {
-                                    if (isDemoMode()) {
-                                        setShowDemoAlert(true);
-                                        return;
-                                    }
-                                    vibrate(30);
+                                    vibrate(20);
                                     setIsLoginMode(true);
-                                    setShowEmailModal(true);
+                                    setError(null);
                                 }}
-                                className="w-full bg-white text-slate-700 border-2 border-slate-100 py-4 rounded-2xl font-bold hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                                className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${
+                                    isLoginMode 
+                                        ? 'bg-primary text-slate-900 shadow-sm' 
+                                        : 'text-slate-500 hover:text-slate-800'
+                                }`}
                             >
-                                <Mail className="w-5 h-5 text-slate-400" />
-                                Entrar con Correo
+                                INICIAR SESIÓN
                             </button>
                             <button
+                                type="button"
                                 onClick={() => {
-                                    if (isDemoMode()) {
-                                        setShowDemoAlert(true);
-                                        return;
-                                    }
-                                    vibrate(30);
+                                    vibrate(20);
                                     setIsLoginMode(false);
-                                    setShowEmailModal(true);
+                                    setError(null);
                                 }}
-                                className="w-full text-center py-2 group"
+                                className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${
+                                    !isLoginMode 
+                                        ? 'bg-primary text-slate-900 shadow-sm' 
+                                        : 'text-slate-500 hover:text-slate-800'
+                                }`}
                             >
-                                <span className="text-slate-900 font-bold text-xs group-hover:text-primary transition-colors">¿No tienes cuenta? </span>
-                                <span className="text-slate-900 font-black text-xs group-hover:underline">Regístrate</span>
+                                CREAR CUENTA
                             </button>
-                        </>
-                    )}
-                </div>
-
-                                    {/* Botón Leer Términos y Condiciones */}
-                    <div className="pt-3 text-center">
-                        <button
-                            type="button"
-                            onClick={() => setShowTermsModal(true)}
-                            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900 font-semibold transition-colors py-1 cursor-pointer"
-                        >
-                            <FileText className="w-3.5 h-3.5 text-primary" />
-                            <span>Leer Términos y Condiciones</span>
-                        </button>
-                    </div>
-
-                {/* Email Login/Signup Modal */}
-                <AnimatePresence>
-                    {showEmailModal && (
-                        <div className="fixed inset-0 z-[110] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                                className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden"
-                            >
-                                <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
-                                    <div>
-                                        <h3 className="text-xl font-black text-slate-900">
-                                            {isLoginMode ? "Iniciar Sesión" : "Crear Cuenta"}
-                                        </h3>
-                                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
-                                            ¡Nos vemos en un 2x3 mi pana! 🚀
-                                        </p>
-                                    </div>
-                                    {!isForcedRegister && (
-                                        <button onClick={() => setShowEmailModal(false)} className="p-2 hover:bg-slate-200 rounded-xl transition-all">
-                                            <X className="w-5 h-5 text-slate-400" />
-                                        </button>
-                                    )}
-                                </div>
-
-                                <form onSubmit={handleEmailAuthSubmit} className="p-8 space-y-4">
-                                    {!isLoginMode && (
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Completo</label>
-                                            <input
-                                                type="text"
-                                                required
-                                                value={fullName}
-                                                onChange={(e) => setFullName(e.target.value)}
-                                                placeholder="Ej: Juan Pérez"
-                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                                            />
-                                        </div>
-                                    )}
-
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo Electrónico</label>
-                                        <input
-                                            type="email"
-                                            required
-                                            value={email}
-                                            onChange={(e) => setEmail(e.target.value)}
-                                            placeholder="tu@correo.com"
-                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
-                                        <input
-                                            type="password"
-                                            required
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                            placeholder="••••••••"
-                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                                        />
-                                    </div>
-
-                                    {isLoginMode && (
-                                        <div className="flex justify-end pt-1">
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setForgotEmail(email);
-                                                    setResetEmailSent(false);
-                                                    setShowEmailModal(false);
-                                                    setShowForgotPasswordModal(true);
-                                                }}
-                                                className="text-xs font-bold text-slate-500 hover:text-primary transition-colors"
-                                            >
-                                                ¿Olvidaste tu contraseña?
-                                            </button>
-                                        </div>
-                                    )}
-
-                                    {!isLoginMode && (
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{isForcedRegister ? "Código de Referido (Aplicado)" : "Código de Referido (Opcional)"}</label>
-                                            <input
-                                                type="text"
-                                                value={referralCodeInput}
-                                                onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
-                                                placeholder="Ej: ABCDEF"
-                                                className={`w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold transition-all uppercase ${isForcedRegister ? "text-primary/80 bg-slate-100" : "text-slate-700"}`}
-                                                maxLength={10}
-                                                readOnly={isForcedRegister}
-                                            />
-                                        </div>
-                                    )}
-
-                                    <button
-                                        type="submit"
-                                        disabled={isEmailAuthLoading}
-                                        className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-4 flex items-center justify-center gap-2"
-                                    >
-                                        {isEmailAuthLoading ? (
-                                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                        ) : (
-                                            isLoginMode ? "Entrar" : "Registrarme"
-                                        )}
-                                    </button>
-
-                                    {!isForcedRegister && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsLoginMode(!isLoginMode)}
-                                            className="w-full text-slate-400 font-bold py-2 mt-2 hover:text-slate-900 transition-colors text-xs"
-                                        >
-                                            {isLoginMode ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
-                                        </button>
-                                    )}
-                                                                    <div className="text-center pt-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowTermsModal(true)}
-                                            className="text-[11px] text-slate-400 hover:text-slate-700 underline font-medium cursor-pointer"
-                                        >
-                                            Leer Términos y Condiciones
-                                        </button>
-                                    </div>
-                                </form>
-                            </motion.div>
                         </div>
                     )}
-                </AnimatePresence>
 
-                {/* Forgot Password Modal */}
+                    {error && (
+                        <div className="mb-4 p-3.5 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-xs font-bold flex items-center gap-2 animate-in shake-in duration-300">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                            <span>{error}</span>
+                        </div>
+                    )}
+
+                    <form onSubmit={handleEmailAuthSubmit} className="space-y-3.5">
+                        {!isLoginMode && (
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Nombre Completo</label>
+                                <div className="relative">
+                                    <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        required
+                                        value={fullName}
+                                        onChange={(e) => setFullName(e.target.value)}
+                                        placeholder="Ej: Juan Pérez"
+                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary focus:bg-white pl-10 pr-4 py-3 rounded-2xl outline-none font-bold text-slate-700 text-sm transition-all"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo Electrónico</label>
+                            <div className="relative">
+                                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input
+                                    type="email"
+                                    required
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="tu@correo.com"
+                                    className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary focus:bg-white pl-10 pr-4 py-3 rounded-2xl outline-none font-bold text-slate-700 text-sm transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contraseña</label>
+                            <div className="relative">
+                                <Shield className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                <input
+                                    type="password"
+                                    required
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="••••••••"
+                                    className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary focus:bg-white pl-10 pr-4 py-3 rounded-2xl outline-none font-bold text-slate-700 text-sm transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        {isLoginMode && (
+                            <div className="flex justify-end pt-0.5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setForgotEmail(email);
+                                        setResetEmailSent(false);
+                                        setShowForgotPasswordModal(true);
+                                    }}
+                                    className="text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
+                                >
+                                    ¿Olvidaste tu contraseña?
+                                </button>
+                            </div>
+                        )}
+
+                        {!isLoginMode && (
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                    {isForcedRegister ? "Código de Referido (Aplicado)" : "Código de Referido (Opcional)"}
+                                </label>
+                                <div className="relative">
+                                    <Gift className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                    <input
+                                        type="text"
+                                        value={referralCodeInput}
+                                        onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
+                                        placeholder="Ej: ABCDEF"
+                                        className={`w-full bg-slate-50 border-2 border-slate-100 focus:border-primary focus:bg-white pl-10 pr-4 py-3 rounded-2xl outline-none font-bold text-sm transition-all uppercase ${isForcedRegister ? "text-primary/80 bg-slate-100" : "text-slate-700"}`}
+                                        maxLength={10}
+                                        readOnly={isForcedRegister}
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        <button
+                            type="submit"
+                            disabled={isEmailAuthLoading}
+                            className="w-full bg-primary text-slate-900 py-3.5 rounded-2xl font-black shadow-lg shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 mt-3 flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                            {isEmailAuthLoading ? (
+                                <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
+                            ) : (
+                                <span>{isLoginMode ? "Iniciar Sesión" : "Crear Mi Cuenta"}</span>
+                            )}
+                        </button>
+
+                        {!isForcedRegister && (
+                            <div className="pt-2 text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        vibrate(20);
+                                        setIsLoginMode(!isLoginMode);
+                                        setError(null);
+                                    }}
+                                    className="text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
+                                >
+                                    {isLoginMode ? (
+                                        <>¿No tienes cuenta aún? <span className="text-slate-900 font-black underline">Regístrate</span></>
+                                    ) : (
+                                        <>¿Ya tienes cuenta? <span className="text-slate-900 font-black underline">Inicia Sesión</span></>
+                                    )}
+                                </button>
+                            </div>
+                        )}
+                    </form>
+                </div>
+
+                {/* In-App Forgot Password Modal */}
                 <AnimatePresence>
                     {showForgotPasswordModal && (
                         <div className="fixed inset-0 z-[115] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
@@ -1197,7 +1084,7 @@ export default function Profile() {
                                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
                                 className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden"
                             >
-                                <div className="p-8 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
+                                <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/50">
                                     <div>
                                         <h3 className="text-xl font-black text-slate-900">
                                             Recuperar Contraseña
@@ -1215,7 +1102,7 @@ export default function Profile() {
                                 </div>
 
                                 {resetEmailSent ? (
-                                    <div className="p-8 text-center space-y-4">
+                                    <div className="p-6 text-center space-y-4">
                                         <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                                             <CheckCircle className="w-8 h-8" />
                                         </div>
@@ -1224,48 +1111,40 @@ export default function Profile() {
                                             Hemos enviado las instrucciones para restablecer tu contraseña a <strong>{forgotEmail}</strong>. Revisa tu bandeja de entrada o spam.
                                         </p>
                                         <button
-                                            onClick={() => {
-                                                setShowForgotPasswordModal(false);
-                                                setShowEmailModal(true);
-                                            }}
-                                            className="w-full bg-primary text-slate-900 py-3.5 rounded-2xl font-bold shadow-lg shadow-primary/30"
+                                            type="button"
+                                            onClick={() => setShowForgotPasswordModal(false)}
+                                            className="w-full bg-slate-100 text-slate-900 font-black py-3 rounded-2xl hover:bg-slate-200 transition-colors text-sm"
                                         >
-                                            Entendido, volver a Iniciar Sesión
+                                            Entendido
                                         </button>
                                     </div>
                                 ) : (
-                                    <form onSubmit={handleForgotPasswordSubmit} className="p-8 space-y-4">
+                                    <form onSubmit={handleForgotPasswordSubmit} className="p-6 space-y-4">
                                         <div className="space-y-1">
                                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Correo Electrónico</label>
-                                            <input
-                                                type="email"
-                                                required
-                                                value={forgotEmail}
-                                                onChange={(e) => setForgotEmail(e.target.value)}
-                                                placeholder="tu@correo.com"
-                                                className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all"
-                                            />
+                                            <div className="relative">
+                                                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                                                <input
+                                                    type="email"
+                                                    required
+                                                    value={forgotEmail}
+                                                    onChange={(e) => setForgotEmail(e.target.value)}
+                                                    placeholder="tu@correo.com"
+                                                    className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary focus:bg-white pl-10 pr-4 py-3 rounded-2xl outline-none font-bold text-slate-700 text-sm transition-all"
+                                                />
+                                            </div>
                                         </div>
+
                                         <button
                                             type="submit"
                                             disabled={isSendingReset}
-                                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                                            className="w-full bg-primary text-slate-900 py-3.5 rounded-2xl font-black shadow-lg shadow-primary/25 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2 cursor-pointer"
                                         >
                                             {isSendingReset ? (
                                                 <div className="w-5 h-5 border-2 border-slate-900 border-t-transparent rounded-full animate-spin"></div>
                                             ) : (
-                                                "Enviar Enlace de Recuperación"
+                                                <span>Enviar Enlace</span>
                                             )}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                setShowForgotPasswordModal(false);
-                                                setShowEmailModal(true);
-                                            }}
-                                            className="w-full text-slate-400 font-bold py-2 hover:text-slate-900 transition-colors text-xs text-center"
-                                        >
-                                            Volver al formulario de inicio
                                         </button>
                                     </form>
                                 )}
@@ -1273,67 +1152,6 @@ export default function Profile() {
                         </div>
                     )}
                 </AnimatePresence>
-
-                {/* Referal Modal for Google Signups */}
-                <AnimatePresence>
-                    {showReferralModal && tempGoogleUser && (
-                        <div className="fixed inset-0 z-[120] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm">
-                            <motion.div
-                                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                                className="bg-white rounded-[32px] w-full max-w-sm shadow-2xl overflow-hidden p-8"
-                            >
-                                <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                                    <Gift className="w-8 h-8 text-slate-900" />
-                                </div>
-                                <h3 className="text-xl font-black text-slate-900 text-center mb-2">
-                                    ¡Gana 200 puntos! 🎉
-                                </h3>
-                                <p className="text-slate-500 text-sm text-center mb-6 font-medium">
-                                    ¿Alguien te invitó a Un 2x3? Ingresa su código ahora y ambos recibirán puntos gratis.
-                                </p>
-
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Código de Referido</label>
-                                        <input
-                                            type="text"
-                                            value={referralCodeInput}
-                                            onChange={(e) => setReferralCodeInput(e.target.value.toUpperCase())}
-                                            placeholder="Ingresa el código aquí"
-                                            className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-black text-slate-700 transition-all text-center text-lg tracking-widest uppercase mt-1"
-                                            maxLength={10}
-                                        />
-                                    </div>
-
-                                    <div className="flex flex-col gap-2 pt-2">
-                                        <button
-                                            onClick={handleGoogleReferralSubmit}
-                                            disabled={isApplyingReferral}
-                                            className="w-full bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
-                                        >
-                                            {isApplyingReferral ? (
-                                                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                                            ) : (
-                                                <>Aplicar Código y Continuar</>
-                                            )}
-                                        </button>
-                                        <button
-                                            onClick={handleSkipReferral}
-                                            disabled={isApplyingReferral}
-                                            className="w-full text-slate-400 font-bold py-3 hover:text-slate-600 transition-colors text-sm"
-                                        >
-                                            Omitir por ahora
-                                        </button>
-                                    </div>
-                                </div>
-                            </motion.div>
-                        </div>
-                    )}
-                </AnimatePresence>
-
-                {/* Waiter Login Modal removed, now redirects to subdomain */}
 
                 <DemoAlertModal 
                     isOpen={showDemoAlert} 
@@ -2277,23 +2095,12 @@ export default function Profile() {
                                                         </p>
                                                     </div>
                                                 </motion.div>
-                                    {/* Marco Legal & Regulatorio */}
-                        <button
-                            type="button"
-                            onClick={() => setShowLegalSupportModal(true)}
-                            className="w-full flex items-center justify-between p-4 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl transition-all cursor-pointer group active:scale-98 shadow-xs mt-3"
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center shrink-0">
-                                    <Scale className="w-5 h-5" />
-                                </div>
-                                <div className="text-left">
-                                    <span className="font-extrabold text-sm block text-slate-800">Marco Legal y Regulatorio</span>
-                                    <span className="text-[11px] font-medium text-slate-500">Términos, leyes de transporte y exención</span>
-                                </div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                ))}
                             </div>
-                            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
-                        </button>
+                        </div>
 
                         {/* Cerrar Sesión */}
                         <button
@@ -2309,47 +2116,40 @@ export default function Profile() {
                             </div>
                             <ChevronRight className="w-5 h-5 text-red-400 group-hover:translate-x-0.5 transition-transform" />
                         </button>
+
+                        <div className="mt-4 flex items-center justify-center gap-4 text-xs font-semibold">
+                            <button
+                                type="button"
+                                onClick={() => setShowPrivacyPolicyModal(true)}
+                                className="text-slate-400 hover:text-slate-600 underline transition-colors cursor-pointer"
+                            >
+                                Términos y Privacidad
+                            </button>
+                            <span className="text-slate-300">•</span>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    vibrate(30);
+                                    setDeleteConfirmText('');
+                                    setShowDeleteAccountModal(true);
+                                }}
+                                className="text-rose-400 hover:text-rose-600 underline transition-colors cursor-pointer"
+                            >
+                                Eliminar mi cuenta
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                {/* Footer Logo & Legal links */}
-                <div className="mt-8 text-center p-6 grayscale opacity-75">
-                    <div 
-                        className="cursor-pointer active:scale-95 transition-transform inline-block mb-2"
-                        onClick={() => window.location.href = 'https://deliexpress.app'}
-                    >
-                        <img src={branding.app_client_logo || UN2X3_LOGO} alt={branding.app_client_name || 'Un 2x3'} className="h-10 mx-auto mb-2" />
-                        <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{branding.client_footer_text || clientFooterText}</p>
-                    </div>
-                    <div className="flex items-center justify-center gap-4 text-xs font-semibold text-slate-500 mt-2">
-                        <button 
-                            type="button"
-                            onClick={() => setShowTermsModal(true)} 
-                            className="hover:underline hover:text-slate-800 text-slate-600 font-bold"
-                        >
-                            Leer Términos y Condiciones
-                        </button>
-                        <span>•</span>
-                        <button 
-                            type="button"
-                            onClick={() => setShowPrivacyPolicyModal(true)} 
-                            className="hover:underline hover:text-slate-800"
-                        >
-                            Políticas de Privacidad
-                        </button>
-                        <span>•</span>
-                        <button 
-                            type="button"
-                            onClick={() => setShowLegalSupportModal(true)} 
-                            className="hover:underline hover:text-indigo-600 flex items-center gap-1"
-                        >
-                            <Scale className="w-3.5 h-3.5" />
-                            Marco Legal y Exención
-                        </button>
-                    </div>
-                </div>
-            </div>
-me || 'Un 2x3'} className="h-10 mx-auto mb-2" />
+                {/* Footer Logo */}
+                <div 
+                    className="mt-8 text-center p-6 grayscale opacity-60 cursor-pointer active:scale-95 transition-transform"
+                    onClick={() => {
+                        vibrate(20);
+                        toast('Un 2x3 - ¡Tu app favorita!', { icon: '🛵', style: { borderRadius: '15px', background: '#333', color: '#fff' } });
+                    }}
+                >
+                    <img src={branding.app_client_logo || UN2X3_LOGO} alt={branding.app_client_name || 'Un 2x3'} className="h-10 mx-auto mb-2" />
                     <p className="text-[10px] uppercase tracking-widest font-bold text-slate-400">{branding.client_footer_text || clientFooterText}</p>
                 </div>
             </div>
@@ -2818,7 +2618,7 @@ me || 'Un 2x3'} className="h-10 mx-auto mb-2" />
                             <div>
                                 <h3 className="text-xl font-black text-slate-900">¿Eliminar tu cuenta?</h3>
                                 <p className="text-xs text-slate-500 font-medium mt-2 leading-relaxed">
-                                    Esta acción es <span className="font-bold text-rose-600">permanente e irreversible</span>. Tu información de perfil, billetera, historial de pedidos y servicios de taxi se borrarán completamente de la base de datos.
+                                    Esta acción es <span className="font-bold text-rose-600">permanente e irreversible</span>. Tu información de perfil, historial de pedidos y servicios de taxi se borrarán completamente de la base de datos.
                                 </p>
                             </div>
 
@@ -3071,9 +2871,7 @@ me || 'Un 2x3'} className="h-10 mx-auto mb-2" />
                             <div className="flex justify-between items-baseline">
                                 <span className="text-xs font-bold text-slate-600">Total en Divisa ($):</span>
                                 <span className="text-lg font-black text-slate-900">
-                                    ${(selectedDetailActivity.type === 'wallet_recharge'
-                                        ? (selectedDetailActivity.amount || 0)
-                                        : selectedDetailActivity.type === 'transport'
+                                    ${(selectedDetailActivity.type === 'transport'
                                         ? (parseFloat((selectedDetailActivity as any).price || selectedDetailActivity.fare || 0))
                                         : (parseFloat(selectedDetailActivity.total || 0) + parseFloat((selectedDetailActivity as any).deliveryFee || (selectedDetailActivity as any).delivery_fee || 0))
                                     ).toFixed(2)} USD
@@ -3084,9 +2882,7 @@ me || 'Un 2x3'} className="h-10 mx-auto mb-2" />
                                     <span className="text-xs font-bold text-slate-600">Total en Bolívares (Bs):</span>
                                     <span className="text-base font-black text-amber-900">
                                         {(
-                                            (selectedDetailActivity.type === 'wallet_recharge'
-                                                ? (selectedDetailActivity.amount || 0)
-                                                : selectedDetailActivity.type === 'transport'
+                                            (selectedDetailActivity.type === 'transport'
                                                 ? (parseFloat((selectedDetailActivity as any).price || selectedDetailActivity.fare || 0))
                                                 : (parseFloat(selectedDetailActivity.total || 0) + parseFloat((selectedDetailActivity as any).deliveryFee || (selectedDetailActivity as any).delivery_fee || 0))
                                             ) * bcvRate
@@ -3200,18 +2996,6 @@ me || 'Un 2x3'} className="h-10 mx-auto mb-2" />
                     </div>
                 </div>
             )}
-            {/* Modal de Términos y Condiciones */}
-            <TermsAndConditionsModal
-                isOpen={showTermsModal}
-                onClose={() => setShowTermsModal(false)}
-                role="client"
-            />
-
-            {/* Modal de Política de Privacidad */}
-            <PrivacyPolicyModal
-                isOpen={showPrivacyPolicyModal}
-                onClose={() => setShowPrivacyPolicyModal(false)}
-            />
         </>
     );
 }

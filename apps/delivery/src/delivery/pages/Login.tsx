@@ -96,8 +96,7 @@ export default function Login() {
                     <motion.div
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
-                        onClick={() => window.location.href = 'https://deliexpress.app'}
-                        className="h-40 flex flex-col items-center justify-center mb-4 cursor-pointer active:scale-95 transition-transform"
+                        className="h-40 flex flex-col items-center justify-center mb-4 p-2"
                     >
                         <img
                             src={branding.app_driver_logo || UN2X3_LOGO}
