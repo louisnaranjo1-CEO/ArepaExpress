@@ -2,7 +2,6 @@
 <resources>
     <string name="app_name">Un 2x3</string>
     <string name="title_activity_main">Un 2x3</string>
-    <string name="package_name">deliexpress.app</string>
-    <string name="custom_url_scheme">deliexpress.app</string>
-    <string name="google_maps_key" translatable="false">AIzaSyAT2_wZfYTBGDR7gEpLXRzG-BUQ9Cbu0aQ</string>
+    <string name="package_name">com.un2x3.cliente</string>
+    <string name="custom_url_scheme">com.un2x3.cliente</string>
 </resources>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitud de Eliminación de Cuenta • Un 2x3</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #f59e0b;
+            --danger: #ef4444;
+            --slate-900: #0f172a;
+            --slate-800: #1e293b;
+            --slate-600: #475569;
+            --slate-100: #f1f5f9;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #f8fafc;
+            color: #334155;
+            line-height: 1.6;
+            padding: 24px;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 24px;
+            box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08);
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+        }
+        header {
+            background: linear-gradient(135deg, var(--slate-900), var(--slate-800));
+            color: white;
+            padding: 36px 28px;
+            text-align: center;
+        }
+        .logo {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 6px;
+        }
+        h1 { font-size: 20px; font-weight: 800; }
+        .content { padding: 32px 28px; }
+        .warning-box {
+            background-color: #fef2f2;
+            border-left: 4px solid var(--danger);
+            padding: 16px;
+            border-radius: 0 12px 12px 0;
+            margin-bottom: 24px;
+            font-size: 13px;
+            color: #991b1b;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--slate-800);
+            margin-bottom: 6px;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1.5px solid #cbd5e1;
+            border-radius: 12px;
+            font-size: 14px;
+            font-family: inherit;
+            margin-bottom: 18px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--primary);
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--danger);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+        button:hover { background-color: #dc2626; }
+        button:active { transform: scale(0.98); }
+        .success-message {
+            display: none;
+            padding: 24px;
+            background-color: #ecfdf5;
+            border: 1px solid #a7f3d0;
+            border-radius: 16px;
+            text-align: center;
+            color: #065f46;
+        }
+        footer {
+            border-top: 1px solid #e2e8f0;
+            padding: 20px;
+            text-align: center;
+            font-size: 12px;
+            color: #94a3b8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">⚡ Un 2x3</div>
+            <h1>Solicitud de Eliminación de Cuenta</h1>
+        </header>
+
+        <div class="content">
+            <div class="warning-box">
+                <strong>Importante:</strong> Esta acción iniciará el proceso de eliminación definitiva de tu cuenta en Un 2x3. Se eliminarán de forma irreversible tu perfil, historial de órdenes y datos personales vinculados.
+            </div>
+
+            <div id="form-container">
+                <form id="delete-form" onsubmit="handleSubmit(event)">
+                    <label for="app-type">Tipo de Cuenta</label>
+                    <select id="app-type" required>
+                        <option value="cliente">Cliente (Un 2x3)</option>
+                        <option value="negocio">Comercio / Restaurante (Un 2x3 Negocios)</option>
+                        <option value="conductor">Conductor / Repartidor (Un 2x3 Conductor)</option>
+                    </select>
+
+                    <label for="email">Correo Electrónico Asociado</label>
+                    <input type="email" id="email" placeholder="tu-correo@ejemplo.com" required>
+
+                    <label for="phone">Teléfono Asociado</label>
+                    <input type="tel" id="phone" placeholder="+58 412 1234567" required>
+
+                    <label for="reason">Motivo de eliminación (Opcional)</label>
+                    <textarea id="reason" rows="3" placeholder="Cuéntanos brevemente el motivo..."></textarea>
+
+                    <button type="submit">Confirmar Solicitud de Eliminación</button>
+                </form>
+            </div>
+
+            <div id="success-box" class="success-message">
+                <h3 style="margin-bottom: 8px;">Solicitud Registrada</h3>
+                <p style="font-size: 13px;">Hemos recibido tu solicitud de supresión de cuenta. Tu información será procesada y eliminada en un plazo máximo de 48 horas conforme a las políticas de protección de datos.</p>
+            </div>
+        </div>
+
+        <footer>
+            &copy; 2026 Un 2x3 • <a href="privacy.html" style="color: #64748b;">Ver Política de Privacidad</a>
+        </footer>
+    </div>
+
+    <script>
+        function handleSubmit(e) {
+            e.preventDefault();
+            document.getElementById('form-container').style.display = 'none';
+            document.getElementById('success-box').style.display = 'block';
+        }
+    </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'deliexpress.app',
+  appId: 'com.un2x3.cliente',
   appName: 'Un 2x3',
   webDir: 'dist',
   server: {
@@ -11,6 +11,7 @@ const config: CapacitorConfig = {
     allowNavigation: [
       '*.mapbox.com',
       'api.mapbox.com',
+      'events.mapbox.com',
       '*.googleapis.com',
       '*.gstatic.com',
       '*.google.com'

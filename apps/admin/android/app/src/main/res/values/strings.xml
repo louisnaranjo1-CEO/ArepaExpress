@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Un 2x3 Admin</string>
     <string name="title_activity_main">Un 2x3 Admin</string>
-    <string name="package_name">com.arepaexpress.admin</string>
-    <string name="custom_url_scheme">com.arepaexpress.admin</string>
+    <string name="package_name">com.un2x3.admin</string>
+    <string name="custom_url_scheme">com.un2x3.admin</string>
 </resources>
