@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { 
     Palette, 
     UploadCloud, 
@@ -19,7 +20,8 @@ import {
     Check,
     Clock,
     Type,
-    Paintbrush
+    Paintbrush,
+    Volume2
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import toast from 'react-hot-toast';
@@ -368,6 +370,33 @@ export default function DesignManager() {
                         </>
                     )}
                 </button>
+            </div>
+
+            {/* Banner Acceso Rápido a Sonidos y Alertas */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-primary/10 border border-amber-500/20 rounded-[28px]">
+                <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-600 flex items-center justify-center shrink-0">
+                        <Volume2 className="w-6 h-6" />
+                    </div>
+                    <div>
+                        <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                            Centro de Sonidos y Alertas Acústicas
+                            <span className="text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-700 px-2 py-0.5 rounded-full">
+                                Nuevo
+                            </span>
+                        </h3>
+                        <p className="text-xs text-slate-500 font-medium">
+                            Personaliza tonos MP3, bucles de alerta y frecuencias de notificación en tiempo real para todas las apps.
+                        </p>
+                    </div>
+                </div>
+                <Link
+                    to="/sounds"
+                    className="shrink-0 flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl hover:bg-slate-800 transition-all shadow-md active:scale-95"
+                >
+                    <Volume2 className="w-4 h-4 text-amber-400" />
+                    <span>Configurar Sonidos del Sistema</span>
+                </Link>
             </div>
 
             {/* TARJETA PRINCIPAL DESTACADA: IDENTIDAD GLOBAL DE LA PLATAFORMA (CAMBIO DE NOMBRE MAESTRO) */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users, Lock, Key, Shield, Copy, Check, Store, Utensils, Receipt } from 'lucide-react';
+import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users, Lock, Key, Shield, Copy, Check, Store, Utensils, Receipt, Save, FileText, Eye, Edit3, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DualPrice from '../../components/DualPrice';
@@ -59,15 +59,74 @@ export default function UsersManager() {
     const [shareMessage, setShareMessage] = useState('¡Hola! Únete a la nueva era del delivery con Un 2x3 y obtén premios increíbles.');
     const [shareUrl, setShareUrl] = useState('https://un2x3.app');
     const [savingConfig, setSavingConfig] = useState(false);
+    const [loadingSettings, setLoadingSettings] = useState(false);
+
+    // Gestor de Términos y Condiciones
+    const [showTermsModal, setShowTermsModal] = useState(false);
+    const [activeTermsTab, setActiveTermsTab] = useState<'client' | 'driver' | 'business'>('client');
+    const [termsClient, setTermsClient] = useState('');
+    const [termsDriver, setTermsDriver] = useState('');
+    const [termsBusiness, setTermsBusiness] = useState('');
+    const [termsUpdatedAt, setTermsUpdatedAt] = useState<string | null>(null);
+    const [savingTerms, setSavingTerms] = useState(false);
+    const [termsPreviewMode, setTermsPreviewMode] = useState(false);
+
     const [restaurantNames, setRestaurantNames] = useState<Record<string, string>>({});
     const [userCredsCopied, setUserCredsCopied] = useState(false);
     const [sendingReset, setSendingReset] = useState(false);
     const [previewPhoto, setPreviewPhoto] = useState<{ url: string; title: string } | null>(null);
 
     useEffect(() => {
-        const fetchSystemConfig = async () => {
-            try {
-                // 1. Intentar leer desde 'share_config'
+        fetchSystemConfig();
+
+        // Suscripción Realtime a configuraciones legales y de compartir
+        const channel = supabase
+            .channel('legal_share_realtime_sync')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'app_legal_and_share_settings' },
+                (payload) => {
+                    const row: any = payload.new;
+                    if (row) {
+                        if (row.share_link_message !== undefined) setShareMessage(row.share_link_message || '');
+                        if (row.share_link_url !== undefined) setShareUrl(row.share_link_url || '');
+                        if (row.terms_client !== undefined) setTermsClient(row.terms_client || '');
+                        if (row.terms_driver !== undefined) setTermsDriver(row.terms_driver || '');
+                        if (row.terms_business !== undefined) setTermsBusiness(row.terms_business || '');
+                        if (row.updated_at !== undefined) setTermsUpdatedAt(row.updated_at || null);
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, []);
+
+    const fetchSystemConfig = async () => {
+        setLoadingSettings(true);
+        try {
+            // 1. Prioridad: Tabla oficial app_legal_and_share_settings
+            const { data: legalData } = await supabase
+                .from('app_legal_and_share_settings')
+                .select('*')
+                .eq('id', 'current')
+                .maybeSingle();
+
+            if (legalData) {
+                if (legalData.share_link_message !== null && legalData.share_link_message !== undefined) {
+                    setShareMessage(legalData.share_link_message);
+                }
+                if (legalData.share_link_url !== null && legalData.share_link_url !== undefined) {
+                    setShareUrl(legalData.share_link_url);
+                }
+                setTermsClient(legalData.terms_client || '');
+                setTermsDriver(legalData.terms_driver || '');
+                setTermsBusiness(legalData.terms_business || '');
+                setTermsUpdatedAt(legalData.updated_at || null);
+            } else {
+                // Fallback a 'system_configs' (share_config)
                 const { data } = await supabase
                     .from('system_configs')
                     .select('*')
@@ -79,83 +138,103 @@ export default function UsersManager() {
                     const url = data.share_url || data.shareurl || data.shareUrl || data.data?.share_url || data.data?.shareUrl;
                     if (msg) setShareMessage(msg);
                     if (url) setShareUrl(url);
-                } else {
-                    // Fallback a 'fidelization'
-                    const { data: fidData } = await supabase
-                        .from('system_configs')
-                        .select('*')
-                        .eq('id', 'fidelization')
-                        .maybeSingle();
-                    if (fidData) {
-                        const msg = fidData.share_message || fidData.sharemessage || fidData.shareMessage || fidData.data?.share_message || fidData.data?.shareMessage;
-                        const url = fidData.share_url || fidData.shareurl || fidData.shareUrl || fidData.data?.share_url || fidData.data?.shareUrl;
-                        if (msg) setShareMessage(msg);
-                        if (url) setShareUrl(url);
-                    }
                 }
-            } catch (err) {
-                console.error("Error fetching config", err);
             }
-        };
-        fetchSystemConfig();
-    }, []);
+        } catch (err) {
+            console.error("Error obteniendo configuraciones:", err);
+        } finally {
+            setLoadingSettings(false);
+        }
+    };
 
     const handleSaveShareConfig = async () => {
         setSavingConfig(true);
         try {
             const nowIso = new Date().toISOString();
-            const payload: Record<string, any> = {
-                id: 'share_config',
-                share_message: shareMessage,
-                share_url: shareUrl,
-                sharemessage: shareMessage,
-                shareurl: shareUrl,
-                data: {
-                    shareMessage,
-                    shareUrl,
-                    share_message: shareMessage,
-                    share_url: shareUrl
-                },
-                updated_at: nowIso,
-                updatedAt: nowIso
-            };
+            const cleanUrl = (shareUrl || 'https://un2x3.app').trim();
+            const cleanMsg = (shareMessage || '').trim();
 
-            const { error } = await supabase
-                .from('system_configs')
-                .upsert(payload);
-
-            if (error) {
-                console.warn("Aviso al guardar en system_configs(share_config), reintentando:", error);
-                const { error: fallbackErr } = await supabase
-                    .from('system_configs')
-                    .upsert({
-                        id: 'share_config',
-                        data: { shareMessage, shareUrl },
-                        updated_at: nowIso
-                    });
-                if (fallbackErr) throw fallbackErr;
-            }
-
-            // También sincronizar con 'fidelization' para retrocompatibilidad
-            try {
-                await supabase.from('system_configs').upsert({
-                    id: 'fidelization',
-                    shareMessage,
-                    shareUrl,
-                    share_message: shareMessage,
-                    share_url: shareUrl,
-                    data: { shareMessage, shareUrl },
+            // 1. Guardar en la tabla oficial app_legal_and_share_settings
+            const { error: legalError } = await supabase
+                .from('app_legal_and_share_settings')
+                .upsert({
+                    id: 'current',
+                    share_link_url: cleanUrl,
+                    share_link_message: cleanMsg,
+                    terms_client: termsClient || '',
+                    terms_driver: termsDriver || '',
+                    terms_business: termsBusiness || '',
                     updated_at: nowIso
                 });
-            } catch (e) {}
+
+            if (legalError) {
+                console.warn("Aviso al guardar en app_legal_and_share_settings:", legalError);
+            }
+
+            // 2. Sincronizar en system_configs para retrocompatibilidad total
+            try {
+                const payload: Record<string, any> = {
+                    id: 'share_config',
+                    share_message: cleanMsg,
+                    share_url: cleanUrl,
+                    sharemessage: cleanMsg,
+                    shareurl: cleanUrl,
+                    data: {
+                        shareMessage: cleanMsg,
+                        shareUrl: cleanUrl,
+                        share_message: cleanMsg,
+                        share_url: cleanUrl
+                    },
+                    updated_at: nowIso
+                };
+
+                await supabase.from('system_configs').upsert(payload);
+                await supabase.from('system_configs').upsert({
+                    id: 'fidelization',
+                    share_message: cleanMsg,
+                    share_url: cleanUrl,
+                    data: { shareMessage: cleanMsg, shareUrl: cleanUrl },
+                    updated_at: nowIso
+                });
+            } catch (e) {
+                console.warn("Aviso sincronizando system_configs:", e);
+            }
 
             setShowShareLinkModal(false);
-            toast.success("Configuración de compartir guardada correctamente");
+            toast.success("Enlace y mensaje de compartir guardados correctamente");
         } catch (error: any) {
             console.error("Error guardando share_config:", error);
             toast.error(error.message || "Error al guardar la configuración.");
         } finally {
             setSavingConfig(false);
+        }
+    };
+
+    const handleSaveTerms = async () => {
+        setSavingTerms(true);
+        try {
+            const nowIso = new Date().toISOString();
+            const { error } = await supabase
+                .from('app_legal_and_share_settings')
+                .upsert({
+                    id: 'current',
+                    terms_client: termsClient || '',
+                    terms_driver: termsDriver || '',
+                    terms_business: termsBusiness || '',
+                    share_link_url: shareUrl || 'https://un2x3.app',
+                    share_link_message: shareMessage || '',
+                    updated_at: nowIso
+                });
+
+            if (error) throw error;
+
+            setTermsUpdatedAt(nowIso);
+            toast.success("Términos y Condiciones actualizados exitosamente");
+        } catch (error: any) {
+            console.error("Error guardando términos:", error);
+            toast.error(error.message || "Error al guardar los Términos y Condiciones.");
+        } finally {
+            setSavingTerms(false);
         }
     };
 
@@ -633,14 +712,28 @@ export default function UsersManager() {
                     </button>
                 </div>
 
-                {/* Configure Referral Button */}
-                <button
-                    onClick={() => setShowShareLinkModal(true)}
-                    className="flex justify-center items-center gap-2 px-6 py-3 bg-indigo-50 text-primary rounded-xl font-bold text-sm hover:bg-indigo-100 transition-all shadow-sm md:ml-auto"
-                >
-                    <Gift className="w-5 h-5" />
-                    Configurar Link Compartir
-                </button>
+                {/* Action Buttons: Términos y Condiciones + Configurar Link Compartir */}
+                <div className="flex flex-wrap items-center gap-3 md:ml-auto">
+                    {/* Botón Términos y Condiciones */}
+                    <button
+                        type="button"
+                        onClick={() => setShowTermsModal(true)}
+                        className="flex justify-center items-center gap-2 px-5 py-3 bg-slate-900 text-white hover:bg-slate-800 font-bold text-sm rounded-xl border border-slate-700 shadow-md active:scale-95 transition-all"
+                    >
+                        <FileText className="w-4 h-4 text-[#FFD700]" />
+                        <span>Términos y Condiciones</span>
+                    </button>
+
+                    {/* Configure Referral Button (Negro con letras amarillas de alto contraste) */}
+                    <button
+                        type="button"
+                        onClick={() => setShowShareLinkModal(true)}
+                        className="flex justify-center items-center gap-2 px-6 py-3 bg-black text-[#FFD700] hover:bg-neutral-900 font-bold border border-[#FFD700]/40 shadow-md transition-all rounded-xl text-sm active:scale-95"
+                    >
+                        <Gift className="w-5 h-5 text-[#FFD700]" />
+                        <span>Configurar Link Compartir</span>
+                    </button>
+                </div>
             </div>
 
             {activeTab === 'users' ? (
@@ -973,59 +1066,290 @@ export default function UsersManager() {
                 </div>
             )}
 
-            {/* Configurar Referidos Modal */}
+            {/* Modal: Configurar Enlace de Compartir */}
             {showShareLinkModal && (
-                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowShareLinkModal(false)}></div>
-                    <div className="relative bg-white w-full max-w-md rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-                        <div className="p-8">
+                <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+                    <div 
+                        className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm transition-opacity" 
+                        onClick={() => setShowShareLinkModal(false)}
+                    />
+                    <div className="relative bg-white w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+                        <div className="p-7 sm:p-8">
                             <div className="flex justify-between items-start mb-6">
-                                <div>
-                                    <h3 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-                                        <Gift className="w-6 h-6 text-primary" />
-                                        Compartir Un 2x3
-                                    </h3>
-                                    <p className="text-slate-500 text-sm mt-1">Configura el mensaje que enviarán los usuarios para invitar a sus amigos.</p>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-3 bg-black text-[#FFD700] rounded-2xl border border-[#FFD700]/30 shadow-md">
+                                        <Gift className="w-6 h-6 text-[#FFD700]" />
+                                    </div>
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900">
+                                            Link para Compartir la App
+                                        </h3>
+                                        <p className="text-slate-500 text-xs mt-0.5">
+                                            Mensaje y enlace predeterminado que enviarán los usuarios para invitar a amigos.
+                                        </p>
+                                    </div>
                                 </div>
-                                <button onClick={() => setShowShareLinkModal(false)} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
-                                    <X className="w-5 h-5 text-slate-400" />
+                                <button 
+                                    type="button"
+                                    onClick={() => setShowShareLinkModal(false)} 
+                                    className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-400 hover:text-slate-700"
+                                >
+                                    <X className="w-5 h-5" />
                                 </button>
                             </div>
 
-                            <div className="space-y-4">
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Mensaje para Compartir</label>
-                                    <textarea
-                                        value={shareMessage}
-                                        onChange={e => setShareMessage(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all resize-none h-24 text-sm"
-                                        placeholder="Ej: ¡Usa Un 2x3 y obtén recompensas!"
-                                    />
-                                    <p className="text-[10px] font-medium text-slate-400 ml-1">Nota: El código del usuario y la URL se agregarán al final automáticamente.</p>
+                            {loadingSettings ? (
+                                <div className="py-12 flex flex-col items-center justify-center gap-3">
+                                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Cargando configuración...</p>
                                 </div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="space-y-1.5">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                                Mensaje para Compartir
+                                            </label>
+                                            <span className="text-[10px] font-bold text-slate-400">
+                                                {(shareMessage || '').length} caracteres
+                                            </span>
+                                        </div>
+                                        <textarea
+                                            value={shareMessage ?? ''}
+                                            onChange={e => setShareMessage(e.target.value)}
+                                            rows={3}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary focus:bg-white px-4 py-3 rounded-2xl outline-none font-medium text-slate-800 transition-all resize-none text-sm leading-relaxed"
+                                            placeholder="Ej: ¡Hola! Únete a la nueva era del delivery con Un 2x3..."
+                                        />
+                                        <p className="text-[10px] font-medium text-slate-400 ml-1">
+                                            Nota: La app agregará automáticamente el enlace oficial y el código de referido del usuario al final del texto.
+                                        </p>
+                                    </div>
 
-                                <div className="space-y-1.5">
-                                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">URL de Descarga / App</label>
-                                    <input
-                                        type="text"
-                                        value={shareUrl}
-                                        onChange={e => setShareUrl(e.target.value)}
-                                        className="w-full bg-slate-50 border-2 border-slate-100 focus:border-primary px-4 py-3 rounded-2xl outline-none font-bold text-slate-700 transition-all text-sm"
-                                        placeholder="https://un2x3.app"
-                                    />
+                                    <div className="space-y-1.5">
+                                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">
+                                            URL Oficial de Descarga / Web
+                                        </label>
+                                        <input
+                                            type="url"
+                                            value={shareUrl ?? ''}
+                                            onChange={e => setShareUrl(e.target.value)}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary focus:bg-white px-4 py-3 rounded-2xl outline-none font-bold text-slate-800 transition-all text-sm"
+                                            placeholder="https://un2x3.app"
+                                        />
+                                    </div>
+
+                                    <div className="flex items-center gap-3 pt-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowShareLinkModal(false)}
+                                            className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all text-xs"
+                                        >
+                                            Cancelar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={handleSaveShareConfig}
+                                            disabled={savingConfig}
+                                            className="flex-1 py-3.5 bg-black text-[#FFD700] hover:bg-neutral-900 border border-[#FFD700]/40 font-black rounded-2xl shadow-lg transition-all text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                                        >
+                                            {savingConfig ? (
+                                                <div className="w-4 h-4 border-2 border-[#FFD700] border-t-transparent rounded-full animate-spin" />
+                                            ) : (
+                                                <>
+                                                    <Save className="w-4 h-4 text-[#FFD700]" />
+                                                    <span>Guardar Link</span>
+                                                </>
+                                            )}
+                                        </button>
+                                    </div>
                                 </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal: Gestor de Términos y Condiciones */}
+            {showTermsModal && (
+                <div className="fixed inset-0 z-[130] flex items-center justify-center p-3 sm:p-6">
+                    <div 
+                        className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm transition-opacity" 
+                        onClick={() => setShowTermsModal(false)}
+                    />
+                    <div className="relative bg-white w-full max-w-4xl max-h-[92vh] flex flex-col rounded-[32px] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-200">
+                        {/* Cabecera del Modal */}
+                        <div className="p-6 md:p-8 border-b border-slate-100 flex items-start justify-between gap-4 bg-slate-50/60 shrink-0">
+                            <div className="flex items-center gap-3.5">
+                                <div className="p-3 bg-slate-900 text-[#FFD700] rounded-2xl shadow-md border border-slate-700">
+                                    <FileText className="w-6 h-6 text-[#FFD700]" />
+                                </div>
+                                <div>
+                                    <h3 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                                        Términos y Condiciones de la Plataforma
+                                        <span className="text-[10px] font-black uppercase tracking-wider bg-primary/20 text-slate-900 px-2.5 py-0.5 rounded-full">
+                                            3 Roles
+                                        </span>
+                                    </h3>
+                                    <p className="text-slate-500 text-xs md:text-sm font-medium mt-0.5">
+                                        Configuración legal vinculante desplegada dinámicamente en el registro y perfil de cada aplicación.
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowTermsModal(false)}
+                                className="p-2 hover:bg-slate-200/60 rounded-full transition-colors text-slate-400 hover:text-slate-700 shrink-0"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Barra de Tabs por Rol */}
+                        <div className="px-6 md:px-8 pt-4 pb-2 bg-white border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none w-full sm:w-auto">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTermsTab('client')}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all whitespace-nowrap ${
+                                        activeTermsTab === 'client'
+                                            ? 'bg-slate-900 text-white shadow-md'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                >
+                                    <span>👤 Usuarios (Clientes)</span>
+                                    <span className="text-[10px] opacity-75 font-mono">
+                                        ({(termsClient || '').length} car.)
+                                    </span>
+                                </button>
 
                                 <button
-                                    onClick={handleSaveShareConfig}
-                                    disabled={savingConfig}
-                                    className="w-full mt-4 bg-primary text-slate-900 py-4 rounded-2xl font-bold shadow-lg shadow-primary/30 hover:bg-primary hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                                    type="button"
+                                    onClick={() => setActiveTermsTab('driver')}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all whitespace-nowrap ${
+                                        activeTermsTab === 'driver'
+                                            ? 'bg-slate-900 text-white shadow-md'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
                                 >
-                                    {savingConfig ? (
-                                        <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                                    <span>🛵 Conductores y Repartidores</span>
+                                    <span className="text-[10px] opacity-75 font-mono">
+                                        ({(termsDriver || '').length} car.)
+                                    </span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveTermsTab('business')}
+                                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-black text-xs transition-all whitespace-nowrap ${
+                                        activeTermsTab === 'business'
+                                            ? 'bg-slate-900 text-white shadow-md'
+                                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                    }`}
+                                >
+                                    <span>🏪 Aliados Comerciales</span>
+                                    <span className="text-[10px] opacity-75 font-mono">
+                                        ({(termsBusiness || '').length} car.)
+                                    </span>
+                                </button>
+                            </div>
+
+                            {/* Botón Alternar Vista Previa / Editor */}
+                            <button
+                                type="button"
+                                onClick={() => setTermsPreviewMode(!termsPreviewMode)}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors ml-auto sm:ml-0"
+                            >
+                                {termsPreviewMode ? (
+                                    <>
+                                        <Edit3 className="w-3.5 h-3.5 text-primary" />
+                                        <span>Modo Editor</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Eye className="w-3.5 h-3.5 text-primary" />
+                                        <span>Vista Previa</span>
+                                    </>
+                                )}
+                            </button>
+                        </div>
+
+                        {/* Área Principal de Edición o Vista Previa */}
+                        <div className="p-6 md:p-8 flex-1 overflow-y-auto">
+                            {loadingSettings ? (
+                                <div className="py-20 flex flex-col items-center justify-center gap-3">
+                                    <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                                        Cargando términos oficiales...
+                                    </p>
+                                </div>
+                            ) : termsPreviewMode ? (
+                                <div className="bg-slate-50 border-2 border-slate-200/80 rounded-2xl p-6 text-sm text-slate-700 leading-relaxed whitespace-pre-wrap font-sans max-h-[50vh] overflow-y-auto">
+                                    {(activeTermsTab === 'client' ? termsClient : activeTermsTab === 'driver' ? termsDriver : termsBusiness) || (
+                                        <span className="italic text-slate-400">No hay contenido redactado para este rol.</span>
+                                    )}
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    <textarea
+                                        value={
+                                            activeTermsTab === 'client'
+                                                ? termsClient
+                                                : activeTermsTab === 'driver'
+                                                ? termsDriver
+                                                : termsBusiness
+                                        }
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (activeTermsTab === 'client') setTermsClient(val);
+                                            else if (activeTermsTab === 'driver') setTermsDriver(val);
+                                            else setTermsBusiness(val);
+                                        }}
+                                        rows={16}
+                                        placeholder="Escribe o pega los Términos y Condiciones aquí (soporta texto plano y formato estructurado)..."
+                                        className="w-full bg-slate-50 border-2 border-slate-200 focus:border-primary focus:bg-white p-5 rounded-2xl outline-none font-mono text-xs md:text-sm text-slate-800 transition-all resize-none min-h-[360px] max-h-[52vh] overflow-y-auto leading-relaxed"
+                                    />
+                                    <div className="flex items-center justify-between text-[11px] font-medium text-slate-400 px-1">
+                                        <span>Soporta saltos de línea, numeración y formato de cláusulas contractuales.</span>
+                                        <span className="font-mono">
+                                            {((activeTermsTab === 'client' ? termsClient : activeTermsTab === 'driver' ? termsDriver : termsBusiness) || '').split('\n').length} líneas
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Barra Inferior del Modal */}
+                        <div className="p-5 md:p-6 bg-slate-50/80 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0">
+                            <div className="flex items-center gap-2 text-xs text-slate-500 w-full sm:w-auto">
+                                <Clock className="w-4 h-4 text-slate-400 shrink-0" />
+                                <span>
+                                    {termsUpdatedAt
+                                        ? `Última sincronización: ${format(new Date(termsUpdatedAt), "dd/MM/yyyy HH:mm")}`
+                                        : 'Aún no guardado en base de datos'}
+                                </span>
+                            </div>
+
+                            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTermsModal(false)}
+                                    className="px-5 py-3 bg-white hover:bg-slate-100 text-slate-700 font-bold rounded-2xl transition-all text-xs border border-slate-200 shadow-sm"
+                                >
+                                    Cerrar
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleSaveTerms}
+                                    disabled={savingTerms}
+                                    className="px-6 py-3 bg-slate-900 text-[#FFD700] hover:bg-black font-black rounded-2xl shadow-lg border border-[#FFD700]/30 transition-all text-xs flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                                >
+                                    {savingTerms ? (
+                                        <div className="w-4 h-4 border-2 border-[#FFD700] border-t-transparent rounded-full animate-spin" />
                                     ) : (
                                         <>
-                                            <Save className="w-5 h-5 text-slate-900" />
-                                            <span>Guardar Configuración</span>
+                                            <Save className="w-4 h-4 text-[#FFD700]" />
+                                            <span>Guardar Términos</span>
                                         </>
                                     )}
                                 </button>

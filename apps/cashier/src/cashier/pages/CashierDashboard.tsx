@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'react-qr-code';
 import OrderChatWindow from '../../components/chat/OrderChatWindow';
 import toast from 'react-hot-toast';
+import { soundEngine } from '../../lib/soundEngine';
 
 interface Order {
     id: string;
@@ -414,7 +415,7 @@ export default function CashierDashboard() {
         if (unnotifiedPickupOrders.length > 0) {
             unnotifiedPickupOrders.forEach(async (order) => {
                 // Play special sound if possible or reuse notification sound
-                notificationSound.play().catch(e => console.error("Error playing sound:", e));
+                soundEngine.play('cycle_order_ready');
 
                 toast.custom((t) => (
                     <motion.div 
@@ -451,7 +452,7 @@ export default function CashierDashboard() {
         if (unnotifiedWaiterOrders.length > 0) {
             unnotifiedWaiterOrders.forEach(async (order) => {
                 // Play Sound
-                notificationSound.play().catch(e => console.error("Error playing sound:", e));
+                soundEngine.play('notif_new_order');
 
                 // Show Custom Toast Alert
                 toast.custom((t) => (
@@ -812,6 +813,7 @@ export default function CashierDashboard() {
             setSelectedOrder(null);
             setCloseTip(0);
             setPaymentMethod('');
+            soundEngine.play('done_cashier_closed');
         } catch (error) {
             console.error("Error al cobrar:", error);
             alert("Error al intentar cobrar la orden.");

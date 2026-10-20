@@ -5,8 +5,11 @@ import CashierLogin from './pages/CashierLogin';
 import CashierDashboard from './pages/CashierDashboard';
 import CashierPOS from './pages/CashierPOS';
 import { Toaster } from 'react-hot-toast';
+import { useGlobalAudioAlerts } from '../hooks/useGlobalAudioAlerts';
 
 export default function CashierApp() {
+    useGlobalAudioAlerts('cashier');
+
     const [splashFinished, setSplashFinished] = useState(false);
     const isSubpathCaja = window.location.pathname.startsWith('/caja');
     const basename = isSubpathCaja ? '/caja' : '/';

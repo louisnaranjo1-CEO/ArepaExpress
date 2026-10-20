@@ -8,6 +8,7 @@ import { printToUsbDevice, formatTicket, downloadTicketImage, downloadTicketText
 import AddressPicker from '../../components/AddressPicker';
 import DualPrice from '../../components/DualPrice';
 import toast from 'react-hot-toast';
+import { soundEngine } from '../../lib/soundEngine';
 
 export default function CashierPOS() {
     const navigate = useNavigate();
@@ -385,6 +386,7 @@ export default function CashierPOS() {
             setActiveOrder({ id: finalOrderId, ...commonData });
             
             setShowCheckoutModal(false);
+            soundEngine.play('done_cashier_closed');
             
             // If there's something new to print, show print modal
             if (newItemsToPrint.length > 0) {
@@ -503,6 +505,7 @@ export default function CashierPOS() {
         setDeliveryAddress('');
         setSelectedAddress(null);
         setShowCheckoutModal(false);
+            soundEngine.play('done_cashier_closed');
         setPaymentStatus('sold');
         navigate('/'); // Go back to dashboard after finish or cancel
     };

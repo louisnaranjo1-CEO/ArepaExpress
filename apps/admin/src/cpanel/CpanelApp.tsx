@@ -28,6 +28,7 @@ import PilotAchievements from './pages/PilotAchievements';
 import DesignManager from './pages/DesignManager';
 import EmergenciesManager from './pages/EmergenciesManager';
 import CommonProductsManager from './pages/CommonProductsManager';
+import SoundsManager from './pages/SoundsManager';
 
 export default function CpanelApp() {
     const [splashFinished, setSplashFinished] = useState(false);
@@ -288,6 +289,8 @@ export default function CpanelApp() {
                     <Route path="/marketing" element={<MarketingManager />} />
                     <Route path="/icons" element={<IconsManager />} />
                     <Route path="/support" element={<SupportTicketsManager />} />
+                    <Route path="/sounds" element={<SoundsManager />} />
+                    <Route path="/sound-settings" element={<SoundsManager />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </CpanelLayout>

@@ -68,10 +68,10 @@ export default function HomePromotionCard({
             key={card.id || idx}
             onClick={() => handleCardClick(card)}
             style={{ backgroundColor: card.bgColor || '#FEF9C3' }}
-            className="w-[280px] sm:w-[320px] shrink-0 h-[360px] rounded-[2.25rem] border border-amber-200/80 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] p-6 flex flex-col justify-between relative overflow-hidden group cursor-pointer active:scale-[0.98] transition-all snap-start"
+            className="w-[280px] sm:w-[320px] shrink-0 rounded-3xl border border-amber-200/80 shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] flex flex-col relative overflow-hidden group cursor-pointer active:scale-[0.98] transition-all snap-start"
           >
-            {/* Top texts */}
-            <div className="relative z-10 space-y-1.5">
+            {/* Parte Superior: Única zona libre de la imagen */}
+            <div className="p-6 pb-4 relative z-10 space-y-1.5">
               <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
                 {card.title}
               </h3>
@@ -82,127 +82,121 @@ export default function HomePromotionCard({
               )}
             </div>
 
-            {/* Illustration / Graphic */}
-            <div className="relative z-10 w-full flex-1 flex items-center justify-center my-2">
+            {/* Parte Inferior: Imagen rellenando todo el cuadro sin márgenes */}
+            <div className="w-full flex-1 relative p-0 m-0 min-h-[220px]">
               {card.imageUrl ? (
                 <img
                   src={card.imageUrl}
                   alt={card.title}
-                  className="max-h-48 w-auto object-contain drop-shadow-sm group-hover:scale-105 transition-transform duration-300"
+                  className="w-full h-full object-cover block group-hover:scale-105 transition-transform duration-300"
                 />
               ) : (
-                /* High fidelity SVG matching Image 2: Two figures helping each other climb yellow block steps */
-                <svg
-                  viewBox="0 0 320 260"
-                  className="w-full h-full max-h-48 drop-shadow-sm group-hover:scale-105 transition-transform duration-300"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  {/* Step 1 */}
-                  <rect x="50" y="160" width="55" height="90" rx="3" fill="#FACC15" stroke="#1E293B" strokeWidth="2.5" />
-                  {/* Step 2 */}
-                  <rect x="115" y="125" width="55" height="125" rx="3" fill="#FACC15" stroke="#1E293B" strokeWidth="2.5" />
-                  {/* Step 3 */}
-                  <rect x="180" y="90" width="60" height="160" rx="3" fill="#FACC15" stroke="#1E293B" strokeWidth="2.5" />
+                /* Fallback SVG ilustrativo */
+                <div className="w-full h-full flex items-center justify-center p-4">
+                  <svg
+                    viewBox="0 0 320 260"
+                    className="w-full h-full max-h-48 drop-shadow-sm group-hover:scale-105 transition-transform duration-300"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    {/* Step 1 */}
+                    <rect x="50" y="160" width="55" height="90" rx="3" fill="#FACC15" stroke="#1E293B" strokeWidth="2.5" />
+                    {/* Step 2 */}
+                    <rect x="115" y="125" width="55" height="125" rx="3" fill="#FACC15" stroke="#1E293B" strokeWidth="2.5" />
+                    {/* Step 3 */}
+                    <rect x="180" y="90" width="60" height="160" rx="3" fill="#FACC15" stroke="#1E293B" strokeWidth="2.5" />
 
-                  {/* Character 1 (Lower, climbing up from step 1 to 2) */}
-                  <g className="transition-transform group-hover:-translate-y-1 duration-300">
-                    {/* Head */}
-                    <path
-                      d="M85 85 C95 85 102 93 100 105 C98 115 88 118 78 112 C72 108 72 95 80 88 C82 86 85 85 85 85 Z"
-                      fill="#FFFFFF"
-                      stroke="#1E293B"
-                      strokeWidth="2.5"
-                    />
-                    {/* Smile and eye */}
-                    <circle cx="88" cy="98" r="1.5" fill="#1E293B" />
-                    <path d="M84 104 Q90 108 94 102" stroke="#1E293B" strokeWidth="2" fill="none" strokeLinecap="round" />
-                    {/* Torso */}
-                    <path
-                      d="M82 114 C90 120 95 135 90 150 C80 155 72 145 74 130 Z"
-                      fill="#FFFFFF"
-                      stroke="#1E293B"
-                      strokeWidth="2.5"
-                    />
-                    {/* Left Leg on Step 1 */}
-                    <path
-                      d="M74 148 L65 175 C60 178 72 182 75 175 L82 152 Z"
-                      fill="#FFFFFF"
-                      stroke="#1E293B"
-                      strokeWidth="2.5"
-                    />
-                    {/* Right Leg stepping forward onto Step 2 */}
-                    <path
-                      d="M90 148 L115 142 C120 145 118 152 110 150 L95 158 Z"
-                      fill="#FFFFFF"
-                      stroke="#1E293B"
-                      strokeWidth="2.5"
-                    />
-                    {/* Arm reaching up to hold hands */}
-                    <path
-                      d="M88 122 Q115 105 145 102"
-                      stroke="#1E293B"
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      fill="none"
-                    />
-                  </g>
+                    {/* Character 1 */}
+                    <g className="transition-transform group-hover:-translate-y-1 duration-300">
+                      <path
+                        d="M85 85 C95 85 102 93 100 105 C98 115 88 118 78 112 C72 108 72 95 80 88 C82 86 85 85 85 85 Z"
+                        fill="#FFFFFF"
+                        stroke="#1E293B"
+                        strokeWidth="2.5"
+                      />
+                      <circle cx="88" cy="98" r="1.5" fill="#1E293B" />
+                      <path d="M84 104 Q90 108 94 102" stroke="#1E293B" strokeWidth="2" fill="none" strokeLinecap="round" />
+                      <path
+                        d="M82 114 C90 120 95 135 90 150 C80 155 72 145 74 130 Z"
+                        fill="#FFFFFF"
+                        stroke="#1E293B"
+                        strokeWidth="2.5"
+                      />
+                      <path
+                        d="M74 148 L65 175 C60 178 72 182 75 175 L82 152 Z"
+                        fill="#FFFFFF"
+                        stroke="#1E293B"
+                        strokeWidth="2.5"
+                      />
+                      <path
+                        d="M90 148 L115 142 C120 145 118 152 110 150 L95 158 Z"
+                        fill="#FFFFFF"
+                        stroke="#1E293B"
+                        strokeWidth="2.5"
+                      />
+                      <path
+                        d="M88 122 Q115 105 145 102"
+                        stroke="#1E293B"
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                        fill="none"
+                      />
+                    </g>
 
-                  {/* Character 2 (Higher, leaning down from step 3 to pull character 1) */}
-                  <g className="transition-transform group-hover:translate-x-0.5 duration-300">
-                    {/* Head */}
-                    <path
-                      d="M205 50 C215 50 225 60 220 75 C215 85 200 88 190 80 C182 72 185 58 198 52 C200 51 205 50 205 50 Z"
-                      fill="#FFFFFF"
-                      stroke="#1E293B"
-                      strokeWidth="2.5"
-                    />
-                    {/* Smile and eye */}
-                    <circle cx="198" cy="65" r="1.5" fill="#1E293B" />
-                    <path d="M192 72 Q198 76 204 70" stroke="#1E293B" strokeWidth="2" fill="none" strokeLinecap="round" />
-                    {/* Torso leaning forward */}
-                    <path
-                      d="M195 82 C185 95 180 115 200 125 C215 120 225 100 215 82 Z"
-                      fill="#FFFFFF"
-                      stroke="#1E293B"
-                      strokeWidth="2.5"
-                    />
-                    {/* Legs standing on step 3 */}
-                    <path
-                      d="M200 125 L195 155 C190 158 202 162 205 155 L210 125 Z"
-                      fill="#FFFFFF"
-                      stroke="#1E293B"
-                      strokeWidth="2.5"
-                    />
-                    <path
-                      d="M212 125 L218 152 C214 156 226 160 228 153 L222 123 Z"
-                      fill="#FFFFFF"
-                      stroke="#1E293B"
-                      strokeWidth="2.5"
-                    />
-                    {/* Arm reaching down to clasp hand */}
-                    <path
-                      d="M192 92 Q165 98 145 102"
-                      stroke="#1E293B"
-                      strokeWidth="3.5"
-                      strokeLinecap="round"
-                      fill="none"
-                    />
-                  </g>
+                    {/* Character 2 */}
+                    <g className="transition-transform group-hover:translate-x-0.5 duration-300">
+                      <path
+                        d="M205 50 C215 50 225 60 220 75 C215 85 200 88 190 80 C182 72 185 58 198 52 C200 51 205 50 205 50 Z"
+                        fill="#FFFFFF"
+                        stroke="#1E293B"
+                        strokeWidth="2.5"
+                      />
+                      <circle cx="198" cy="65" r="1.5" fill="#1E293B" />
+                      <path d="M192 72 Q198 76 204 70" stroke="#1E293B" strokeWidth="2" fill="none" strokeLinecap="round" />
+                      <path
+                        d="M195 82 C185 95 180 115 200 125 C215 120 225 100 215 82 Z"
+                        fill="#FFFFFF"
+                        stroke="#1E293B"
+                        strokeWidth="2.5"
+                      />
+                      <path
+                        d="M200 125 L195 155 C190 158 202 162 205 155 L210 125 Z"
+                        fill="#FFFFFF"
+                        stroke="#1E293B"
+                        strokeWidth="2.5"
+                      />
+                      <path
+                        d="M212 125 L218 152 C214 156 226 160 228 153 L222 123 Z"
+                        fill="#FFFFFF"
+                        stroke="#1E293B"
+                        strokeWidth="2.5"
+                      />
+                      <path
+                        d="M192 92 Q165 98 145 102"
+                        stroke="#1E293B"
+                        strokeWidth="3.5"
+                        strokeLinecap="round"
+                        fill="none"
+                      />
+                    </g>
 
-                  {/* Clasping Handshake Detail */}
-                  <circle cx="145" cy="102" r="5" fill="#FFFFFF" stroke="#1E293B" strokeWidth="2.5" />
-                </svg>
+                    <circle cx="145" cy="102" r="5" fill="#FFFFFF" stroke="#1E293B" strokeWidth="2.5" />
+                  </svg>
+                </div>
               )}
-            </div>
 
-            {/* Bottom link indicator */}
-            <div className="relative z-10 flex items-center justify-between pt-1">
-              <span className="text-xs font-black text-slate-800 tracking-wide uppercase flex items-center gap-1">
-                Conoce más <ArrowRight className="w-3.5 h-3.5 text-slate-900 group-hover:translate-x-1 transition-transform" />
-              </span>
-              <div className="w-8 h-8 rounded-full bg-white/80 backdrop-blur-sm flex items-center justify-center text-slate-900 shadow-sm border border-black/5 group-hover:bg-white transition-colors">
-                <Sparkles className="w-4 h-4 text-amber-500" />
+              {/* Degradado inferior para contraste óptimo */}
+              <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/40 via-black/10 to-transparent pointer-events-none" />
+
+              {/* Conoce más badge visible al 100% sin recortarse */}
+              <div className="absolute bottom-4 left-5 right-5 z-20 flex items-center justify-between pointer-events-none">
+                <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/95 text-slate-900 text-xs font-black tracking-wide uppercase shadow-lg backdrop-blur-sm border border-black/5 group-hover:bg-white transition-all">
+                  <span>Conoce más</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-900 group-hover:translate-x-1 transition-transform" />
+                </span>
+                <div className="w-8 h-8 rounded-full bg-white/95 text-slate-900 shadow-lg backdrop-blur-sm flex items-center justify-center border border-black/5 group-hover:scale-110 transition-transform">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                </div>
               </div>
             </div>
           </div>

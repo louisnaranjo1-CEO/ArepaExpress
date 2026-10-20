@@ -6,6 +6,10 @@ export * from './lib/constants';
 export * from './lib/env';
 export * from './lib/mapsConfig';
 export * from './lib/mapboxConfig';
+export * from './lib/soundEngine';
+
+// Hooks
+export * from './hooks/useGlobalAudioAlerts';
 
 // Contexts
 export * from './context/AuthContext';
@@ -21,6 +25,7 @@ export { default as LiveTripMap } from './components/LiveTripMap';
 export { default as AddressPicker } from './components/AddressPicker';
 export { default as LockScreen } from './components/LockScreen';
 export { default as PrivacyPolicyModal } from './components/PrivacyPolicyModal';
+export { default as TermsAndConditionsModal } from './components/TermsAndConditionsModal';
 
 // Utilities
 export * from './utils/mediaCompressor';

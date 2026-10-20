@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert, Package, Award } from 'lucide-react';
+import { LayoutDashboard, Store, Users, Image as ImageIcon, LogOut, ChevronRight, Menu, X, Tag, Truck, Wallet, Car, Share2, Gift, Ticket, MessageSquareWarning, Megaphone, ShoppingBag, Trophy, Shield, ShieldCheck, Palette, ShieldAlert, Package, Award, VolumeX } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useBranding } from '../../context/BrandingContext';
 import { useGlobalAudioAlerts } from '../../hooks/useGlobalAudioAlerts';
 import { useHaptics } from '../../hooks/useHaptics';
 import AuthorizedDevicesModal from './AuthorizedDevicesModal';
+import toast from 'react-hot-toast';
 
 interface CpanelLayoutProps {
     children: React.ReactNode;
@@ -25,7 +26,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
     const [pendingVerifications, setPendingVerifications] = useState(0);
     const { vibrateSelection } = useHaptics();
 
-    useGlobalAudioAlerts('cpanel');
+    const { stopAllLoops } = useGlobalAudioAlerts('cpanel');
 
     useEffect(() => {
         const fetchCounts = async () => {
@@ -95,6 +96,7 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
         { path: '/users', icon: Users, label: 'Usuarios' },
         { path: '/banners', icon: ImageIcon, label: 'Banners' },
         { path: '/design', icon: Palette, label: 'Branding Global' },
+        { path: '/sounds', icon: Volume2, label: 'Sonidos y Alertas' },
         { path: '/categories', icon: Tag, label: 'Categorías' },
         { path: '/delivery', icon: Truck, label: 'Delivery Express' },
         { path: '/transports', icon: Car, label: 'Viajes (Taxis)', badge: pendingTransports },
@@ -201,6 +203,18 @@ export default function CpanelLayout({ children, onLogout, adminUser }: CpanelLa
                     </div>
 
                     <div className="flex items-center gap-2 lg:gap-3 shrink-0">
+                        <button
+                            onClick={() => {
+                                stopAllLoops();
+                                toast('Alarmas y bucles silenciados', { icon: '🔕' });
+                            }}
+                            className="flex items-center gap-1.5 lg:gap-2 px-3 py-1.5 lg:px-3.5 lg:py-2 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-xs font-black transition-all border border-amber-200/60 active:scale-95"
+                            title="Silenciar cualquier alarma sonora o bucle activo"
+                        >
+                            <VolumeX className="w-3.5 h-3.5 lg:w-4 lg:h-4 text-amber-600" />
+                            <span className="hidden sm:inline">Silenciar</span>
+                        </button>
+
                         <button
                             onClick={() => setShowDevicesModal(true)}
                             className="flex items-center gap-2 px-3 py-1.5 lg:px-3.5 lg:py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-black transition-all shadow-xs border border-slate-200/60 active:scale-95"

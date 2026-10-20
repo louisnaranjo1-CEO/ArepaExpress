@@ -15,6 +15,7 @@ import AddressPicker from '../components/AddressPicker';
 import { motion, AnimatePresence } from 'motion/react';
 import ReviewModal from '../components/ReviewModal';
 import PrivacyPolicyModal from '../components/PrivacyPolicyModal';
+import TermsAndConditionsModal from '../components/TermsAndConditionsModal';
 import { Copy, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
@@ -92,6 +93,7 @@ export default function Profile() {
     const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [showPrivacyPolicyModal, setShowPrivacyPolicyModal] = useState(false);
+    const [showTermsModal, setShowTermsModal] = useState(false);
     const [isDeletingAccount, setIsDeletingAccount] = useState(false);
     const [updatingNotifications, setUpdatingNotifications] = useState(false);
     const [updatingBiometrics, setUpdatingBiometrics] = useState(false);
@@ -1040,6 +1042,18 @@ export default function Profile() {
                     )}
                 </div>
 
+                                    {/* Botón Leer Términos y Condiciones */}
+                    <div className="pt-3 text-center">
+                        <button
+                            type="button"
+                            onClick={() => setShowTermsModal(true)}
+                            className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-900 font-semibold transition-colors py-1 cursor-pointer"
+                        >
+                            <FileText className="w-3.5 h-3.5 text-primary" />
+                            <span>Leer Términos y Condiciones</span>
+                        </button>
+                    </div>
+
                 {/* Email Login/Signup Modal */}
                 <AnimatePresence>
                     {showEmailModal && (
@@ -1158,6 +1172,15 @@ export default function Profile() {
                                             {isLoginMode ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}
                                         </button>
                                     )}
+                                                                    <div className="text-center pt-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowTermsModal(true)}
+                                            className="text-[11px] text-slate-400 hover:text-slate-700 underline font-medium cursor-pointer"
+                                        >
+                                            Leer Términos y Condiciones
+                                        </button>
+                                    </div>
                                 </form>
                             </motion.div>
                         </div>
@@ -2301,6 +2324,14 @@ export default function Profile() {
                     <div className="flex items-center justify-center gap-4 text-xs font-semibold text-slate-500 mt-2">
                         <button 
                             type="button"
+                            onClick={() => setShowTermsModal(true)} 
+                            className="hover:underline hover:text-slate-800 text-slate-600 font-bold"
+                        >
+                            Leer Términos y Condiciones
+                        </button>
+                        <span>•</span>
+                        <button 
+                            type="button"
                             onClick={() => setShowPrivacyPolicyModal(true)} 
                             className="hover:underline hover:text-slate-800"
                         >
@@ -3169,6 +3200,18 @@ me || 'Un 2x3'} className="h-10 mx-auto mb-2" />
                     </div>
                 </div>
             )}
+            {/* Modal de Términos y Condiciones */}
+            <TermsAndConditionsModal
+                isOpen={showTermsModal}
+                onClose={() => setShowTermsModal(false)}
+                role="client"
+            />
+
+            {/* Modal de Política de Privacidad */}
+            <PrivacyPolicyModal
+                isOpen={showPrivacyPolicyModal}
+                onClose={() => setShowPrivacyPolicyModal(false)}
+            />
         </>
     );
 }
