@@ -63,6 +63,13 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
             }
         };
 
+        // Verificar si la app fue abierta o reanudada directamente con una URL
+        CapApp.getLaunchUrl().then((launchUrl) => {
+            if (launchUrl?.url) {
+                handleUrl(launchUrl.url);
+            }
+        }).catch(() => {});
+
         const sub = CapApp.addListener('appUrlOpen', (event) => {
             handleUrl(event.url);
         });
