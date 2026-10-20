@@ -72,10 +72,11 @@ export const handleDeepLinkAuthUrl = async (urlStr: string): Promise<boolean> =>
 export const signInWithGoogle = async (): Promise<{ user: any, isNewUser: boolean }> => {
     try {
         if (Capacitor.isNativePlatform()) {
+            const redirectUri = 'deliexpress.app://auth/callback';
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: window.location.origin,
+                    redirectTo: redirectUri,
                     skipBrowserRedirect: true
                 }
             });
@@ -238,10 +239,11 @@ export const signInAdmin = async (email: string, pass: string): Promise<any> => 
 export const signInAdminWithGoogle = async (): Promise<any> => {
     try {
         if (Capacitor.isNativePlatform()) {
+            const redirectUri = 'deliexpress.app://auth/callback';
             const { data, error } = await supabase.auth.signInWithOAuth({
                 provider: 'google',
                 options: {
-                    redirectTo: window.location.origin,
+                    redirectTo: redirectUri,
                     skipBrowserRedirect: true
                 }
             });

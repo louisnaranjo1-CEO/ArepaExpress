@@ -23,6 +23,7 @@ import { usePushCampaigns } from './hooks/usePushCampaigns';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
+import PermissionsModal from './components/PermissionsModal';
 import { supabase } from './lib/supabase';
 import { handleDeepLinkAuthUrl } from './lib/auth-service';
 import { useRealtimeResilience } from './hooks/useRealtimeResilience';
@@ -54,7 +55,7 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
         if (!Capacitor.isNativePlatform()) return;
 
         const handleUrl = async (urlStr: string) => {
-            if (!urlStr || !urlStr.includes('auth/callback')) return;
+            if (!urlStr || (!urlStr.includes('auth/callback') && !urlStr.includes('access_token') && !urlStr.includes('code='))) return;
             const ok = await handleDeepLinkAuthUrl(urlStr);
             if (ok) {
                 toast.success('¡Bienvenido! Sesión iniciada');
@@ -180,6 +181,7 @@ export default function ClientApp() {
             {!splashFinished && (
                 <SplashScreen onFinish={() => setSplashFinished(true)} />
             )}
+            <PermissionsModal />
             <RedirectHandler>
                 <CartProvider>
                     <AppContent />

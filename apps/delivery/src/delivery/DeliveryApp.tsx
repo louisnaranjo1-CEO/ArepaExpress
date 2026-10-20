@@ -1,4 +1,5 @@
 import SplashScreen from '../components/SplashScreen';
+import PermissionsModal from '../components/PermissionsModal';
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -159,7 +160,7 @@ export default function DeliveryApp() {
         if (!Capacitor.isNativePlatform()) return;
 
         const sub = CapApp.addListener('appUrlOpen', async (event) => {
-            if (event.url && event.url.includes('auth/callback')) {
+            if (event.url && (event.url.includes('auth/callback') || event.url.includes('access_token') || event.url.includes('code='))) {
                 await handleDeepLinkAuthUrl(event.url);
             }
         });
@@ -174,6 +175,7 @@ export default function DeliveryApp() {
             {!splashFinished && (
                 <SplashScreen onFinish={() => setSplashFinished(true)} />
             )}
+            <PermissionsModal />
             <DeliveryRoutes />
             <GlobalCallReceiver />
         </Router>
