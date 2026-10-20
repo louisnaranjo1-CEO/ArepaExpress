@@ -3,11 +3,13 @@ import { Mail, Lock, Building2, FileText, ArrowRight, Store, LogIn, UserPlus, Ho
 import { registerRestaurant, signInAdmin, signInAdminWithGoogle, sendPasswordResetEmail } from '../lib/auth-service';
 import { useNavigate } from 'react-router-dom';
 import { useBranding } from '../context/BrandingContext';
+import TermsAndConditionsModal from '@shared/components/TermsAndConditionsModal';
 
 export default function AdminAuth() {
     const { branding } = useBranding();
     const [isLogin, setIsLogin] = useState(true);
     const [loading, setLoading] = useState(false);
+    const [showTermsModal, setShowTermsModal] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
 
@@ -344,6 +346,12 @@ export default function AdminAuth() {
                     </div>
                 </div>
             )}
+            {/* Modal de Términos y Condiciones */}
+            <TermsAndConditionsModal
+                isOpen={showTermsModal}
+                onClose={() => setShowTermsModal(false)}
+                role="business"
+            />
         </div>
     );
 }

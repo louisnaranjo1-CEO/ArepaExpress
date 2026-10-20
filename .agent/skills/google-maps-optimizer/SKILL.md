@@ -1,20 +1,28 @@
 ---
-name: google-maps-optimizer
-description: Estrategias de optimización para reducir el consumo y costo de APIs de Mapas.
+name: maps-optimizer
+description: Guía y directrices de optimización para el uso de Mapbox y geolocalización en Un 2x3.
 ---
 
-# Google Maps Optimizer
+# Mapbox & Geolocation Optimizer
 
-Eres el encargado de auditar y proteger a la empresa contra facturaciones excesivas por el uso de servicios de geolocalización (Google Maps, Mapbox, etc.).
+> **ESTÁNDAR OFICIAL DEL PROYECTO:**  
+> Google Maps ha sido completamente retirado y sustituido al 100% por **Mapbox GL** y la API oficial de **Mapbox** (`@shared/lib/mapboxConfig.ts`).
 
-## 1. Prohibición de Sobreconsumo
-- **NO usar Distance Matrix API** o **Directions API** para calcular listas de distancias a conductores cercanos de forma masiva.
-- **Geocoding Inverso Limitado:** Solo haz geocoding inverso (convertir lat/lng a dirección) cuando el usuario deje de mover el pin del mapa, no durante el drag.
+Eres el encargado de auditar y proteger la plataforma contra facturaciones excesivas o sobreconsumo de cuotas en servicios de geolocalización de **Mapbox**.
 
-## 2. Cálculos Locales Obligatorios
-- **Cercanía In-App:** Para buscar drivers cercanos o comercios cercanos, utiliza **SIEMPRE** cálculos matemáticos primero (Fórmula de Haversine localmente) o **PostGIS** en Supabase (`ST_Distance`, `ST_DWithin`) en la base de datos.
-- Solo recurre a Directions API para la ruta final exacta una vez que el Driver ha sido *asignado* y necesita navegación real.
+## 1. Estándar Oficial: Mapbox GL
+- Todas las vistas de mapas deben utilizar **Mapbox GL** (`mapbox-gl`) con el token configurado en `VITE_MAPBOX_ACCESS_TOKEN` (o el fallback nativo definido en `DEFAULT_MAPBOX_TOKEN`).
+- Las capas de mapa deben apuntar al estilo oficial: `mapbox://styles/mapbox/streets-v12`.
+- Queda prohibido el uso o reintroducción de scripts de `maps.googleapis.com` o bibliotecas dependientes de Google Maps.
 
-## 3. Throttling y Debounce
-- **Debounce en Búsquedas (Places API):** Aplica un debounce de al menos 500ms - 800ms en los inputs de búsqueda de direcciones para evitar peticiones por cada tecla pulsada (autocomplete).
-- **Throttling en Emisión de Coordenadas:** El driver solo debe enviar su ubicación al backend si se ha desplazado una distancia significativa (ej. > 10 metros) o ha pasado un tiempo prudente (ej. > 5 segundos).
+## 2. Prohibición de Sobreconsumo en Mapbox
+- **NO consultar Mapbox Directions masivamente:** No solicites rutas para calcular listas de choferes o restaurantes cercanos.
+- **Geocodificación Inversa Controlada (`reverseGeocodeMapbox`):** Solo se ejecuta al soltar el pin del mapa (`dragend`) o tras una acción explícita del usuario, nunca durante el movimiento continuo (`drag` o `move`).
+
+## 3. Cálculos Locales Obligatorios
+- **Cercanía In-App:** Para estimar distancias a comercios o repartidores cercanos, utiliza siempre la **fórmula de Haversine** localmente (`calculateDistance` en `geo.ts`) o funciones espaciales en PostgreSQL / Supabase (`ST_Distance`, `ST_DWithin`).
+- Solo se invoca `getMapboxRoute` de la Directions API cuando la orden o viaje tiene origen y destino confirmados y el usuario requiere el trazado visual de la ruta.
+
+## 4. Debounce y Throttling en Búsquedas y GPS
+- **Debounce en Búsqueda de Lugares (`searchMapboxPlaces`):** Aplica un debounce de 400ms a 600ms en los inputs de autocompletado de direcciones antes de llamar a la API de geocodificación de Mapbox.
+- **Throttling en Emisión de Coordenadas de Conductores:** El conductor solo reporta actualización de coordenadas GPS a Supabase si el desplazamiento es mayor a 10 metros o han transcurrido más de 5 segundos desde la última emisión.

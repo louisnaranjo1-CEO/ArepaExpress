@@ -9,7 +9,8 @@ const config: CapacitorConfig = {
     hostname: 'localhost',
     cleartext: true,
     allowNavigation: [
-      'maps.googleapis.com',
+      '*.mapbox.com',
+      'api.mapbox.com',
       '*.googleapis.com',
       '*.gstatic.com',
       '*.google.com'

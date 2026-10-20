@@ -6,14 +6,7 @@ import toast from 'react-hot-toast';
 import RideChat from '../../components/RideChat';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
-import { useJsApiLoader, GoogleMap, Marker } from '@react-google-maps/api';
-import { GOOGLE_MAPS_API_KEY } from '../../lib/mapsConfig';
-
-const mapOptions = {
-    disableDefaultUI: false,
-    zoomControl: true,
-    streetViewControl: false
-};
+import LiveTripMap from '@shared/components/LiveTripMap';
 
 const formatDuration = (seconds: number) => {
     if (!seconds && seconds !== 0) return '--';
@@ -64,12 +57,7 @@ export default function TransportRequests() {
         }
     };
 
-    const { isLoaded } = useJsApiLoader({
-        id: 'google-map-script',
-        googleMapsApiKey: GOOGLE_MAPS_API_KEY,
-        libraries: ['places', 'geometry'] as any
-    });
-
+    
     const lastRequestTimestamp = useRef<number>(Date.now());
 
     const fetchRequests = async () => {
@@ -882,41 +870,14 @@ export default function TransportRequests() {
                             </div>
 
                             <div className="flex-1 relative bg-slate-100 min-h-[400px]">
-                                {isLoaded ? (
-                                    <GoogleMap
-                                        mapContainerStyle={{ width: '100%', height: '100%' }}
-                                        center={selectedMapRequest.origin?.coords || { lat: 10.4806, lng: -66.9036 }}
-                                        zoom={14}
-                                        options={mapOptions}
-                                    >
-                                        {/* Origin Marker */}
-                                        {selectedMapRequest.origin?.coords && (
-                                            <Marker 
-                                                position={selectedMapRequest.origin.coords}
-                                                label={{
-                                                    text: "A",
-                                                    className: "font-black text-white"
-                                                }}
-                                                title="Punto de Origen"
-                                            />
-                                        )}
-                                        {/* Destination Marker */}
-                                        {selectedMapRequest.destination?.coords && (
-                                            <Marker 
-                                                position={selectedMapRequest.destination.coords}
-                                                label={{
-                                                    text: "B",
-                                                    className: "font-black text-white"
-                                                }}
-                                                title="Destino"
-                                            />
-                                        )}
-                                    </GoogleMap>
-                                ) : (
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                                    </div>
-                                )}
+                                <LiveTripMap
+                                    origin={selectedMapRequest.origin?.coords}
+                                    destination={selectedMapRequest.destination?.coords}
+                                    driverLocation={selectedMapRequest.driver_location?.coords || selectedMapRequest.driver_coords}
+                                    vehicleType={selectedMapRequest.vehicle_type || 'carro'}
+                                    interactive={true}
+                                    showControls={true}
+                                />
                             </div>
 
                             <div className="p-6 bg-slate-50 border-t border-slate-200 grid md:grid-cols-2 gap-4">

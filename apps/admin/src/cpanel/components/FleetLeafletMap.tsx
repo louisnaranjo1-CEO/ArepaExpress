@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { DeliveryDriver } from '../../lib/delivery-service';
+import { getMapboxToken } from '@shared/lib/mapboxConfig';
 
 interface Props {
     drivers: DeliveryDriver[];
@@ -24,9 +25,16 @@ export default function FleetLeafletMap({ drivers, center = { lat: 10.18, lng: -
         });
         mapInstanceRef.current = map;
 
-        // OpenStreetMap tile layer (reliable, fast, no API key failure)
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        // Mapbox Streets Tile Layer (Estándar Oficial) con fallback OpenStreetMap
+        const mapboxToken = getMapboxToken();
+        const tileUrl = mapboxToken
+            ? `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=${mapboxToken}`
+            : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+        L.tileLayer(tileUrl, {
+            attribution: '&copy; <a href="https://www.mapbox.com/">Mapbox</a> &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            tileSize: mapboxToken ? 512 : 256,
+            zoomOffset: mapboxToken ? -1 : 0,
             maxZoom: 19
         }).addTo(map);
 

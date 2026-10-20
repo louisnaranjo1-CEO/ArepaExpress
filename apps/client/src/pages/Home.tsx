@@ -9,7 +9,7 @@ import WelcomePopup from '../components/WelcomePopup';
 import ExploreMapModal from '../components/ExploreMapModal';
 import { getCityCoordinates, getNearestCity } from '../lib/venezuelaData';
 import GPSLockScreen from '../components/GPSLockScreen';
-import { GOOGLE_MAPS_API_KEY } from '../lib/mapsConfig';
+import { reverseGeocodeMapbox } from '@shared/lib/mapboxConfig';
 import { recommendationsService } from '../lib/recommendations';
 import { toast } from 'react-hot-toast';
 import { vibrate } from '../utils/haptics';
@@ -174,29 +174,21 @@ export default function Home() {
     let detectedCity = nearest.city;
     let detectedState = nearest.state;
 
-    // 2. Reverse geocode via Google Maps API if configured
+    // 2. Reverse geocode via Mapbox API
     try {
-      if (GOOGLE_MAPS_API_KEY) {
-        const response = await fetch(
-          `https://maps.googleapis.com/maps/api/geocode/json?latlng=${coords.lat},${coords.lng}&key=${GOOGLE_MAPS_API_KEY}`
-        );
-        const data = await response.json();
-        if (data.results && data.results[0]) {
-          const addressComponents = data.results[0].address_components;
-          const cityComp =
-            addressComponents.find((c: any) => c.types.includes('locality'))?.long_name ||
-            addressComponents.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name;
-          const stateComp = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.long_name;
-          if (cityComp) {
-            detectedCity = cityComp;
-          }
-          if (stateComp) {
-            detectedState = stateComp;
+      const geo = await reverseGeocodeMapbox(coords.lat, coords.lng);
+      if (geo) {
+        if (geo.locality) {
+          detectedCity = geo.locality;
+        } else if (geo.place_name) {
+          const parts = geo.place_name.split(',');
+          if (parts.length > 1) {
+            detectedCity = parts[parts.length - 2].trim();
           }
         }
       }
     } catch (e) {
-      console.warn("Google reverse geocode fallback to nearest Venezuelan city:", e);
+      console.warn("Mapbox reverse geocode fallback to nearest Venezuelan city:", e);
     }
 
     setManualCity(detectedCity);

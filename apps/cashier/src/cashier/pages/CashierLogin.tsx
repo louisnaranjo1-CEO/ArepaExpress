@@ -4,12 +4,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useBranding } from '../../context/BrandingContext';
+import TermsAndConditionsModal from '@shared/components/TermsAndConditionsModal';
 
 export default function CashierLogin() {
     const { branding } = useBranding();
     const [identifier, setIdentifier] = useState('');
     const [cashierPassword, setCashierPassword] = useState('');
     const [isSigningIn, setIsSigningIn] = useState(false);
+    const [showTermsModal, setShowTermsModal] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
 
@@ -167,8 +169,23 @@ export default function CashierLogin() {
                 <div className="text-center mt-8">
                     <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-1">¿Problemas de Acceso?</p>
                     <p className="text-xs text-slate-500">Comuníquese con el administrador del restaurante</p>
+                    <div className="mt-4">
+                        <button
+                            type="button"
+                            onClick={() => setShowTermsModal(true)}
+                            className="text-xs text-slate-500 hover:text-slate-800 underline font-semibold transition-colors cursor-pointer"
+                        >
+                            Leer Términos y Condiciones
+                        </button>
+                    </div>
                 </div>
             </div>
+            {/* Modal de Términos y Condiciones */}
+            <TermsAndConditionsModal
+                isOpen={showTermsModal}
+                onClose={() => setShowTermsModal(false)}
+                role="business"
+            />
         </div>
     );
 }

@@ -7,7 +7,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import DualPrice from '../../components/DualPrice';
 import { useCurrency } from '../../context/CurrencyContext';
 import FleetLeafletMap from '../components/FleetLeafletMap';
-import { GOOGLE_MAPS_API_KEY } from '../../lib/mapsConfig';
 import { DEFAULT_PRICING_SETTINGS, calculateDynamicFare, SmartPricingSettings } from '../../lib/pricing';
 import { getWeatherByCoordinates, WeatherInfo } from '../../lib/weather';
 

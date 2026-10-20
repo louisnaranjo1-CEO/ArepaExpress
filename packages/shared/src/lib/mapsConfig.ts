@@ -1,6 +1,7 @@
-export const GOOGLE_MAPS_API_KEY: string = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_MAPS_API_KEY)
-    ? (import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string)
-    : '';
+/**
+ * ESTÁNDAR OFICIAL: MAPBOX
+ * Google Maps ha sido sustituido al 100% por Mapbox en todo el proyecto.
+ * Este archivo re-exporta los utilitarios oficiales de Mapbox para compatibilidad.
+ */
 
-export const GOOGLE_MAPS_LIBRARIES: ("places" | "geometry")[] = ["places", "geometry"];
-
+export * from './mapboxConfig';

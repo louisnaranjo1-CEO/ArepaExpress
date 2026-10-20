@@ -6,6 +6,7 @@ import { getDriverProfile } from '../../lib/delivery-service';
 import { motion, AnimatePresence } from 'motion/react';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useBranding } from '../../context/BrandingContext';
+import TermsAndConditionsModal from '@shared/components/TermsAndConditionsModal';
 
 export default function Login() {
     const { branding } = useBranding();
@@ -21,6 +22,7 @@ export default function Login() {
     const [forgotEmail, setForgotEmail] = useState('');
     const [isSendingForgot, setIsSendingForgot] = useState(false);
     const [forgotSuccess, setForgotSuccess] = useState(false);
+    const [showTermsModal, setShowTermsModal] = useState(false);
     const navigate = useNavigate();
 
     const handleForgotPassword = async (e: React.FormEvent) => {
@@ -332,6 +334,12 @@ export default function Login() {
                     </div>
                 </div>
             )}
+            {/* Modal de Términos y Condiciones */}
+            <TermsAndConditionsModal
+                isOpen={showTermsModal}
+                onClose={() => setShowTermsModal(false)}
+                role="driver"
+            />
         </div>
     );
 }

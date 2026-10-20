@@ -130,6 +130,7 @@ export default function RestaurantProfile() {
     const rid = userData?.managedRestaurantId || user?.uid;
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
+    const [showTermsModal, setShowTermsModal] = useState(false);
     const [saved, setSaved] = useState(false);
 
     // Form states
@@ -729,6 +730,15 @@ export default function RestaurantProfile() {
                             )}
                         </button>
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={() => setShowTermsModal(true)}
+                        className="px-4 py-3 rounded-2xl font-bold bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 transition-all flex items-center gap-2 text-xs shadow-sm cursor-pointer"
+                    >
+                        <FileText className="w-4 h-4 text-purple-600" />
+                        <span>Leer Términos y Condiciones</span>
+                    </button>
 
                     <button
                         onClick={handleSave}
@@ -1923,6 +1933,12 @@ export default function RestaurantProfile() {
                         });
                     }
                 }}
+            />
+            {/* Modal de Términos y Condiciones */}
+            <TermsAndConditionsModal
+                isOpen={showTermsModal}
+                onClose={() => setShowTermsModal(false)}
+                role="business"
             />
         </div>
     );

@@ -3218,12 +3218,35 @@ export default function DriverProfile() {
             </div>
 
             <button
+                type="button"
+                onClick={() => setShowTermsModal(true)}
+                className="w-full bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 p-4 rounded-2xl flex items-center justify-between font-bold active:scale-98 transition-all mt-3 shadow-xs cursor-pointer"
+            >
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                        <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                        <p className="font-bold text-slate-900 text-sm">Términos y Condiciones</p>
+                        <p className="text-xs font-medium text-slate-500">Políticas del servicio de transporte</p>
+                    </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-400" />
+            </button>
+
+            <button
                 onClick={handleLogout}
                 className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 p-4 rounded-2xl flex items-center justify-center gap-3 font-black active:scale-95 transition-all mt-6 shadow-sm"
             >
                 <LogOut className="w-5 h-5 text-slate-500" /> Cerrar Sesión
             </button>
             <p className="text-center text-xs font-medium text-slate-400 mt-4">{footerText}</p>
+            {/* Modal de Términos y Condiciones */}
+            <TermsAndConditionsModal
+                isOpen={showTermsModal}
+                onClose={() => setShowTermsModal(false)}
+                role="driver"
+            />
         </div>
     );
 }
