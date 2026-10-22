@@ -1,11 +1,110 @@
-# Blueprint Arquitectónico y Diagramas de Flujo del Sistema (Un 2x3)
+# 🛡️ SYSTEM BLUEPRINT & CONTRATO DE INMUTABILIDAD (UN 2X3)
 
-Este documento describe la arquitectura base, los ciclos de vida de negocio y las pipelines de infraestructura críticas para el funcionamiento de **"Un 2x3"** (App Cliente, App Negocio/Restaurante, App Conductor/Driver). El sistema se divide funcionalmente en Ride-Hailing, E-Commerce con Despacho Logístico, y Tracking GPS, operando bajo un entorno híbrido React/Capacitor respaldado exclusivamente por Supabase (PostgreSQL, Realtime, Storage, Auth), optimizado para alto rendimiento y máxima resiliencia operativa.
+**DIRECTIVA CRÍTICA PARA EL AGENTE (ANTIGRAVITY):**
+Este documento es la referencia maestra de arquitectura y contrato de no-regresión para todo el ecosistema **Un 2x3**. 
+
+**REGLA DE ORO DE NO-REGRESIÓN:** Todo lo descrito en este documento YA FUNCIONA en producción. Cuando se agreguen nuevas funciones, reparen bugs puntuales o se actualicen vistas:
+1. **PROHIBIDO** alterar, renombrar o eliminar columnas existentes de la base de datos.
+2. **PROHIBIDO** romper los payloads híbridos (`snake_case` + `camelCase`) que mantienen la compatibilidad entre las apps de Cliente, Aliados, Conductores y el CPanel.
+3. **PROHIBIDO** modificar flujos que no se hayan pedido tocar explícitamente (ej. WebRTC, Plugins Nativos de Android, Seguridad de Dispositivos Admin, Calculadora BCV o Flujo de Pujas de Transporte).
 
 ---
 
-## 1. Flujo de Ride-Hailing (Taxi / Transporte)
-El ciclo de vida del servicio de transporte desde la solicitud inicial hasta la confirmación del pago.
+## 1. ARQUITECTURA DE APLICACIONES Y PLUGINS NATIVOS (NO MODIFICAR)
+* **Raíz `/android` (`com.un2x3.cliente`)**: App nativa de Cliente. Contiene plugins en Java hechos a medida que NO deben borrarse ni sobrescribirse al sincronizar Capacitor:
+  * `LocationHelperPlugin.java`: Control nativo de GPS y verificación de servicios de ubicación.
+  * `OrderLiveNotificationPlugin.java`: Notificaciones persistentes en vivo del estado del pedido (Ongoing Notification con barra de 4 pasos).
+  * `OrderTrackerWidget.java` + `res/layout/widget_order_tracker.xml`: Widget nativo de escritorio para seguimiento de órdenes en tiempo real con RemoteViews.
+  * `MainActivity.java`: Configuración de `WebChromeClient` con concesión automática de `RESOURCE_AUDIO_CAPTURE` y `setMediaPlaybackRequiresUserGesture(false)` para llamadas WebRTC y audio sin bloqueos.
+* **Subproyecto `apps/admin` (`com.un2x3.admin`)**: Contiene tanto componentes compartidos (`@shared/...`) como el CPanel Administrativo (`src/cpanel/`).
+* **Subproyectos de Plataforma**:
+  * `apps/client` (`com.un2x3.cliente`): App para clientes y consumidores.
+  * `apps/restaurant` (`com.un2x3.negocio`): Panel y POS para comercios, cocina y mesas.
+  * `apps/delivery` (`com.un2x3.conductor`): App de conductores, radares de viajes y entregas.
+* **Contextos Globales Intocables**:
+  * `AuthContext.tsx`: Maneja sesión de Supabase, rol de usuario y bloqueo por suspensión/dispositivo.
+  * `CurrencyContext.tsx` + `BCVCalculatorModal.tsx` + `DualPrice.tsx`: Motor de conversión USD/Bs en tiempo real.
+  * `BrandingContext.tsx`: Lee `public.app_branding` (`id = 'current'`) para inyectar logos, colores y textos dinámicos.
+
+---
+
+## 2. REGLAS DE INTEGRIDAD DE BASE DE DATOS (ESQUEMA `public`)
+
+### Regla 2.1: Paridad Estricta de UUIDs en Identidades (1:1:1)
+* `public.profiles.id` referencia a `auth.users(id)`.
+* `public.comercios.id` referencia a `public.profiles(id)` (además tiene `owner_uid`).
+* `public.drivers.id` referencia a `public.profiles(id)` (además tiene `user_id`).
+* **Atención en Claves Foráneas de Conductores:**
+  * `orders.delivery_driver_id` y `transport_requests.driver_id` apuntan a `public.profiles(id)`.
+  * `transport_bids.driver_id` y `driver_commission_payments.driver_id` apuntan a `public.drivers(id)`.
+  * Por lo tanto, `profiles.id` y `drivers.id` SIEMPRE deben ser exactamente el mismo UUID.
+
+### Regla 2.2: Sincronización Obligatoria de Columnas Espejo (`snake_case` y `camelCase`)
+Varios módulos leen en `snake_case` y otros en `camelCase`. Al hacer `INSERT` o `UPDATE` en estas tablas, **mantén siempre ambos campos sincronizados** en el objeto payload y jamás elimines ninguno de los dos:
+
+1. **`profiles`**:
+   * `points` <-> `loyalty_points`
+   * `photo_url` <-> `avatar_url`
+   * `notifications_enabled` <-> `notificationsEnabled`
+   * `last_city` <-> `lastCity` | `last_state` <-> `lastState`
+2. **`comercios`**:
+   * `is_verified` <-> `isVerified` | `is_visible` <-> `isVisible`
+   * `logo_url` <-> `logo` <-> `logoUrl` | `image_url` <-> `image`
+   * `description` <-> `business_description` | `whatsapp` <-> `phone`
+3. **`drivers`**:
+   * `selfie_url` <-> `selfieUrl` | `licenseUrl`
+   * `vehicle_photo_url` <-> `vehicle_image_url` <-> `vehicleUrl`
+   * `has_ac` <-> `hasAc` | `vehicle_color` <-> `vehicleColor`
+   * `current_location` <-> `coords` <-> `lat` / `lng`
+4. **`orders`**:
+   * `delivery_driver_id` <-> `driver_id`
+   * `delivery_type` <-> `deliveryType` | `delivery_method` <-> `deliveryMethod`
+   * `is_external_delivery` <-> `isExternalDelivery`
+   * `delivery_fee` <-> `deliveryFee`
+   * `payment_method` <-> `paymentMethod` | `payment_status` <-> `paymentStatus`
+   * `payment_reference` <-> `paymentReference` | `payment_proof_url` <-> `paymentProofUrl`
+   * `stock_confirmed` <-> `stockConfirmed` | `missing_items` <-> `missingItems`
+   * `restaurant_payment_client_confirmed` <-> `restaurantPaymentClientConfirmed`
+   * `delivery_payment_ref` <-> `deliveryPaymentRef` | `delivery_payment_status` <-> `deliveryPaymentStatus` | `delivery_payment_image` <-> `deliveryPaymentImage`
+5. **`transport_requests`**:
+   * `driver_id` <-> `assigned_driver_id`
+   * `price` <-> `total` <-> `fare`
+   * `cancelled_at` <-> `cancelledAt` <-> `canceled_at`
+   * `cancel_reason` <-> `cancellation_reason` <-> `rejection_reason`
+   * `rating_tags` <-> `ratingTags` | `rating_comment` <-> `ratingComment` | `rated_at` <-> `ratedAt`
+   * `payment_proof_url` <-> `payment_proof` | `payout_receipt_url` <-> `payoutReceiptUrl`
+   * `vehicle_plate` <-> `plate` | `vehicle_model` <-> `model` | `vehicle_color` <-> `color`
+   * `receiver_name` / `receiver_phone` <-> `recipient_name` / `recipient_phone`
+6. **`messages`**:
+   * `request_id` (UUID) <-> `requestId` (TEXT)
+   * `order_id` (TEXT) <-> `orderId` (TEXT)
+   * `sender_id` <-> `senderId` | `sender_name` <-> `senderName` | `sender_role` <-> `senderRole` | `image_url` <-> `imageUrl`
+7. **`restaurant_rewards`**:
+   * `restaurant_id` <-> `restaurantId` | `points_cost` <-> `pointsCost` | `image_url` <-> `imageUrl` | `is_active` <-> `isActive` | `created_at` <-> `createdAt`
+
+### Regla 2.3: Mapa de Tipos de ID (`UUID` vs `TEXT`)
+Respeta estrictamente el tipo de dato de cada tabla al construir consultas SQL, políticas RLS o funciones RPC:
+* **Tablas donde `id` es `TEXT`**: `app_branding` (`'current'`), `app_legal_and_share_settings` (`'current'`), `global_categories`, `global_icons`, `app_settings`, `system_configs`, `achievements`, `driver_raffles`, `raffles`, `lost_items`, y `system_settings` (`key TEXT`).
+* **Tablas donde `restaurant_id` es `TEXT` (NO `UUID`)**: `expenses`, `cash_registers`, `restaurant_contests`, `banner_requests`, `push_campaigns`, `restaurant_credits`, `banner_updates`, `restaurant_rewards`.
+* **Tablas donde `driver_id` es `TEXT` (NO `UUID`)**: `driver_locations`, `delivery_update_requests`, `driver_raffle_tickets`, `lost_items`.
+* **En `orders`**: `waiter_id` y `table_id` son `TEXT`.
+
+---
+
+## 3. FLUJOS DE INTERCOMUNICACIÓN PROTEGIDOS
+1. **Despacho Híbrido (Comercio -> Flota App)**: Cuando un comercio solicita delivery de la app para una orden (`orders`), se crea un registro en `transport_requests` con `order_id = orders.id` y `restaurant_id = comercios.id`, y se actualiza `orders.transport_request_id = transport_requests.id`. Ambos deben mantenerse sincronizados.
+2. **Sistema POS Interno de Restaurantes**: Controlado por la columna JSONB `comercios.custom_features` (`orders`, `tables`, `clients`, `loyalty`, `reviews`, `waiters`, `cashiers`, `products`, `ads_and_push`, `cash_internal`, `notifications`, `printer_stations`). Las tablas `restaurant_tables`, `waiters`, `cashiers`, `printers`, `expenses` y `cash_registers` dependen de esta configuración.
+3. **Sonidos y Notificaciones Dinámicas**: La tabla `app_sound_settings` controla los eventos auditivos (`alert_loop`, `chat_pop`, `sos_siren`, `ticket_bell`, `push_chime`, `cycle_accept`, `cycle_ready`, `cycle_driver`, `cycle_transit`, `cycle_arrived`, `done_success`, `done_cash`). No alteres los `event_key` ni los `CHECK` constraints de esta tabla.
+4. **Seguridad del CPanel**: `admin_authorized_devices` valida la huella del navegador/dispositivo (`device_id`) junto con el `admin_security_pin` de `profiles`. Nunca desactives este filtro en `CpanelApp.tsx` ni en `adminSecurity.ts`.
+5. **Llamadas WebRTC y Timbres de Audio**:
+   - `useWebRTCCall.ts` y `InAppCall.tsx` gestionan llamadas de audio peer-to-peer cifradas.
+   - Detención garantizada de tracks de micrófono (`track.stop()`), cierre de peer connection y remoción de canales Supabase al desmontar para evitar que el hardware quede bloqueado en Android.
+
+---
+
+## 4. FLUJOS ARQUITECTÓNICOS Y DE NEGOCIO
+
+### 4.1. Flujo de Ride-Hailing (Taxi / Transporte)
 
 ```mermaid
 sequenceDiagram
@@ -37,8 +136,7 @@ sequenceDiagram
 
 ---
 
-## 2. Flujo Completo E-Commerce, Validación de Stock, Pagos y Logística (OFICIAL Y DEFINITIVO)
-Este flujo rige todas las aplicaciones del ecosistema (Cliente, Negocio y Conductor) y debe ser estrictamente preservado en futuros desarrollos para garantizar la integridad transaccional.
+### 4.2. Flujo Completo E-Commerce, Validación de Stock, Pagos y Logística
 
 ```mermaid
 stateDiagram-v2
@@ -99,137 +197,7 @@ stateDiagram-v2
 
 ---
 
-### 2.1. FASE 1: Navegación, Interfaz Inicial y Geolocalización (App Cliente)
-1. **Navegación en Perfil del Negocio (`Restaurant.tsx`):**
-   - El botón `"Ver mi orden"` / `"Ver mi carrito"` debe enrutar inequívocamente a `/cart?restaurantId=${restaurant.id}` y activar la tienda actual en `CartContext`.
-   - Se valida el manejo seguro de vibración háptica (`try { navigator.vibrate?.(30); } catch(e){}`) para evitar excepciones en navegadores o WebView.
-   - Si el cliente posee una orden activa en progreso con ese mismo negocio, el sistema ofrece acceso directo hacia `/track/:orderId`.
-2. **Selector Minimalista de Entrega (`Cart.tsx`):**
-   - La pantalla de selección muestra exclusivamente dos bloques grandes:
-     1. **🏪 Retiro en Tienda (Pickup sin costo)**
-     2. **🛵 Delivery a tu Dirección**
-   - **Mapa de Google Maps en Pantalla Completa:**
-     - Al seleccionar *Delivery*, se activa el mapa en pantalla completa obteniendo las coordenadas en tiempo real vía `@capacitor/geolocation` o `navigator.geolocation`.
-     - Manejo de contingencia: Si la API Key de Google Maps presenta bloqueos de cuota o firmas SHA-1 en Android, la UI cuenta con un fallback visual interactivo con marcador y geolocalización continua.
-     - Elementos superpuestos sobre el mapa:
-       - Input opcional para el `"Punto de Referencia"` (color de fachada, piso, indicaciones).
-       - Botón inferior prominente y fijado: `"Confirmar Datos"`.
-3. **Pantalla "Tu Pedido" (`TrackOrder.tsx`) y CTA del Chat:**
-   - La cabecera y tarjetas de estado aplican microinteracciones y estilos visuales Un 2x3.
-   - El botón flotante de Chat se eleva y se ancla directamente sobre la tarjeta de información activa, constituyendo el **Call to Action (CTA) primordial**.
-
----
-
-### 2.2. FASE 2: Validación de Stock y Comunicación Transaccional
-1. **Reestructuración del Flujo de Pago:**
-   - Los datos bancarios de Pago Móvil **no se muestran** en la vista principal del pedido al crearse. Todo el proceso de pago reside dentro del **Chat Transaccional P2P**.
-   - **Regla Estricta de Negocio:** El cliente tiene bloqueada la opción de pagar hasta que el comercio verifique y confirme el stock de los productos.
-   - Mensaje / Banner predeterminado en cliente:
-     > *"Espera a que el negocio te asegure el stock de los productos antes de realizar tu pago. ¡Puedes escribirle primero!"*
-2. **Alertas Sonoras Bidireccionales:**
-   - Cada ingreso al chat o mensaje recibido emite un tono audible tanto in-app como en background.
-   - En Android nativo, los canales de notificación (`NotificationChannel`) se configuran con `IMPORTANCE_HIGH` y sonido personalizado para garantizar el despertar de dispositivos en Doze Mode.
-3. **Sistema de Rechazo Inteligente (App Negocio):**
-   - Si el negocio presiona *Rechazar Pedido*, se abre un modal de decisión:
-     - **Opción 1: Negocio no abierto / Cerrado:** Cancela la orden inmediatamente, actualiza el estado a `cancelled` y notifica al cliente.
-     - **Opción 2: Falta de Stock:** **No cancela la orden**. Muestra el banner *"Invita a tu cliente a adquirir otro producto"* y presenta un botón directo al Chat para convenir productos sustitutos. Solo si no hay acuerdo, se permite la cancelación manual definitiva.
-
----
-
-### 2.3. FASE 3: Confirmación, Pago Móvil y Cocina
-1. **Reporte de Pago en Cliente:**
-   - Al confirmar stock el negocio, se desbloquean los datos de Pago Móvil en el Chat.
-   - **UX de 1 solo clic:** Botón `"Copiar Datos"` con el formato formal de copiado:
-     > *"Copie y pegue en su banco esto para realizar su pago"* (Banco, Teléfono, RIF/Cédula, Monto en Bs según tasa BCV).
-   - Formulario de Comprobante:
-     - Subida de captura de pantalla (almacenada en Supabase Storage `documents`/`store_assets` con fallback seguro).
-     - Campo de Número de Referencia con restricción numérica estricta (`inputMode="numeric"`, sanitización Regex `replace(/\D/g, '')`).
-     - Campo opcional de Notas adicionales.
-2. **Validación y Cocina (App Negocio):**
-   - El cliente tiene bloqueada la opción de pedir repartidor en esta etapa.
-   - El negocio valida el comprobante en su panel y presiona `"Validar Pago e Iniciar Cocina"`.
-   - Selector de tiempo de preparación:
-     - `Pedido listo ya` (0 minutos)
-     - `15 minutos`
-     - `20 minutos`
-     - `30 minutos`
-   - El cliente observa el banner y la cuenta regresiva sincronizada en tiempo real:
-     > *"Tu pedido se está preparando. Te avisaremos cuando esté listo para que solicites tu repartidor."*
-3. **Bifurcación al estar Listo:**
-   - Al marcar `"Pedido listo ya"` o culminar el cronómetro, la app del cliente habilita dos botones excluyentes (solo puede elegir 1):
-     1. **🛵 Pedir Repartidor** (inicia solicitud logística).
-     2. **🏪 Buscar Pick Up** (el cliente retira personalmente).
-   - Si elige Pick Up:
-     - Se notifica al negocio que el cliente retirará personalmente.
-     - En la app del cliente aparece el botón prominente `"Retiré mi pedido"`.
-     - Al presionar `"Retiré mi pedido"`, la orden pasa a `completed`, se cierra la venta para el negocio y se acreditan automáticamente los puntos de fidelización al cliente.
-
----
-
-### 2.4. FASE 4: Persistencia de Sesión y Órdenes Activas
-1. **Prevención de Órdenes Huérfanas:**
-   - La orden activa se asocia tanto al usuario autenticado como al almacenamiento local (`active_order_id`).
-   - Se elimina la restricción estricta de validación UUID que descartaba identificadores de usuarios Firebase, Google o temporales.
-2. **Banner Persistente en Home (`Home.tsx`):**
-   - Si el cliente posee una orden o servicio de transporte en curso, se despliega una tarjeta persistente en el inicio con el estado actual, el comercio y acceso inmediato en 1 toque.
-3. **Pestaña "Activos" en Mis Pedidos (`Orders.tsx`):**
-   - En `Pedidos -> Mis Pedidos`, la pestaña `"Activos"` lista unificadamente:
-     - Pedidos de comida / productos de cualquier comercio no completados ni cancelados.
-     - Solicitudes de transporte, taxi o mandados en curso.
-   - El cliente no puede dejar órdenes abiertas indefinidamente: dispone de la acción de cancelar (si aún no ha pagado) o continuar hasta finalizar.
-
----
-
-### 2.5. FASE 5: Logística, Despachos y Resolución de Drivers
-Al estar el pedido en estado `ready`, se habilitan dos variantes de despacho:
-
-#### Variante A: El Cliente Paga el Delivery
-1. Se desbloquea en la app del cliente la solicitud de repartidor (Mototaxi, Taxi Económico, Confort).
-2. Se genera el registro en `transport_requests` (tipo `food_delivery`) con coordenadas correctas de origen y destino (`origin: { address, lat, lng }` y `destination: { address, lat, lng }`).
-3. El cliente hace match con el Driver.
-4. En la app del negocio, se habilita el botón `"Despachar a Repartidor asignado por el cliente"`. Al presionarlo, el negocio valida la identidad, placa y foto del conductor.
-5. El pedido pasa a `delivering` / `en_camino`. Cliente y conductor disponen de chat, llamadas y tracking GPS en vivo.
-6. El Driver marca `"Entregado"` y cobra la tarifa de delivery al cliente.
-
-#### Variante B: Envío Gratis (El Negocio asume el costo)
-1. En la app del negocio, el comercio activa `"Envío Gratis / Obsequiar Delivery"`.
-2. Se bloquea la opción del cliente para elegir driver, mostrándole: *"Tu envío es totalmente gratis"*.
-3. El negocio busca y asigna al conductor desde la flota disponible.
-4. El Driver recibe una notificación especial con **manifiesto unificado**:
-   - Descripción detallada de los ítems a entregar.
-   - Nombre, apellido, teléfono y cédula del cliente.
-   - Dirección y coordenadas GPS de entrega.
-   - Etiqueta destacada: **Flete pagado por el negocio** (Cuenta por cobrar al comercio, $0 a cobrar al cliente).
-5. Se abre la interfaz de seguimiento en tiempo real entre cliente y conductor (match, llamadas, chat y mapa interactivo).
-6. **Sistema de Reseñas Obligatorias:** Al marcarse como entregado, el cliente debe calificar obligatoriamente y por separado al **Negocio** y al **Conductor**.
-
-#### Resolución de Notificaciones a Conductores:
-- **Supabase Realtime:** Los filtros de proximidad en `OrdersRadar.tsx` leen correctamente las coordenadas anidadas (`origin.lat || origin.coords?.lat`) para no descartar pedidos válidos.
-- **Refresh de Tokens:** Se actualiza y persiste el token FCM del conductor en la tabla `profiles` ante cada inicio de sesión o reactivación de permisos.
-- **Prioridad Máxima:** Los mensajes de despacho se envían con `priority: 'high'` y canal de sonido de alta urgencia.
-
----
-
-### 2.6. FASE 6: Casos Extremos (Edge Cases)
-1. **Abandono de Orden Pre-Pago (Timeout de 45 minutos):**
-   - Si una orden creada en estado pre-pago no recibe comprobante tras 45 minutos, el panel del negocio resalta la orden con el indicador `"⏰ Inactividad > 45m"` y habilita el botón `"Cancelar por Inactividad (Liberar Stock)"`.
-   - Se notifica al cliente y el inventario queda liberado.
-2. **Conductor no encontrado o Demorado:**
-   - Si durante la búsqueda de repartidor la solicitud expira o el driver asignado no responde en tiempo prudencial, la app del cliente despliega 2 botones de acción:
-     1. **"Solicitar asistencia al negocio":** Notifica al comercio para que asuma la búsqueda logística o se acuerde un retiro en tienda.
-     2. **"Cancelar conductor y buscar nuevo":** Cancela la asignación actual y permite elegir inmediatamente otro repartidor o categoría sin perder la orden de compra.
-3. **Pérdida de conectividad del Driver en tránsito (Caché Local Offline):**
-   - Al aceptar o recibir la orden, la app del conductor almacena en `localStorage` / caché local:
-     - Nombre y teléfono del cliente (`tel:` directo).
-     - Dirección de entrega y punto de referencia detallado.
-     - Monto exacto a cobrar y si el flete fue pagado por el comercio.
-     - Resumen de productos a entregar.
-   - Ante fallas de conexión móvil al llegar a destino, la app del driver mantiene accesible esta tarjeta de datos para completar la entrega y comunicarse sin interrupciones.
-
----
-
-## 3. Pipeline de Tracking GPS y Optimización de Mapas
-Gestión de geolocalización de alta frecuencia con mitigación de costos operativos y optimización de rendimiento según la skill `google-maps-optimizer`:
+### 4.3. Pipeline de Tracking GPS y Optimización de Mapas
 
 ```mermaid
 graph TD
@@ -259,12 +227,11 @@ graph TD
 
 ---
 
-## 4. Matriz de Roles y Permisos
+### 4.4. Matriz de Roles y Permisos
 
 | Rol | Entorno Principal | Permisos Clave | Restricciones |
 | :--- | :--- | :--- | :--- |
-| **Cliente** | App Móvil / PWA | - Solicitar viajes y comprar en comercios.<br>- Reportar pago en chat y seleccionar método de entrega.<br>- Trackear estado, ubicación GPS y calificar servicio. | Solo accede a sus órdenes y chats propios. |
+| **Cliente** | App Móvil / PWA | - Solicitar viajes y comprar en comercios.<br>- Reportar pago en chat y seleccionar método de entrega.<br>- Trackear estado, notificación persistente y widget, ubicación GPS y calificar servicio. | Solo accede a sus órdenes y chats propios. |
 | **Driver** | App Móvil Nativa | - Ver solicitudes en radar y aceptar pedidos de entrega.<br>- Emitir GPS en 2do plano y ver datos de cliente offline.<br>- Marcar pedido retirado y entregado. | Solo visualiza órdenes asignadas o en su radio de cobertura. |
 | **Admin de Comercio** | Panel Web / Tablet | - Confirmar stock o solicitar sustitución en chat.<br>- Validar pago móvil e iniciar tiempo de cocina.<br>- Despachar a repartidor (propio o de plataforma) o activar Envío Gratis. | Solo administra su propio comercio y pedidos asociados. |
-| **Super Admin** | Panel Web (CPanel) | - Control global de tarifas, tasas BCV, métricas y usuarios.<br>- Auditoría y resolución de controversias. | Uso restringido con autenticación administrativa. |
-
+| **Super Admin** | Panel Web (CPanel) | - Control global de tarifas, tasas BCV, métricas y usuarios.<br>- Auditoría y resolución de controversias. | Uso restringido con autenticación administrativa (`admin_authorized_devices` + `admin_security_pin`). |
