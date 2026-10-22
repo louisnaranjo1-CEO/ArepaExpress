@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, setDoc, collection, query, onSnapshot, orderBy, updateDoc, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../lib/firebase';
-import { Save, Wallet, Receipt, CreditCard, DollarSign, Activity, Image as ImageIcon, UploadCloud, Trash2, Globe, Layout, CheckCircle, XCircle, Store, Bike } from 'lucide-react';
+import { Save, Receipt, CreditCard, DollarSign, Activity, Image as ImageIcon, UploadCloud, Trash2, Globe, Layout, CheckCircle, XCircle, Store, Bike } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function FinancesManager() {
@@ -304,7 +304,7 @@ export default function FinancesManager() {
             <header className="flex items-center justify-between mb-8 pb-6 border-b border-slate-100">
                 <div className="flex items-center gap-4">
                     <div className="w-12 h-12 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/20">
-                        {activeTab === 'payments' ? <Wallet className="w-6 h-6 text-white" /> : <Layout className="w-6 h-6 text-white" />}
+                        {activeTab === 'payments' ? <CreditCard className="w-6 h-6 text-white" /> : <Layout className="w-6 h-6 text-white" />}
                     </div>
                     <div>
                         <h1 className="text-2xl font-black text-slate-900">
@@ -341,7 +341,7 @@ export default function FinancesManager() {
                         : 'text-slate-500 hover:text-slate-700'
                         }`}
                 >
-                    <Wallet className="w-4 h-4" />
+                    <CreditCard className="w-4 h-4" />
                     Métodos de Pago
                 </button>
                 <button
@@ -649,7 +649,7 @@ export default function FinancesManager() {
                     <div className="bg-white rounded-[32px] border-2 border-slate-100 p-8 mt-8">
                         <div className="flex items-center gap-3 mb-8">
                             <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                                <Wallet className="w-5 h-5" />
+                                <Receipt className="w-5 h-5" />
                             </div>
                             <div>
                                 <h3 className="font-black text-slate-800 tracking-tight text-lg">Estado de Suscripciones (Locales)</h3>

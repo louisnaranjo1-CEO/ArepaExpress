@@ -299,39 +299,31 @@ export default function TransportTracker() {
             const realPhoto = bid.driver_photo || driverData?.documents?.selfieUrl || null;
             const paymentMobile = driverData?.payment_mobile || bid.driver_payment_info || null;
 
-            // 1. Accept bid
-            await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
-            // 2. Reject others
-            await supabase.from('transport_bids').update({ status: 'rejected' })
-                .or(`transport_request_id.eq.${requestId},request_id.eq.${requestId}`)
-                .neq('id', bid.id);
-            // 3. Assign driver
-            const { error: updErr } = await supabase.from('transport_requests').update({
-                status: 'accepted',
-                driver_id: bid.driver_id,
-                driver_name: bid.driver_name || driverData?.full_name || 'Conductor',
-                driver_phone: bid.driver_phone || driverData?.phone || '',
-                driver_photo: realPhoto,
-                driver_assigned_at: new Date().toISOString(),
-                driver_payment_info: paymentMobile,
-                driver_vehicle_details: {
-                    type: bid.vehicle_type || driverData?.vehicle_type,
-                    brand: bid.vehicle_brand || driverData?.vehicle_brand,
-                    model: bid.vehicle_model || driverData?.vehicle_model,
-                    year: bid.vehicle_year || driverData?.vehicle_year,
-                    color: bid.vehicle_color || driverData?.vehicle_color,
-                    plate: bid.vehicle_plate || driverData?.vehicle_plate,
-                    has_ac: bid.has_ac ?? driverData?.has_ac ?? false,
-                    has_thermal_bag: bid.has_thermal_bag ?? driverData?.has_thermal_bag ?? false
-                },
-                price: Number(bid.amount),
-                total: Number(bid.amount),
-                commission_amount: 0.70
-            }).eq('id', requestId);
+            const p_user_id = request?.user_id || request?.userId || bid.user_id || '00000000-0000-0000-0000-000000000000';
 
-            if (updErr) {
-                console.error("Error al actualizar transport_requests:", updErr);
-                throw updErr;
+            // 1. Llamada atómica mediante RPC con FOR UPDATE SKIP LOCKED
+            const { data, error } = await supabase.rpc('accept_transport_bid', {
+                p_bid_id: bid.id,
+                p_request_id: requestId,
+                p_user_id
+            });
+
+            if (error) {
+                console.error("Error al ejecutar accept_transport_bid:", error);
+                throw error;
+            }
+
+            if (data?.success === false) {
+                toast.error(data.error || 'El viaje ya fue asignado o cancelado');
+                return;
+            }
+
+            // Sincronizar datos adicionales si existen
+            if (paymentMobile || realPhoto) {
+                await supabase.from('transport_requests').update({
+                    ...(paymentMobile ? { driver_payment_info: paymentMobile } : {}),
+                    ...(realPhoto ? { driver_photo: realPhoto } : {})
+                }).eq('id', requestId);
             }
 
             // Sincronizar inmediatamente el estado local del viaje

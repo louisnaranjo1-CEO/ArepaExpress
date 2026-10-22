@@ -131,6 +131,11 @@ function AudioPlayerBubble({ src, isMine }: { src: string; isMine: boolean }) {
     );
 }
 
+const isValidUUID = (str?: string | null): boolean => {
+    if (!str || typeof str !== 'string') return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+};
+
 export default function RideChat({ 
     requestId, 
     onClose, 
@@ -163,6 +168,8 @@ export default function RideChat({
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const chatPath = `transport_requests/${requestId}`;
+    const validReqId = isValidUUID(requestId) ? requestId : null;
+    const validOrderId = String(requestId || '');
 
     // Emergency / Lost Item Chat State (Audio 3)
     const emergencyActivatedMsg = messages.find(m => m.action === 'lost_item_emergency');
@@ -243,12 +250,52 @@ export default function RideChat({
         const channel = supabase
             .channel(`ride_chat_unified_${requestId}`)
             .on('postgres_changes', {
-                event: '*',
+                event: 'INSERT',
                 schema: 'public',
-                table: 'messages',
-                filter: `chat_path=eq.${chatPath}`
-            }, () => {
-                fetchMessages();
+                table: 'messages'
+            }, (payload) => {
+                if (!payload?.new) return;
+                const d = payload.new as any;
+                if (!d.id) return;
+
+                const matches = d.chat_path === chatPath || 
+                    d.order_id === requestId || 
+                    d.request_id === requestId;
+                if (!matches) return;
+
+                setMessages((prev) => {
+                    if (prev.some((m) => m.id === d.id)) {
+                        return prev;
+                    }
+                    const cDate = d.created_at ? new Date(d.created_at) : new Date();
+                    return [...prev, {
+                        id: d.id,
+                        text: d.text,
+                        imageUrl: d.image_url || d.imageUrl,
+                        videoUrl: d.video_url || d.videoUrl,
+                        audioUrl: d.audio_url || d.audioUrl,
+                        action: d.action,
+                        senderId: d.sender_id || d.senderId,
+                        senderName: d.sender_name || d.senderName,
+                        senderRole: d.sender_role || d.senderRole,
+                        createdAt: {
+                            toDate: () => cDate,
+                            toLocaleTimeString: (...args: any[]) => cDate.toLocaleTimeString(...args)
+                        }
+                    }];
+                });
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'messages'
+            }, (payload) => {
+                const d = payload?.new as any;
+                if (!d) return;
+                const matches = d.chat_path === chatPath || d.order_id === requestId || d.request_id === requestId;
+                if (matches) {
+                    fetchMessages();
+                }
             })
             .subscribe();
 
@@ -306,12 +353,15 @@ export default function RideChat({
             const defaultName = isDriver ? 'Piloto' : 'Pasajero';
 
             const { error } = await supabase.from('messages').insert({
-                chat_path: chatPath,
-                order_id: requestId,
-                text: newMessage.trim(),
+                order_id: validOrderId,
+                request_id: validReqId,
                 sender_id: uid,
                 sender_name: user?.displayName || defaultName,
                 sender_role: role,
+                text: newMessage.trim(),
+                image_url: null,
+                audio_url: null,
+                chat_path: chatPath,
                 created_at: new Date().toISOString()
             });
 
@@ -331,21 +381,22 @@ export default function RideChat({
         const file = e.target.files[0];
         setUploadingMedia(true);
         const isVideo = file.type.startsWith('video/');
-        const tId = toast.loading(isVideo ? 'Subiendo video...' : 'Optimizando y subiendo comprobante / foto...');
+        const isAudio = file.type.startsWith('audio/');
+        const tId = toast.loading(isVideo ? 'Subiendo video...' : (isAudio ? 'Subiendo audio...' : 'Optimizando y subiendo comprobante / foto...'));
 
         try {
             const uid = user?.id || (user as any)?.uid || (isDriver ? 'driver' : 'passenger');
             let uploadBlob: Blob = file;
 
             // Compress images automatically before uploading
-            if (!isVideo && file.type.startsWith('image/')) {
+            if (!isVideo && !isAudio && file.type.startsWith('image/')) {
                 uploadBlob = await compressImage(file, 1280, 0.8);
             }
 
-            const ext = isVideo ? (file.name.split('.').pop() || 'mp4') : 'jpg';
+            const ext = isVideo ? (file.name.split('.').pop() || 'mp4') : (isAudio ? (file.name.split('.').pop() || 'webm') : 'jpg');
             const filePath = `chat_attachments/${requestId}_${Date.now()}.${ext}`;
             const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, uploadBlob, { 
-                contentType: isVideo ? file.type : 'image/jpeg',
+                contentType: isVideo ? file.type : (isAudio ? file.type : 'image/jpeg'),
                 upsert: true 
             });
 
@@ -354,20 +405,18 @@ export default function RideChat({
             const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(filePath);
 
             const insertPayload: any = {
-                chat_path: chatPath,
-                order_id: requestId,
-                text: isVideo ? '🎥 [Video adjunto]' : '📷 [Comprobante de compra o foto adjunta]',
+                order_id: validOrderId,
+                request_id: validReqId,
                 sender_id: uid,
                 sender_name: user?.displayName || (isDriver ? 'Piloto' : 'Pasajero'),
                 sender_role: isDriver ? 'delivery' : 'client',
+                text: isVideo ? '🎥 [Video adjunto]' : (isAudio ? '🎤 [Nota de voz]' : '📷 [Comprobante de compra o foto adjunta]'),
+                image_url: (!isVideo && !isAudio) ? publicUrl : null,
+                audio_url: isAudio ? publicUrl : null,
+                video_url: isVideo ? publicUrl : null,
+                chat_path: chatPath,
                 created_at: new Date().toISOString()
             };
-
-            if (isVideo) {
-                insertPayload.video_url = publicUrl;
-            } else {
-                insertPayload.image_url = publicUrl;
-            }
 
             const { error: insMediaErr } = await supabase.from('messages').insert(insertPayload);
             if (insMediaErr) throw insMediaErr;
@@ -432,13 +481,15 @@ export default function RideChat({
                     const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(audioPath);
 
                     const { error: insVoiceErr } = await supabase.from('messages').insert({
-                        chat_path: chatPath,
-                        order_id: requestId,
-                        text: '🎤 [Nota de voz]',
-                        audio_url: publicUrl,
+                        order_id: validOrderId,
+                        request_id: validReqId,
                         sender_id: uid,
                         sender_name: user?.displayName || (isDriver ? 'Piloto' : 'Pasajero'),
                         sender_role: isDriver ? 'delivery' : 'client',
+                        text: '🎤 [Nota de voz]',
+                        image_url: null,
+                        audio_url: publicUrl,
+                        chat_path: chatPath,
                         created_at: new Date().toISOString()
                     });
 
@@ -488,13 +539,16 @@ export default function RideChat({
         try {
             const uid = user?.id || (user as any)?.uid || 'driver';
             const { error: insIssueErr } = await supabase.from('messages').insert({
-                chat_path: chatPath,
-                order_id: requestId,
-                text: `🚨 [NOVEDAD REPORTADA]: ${reason}`,
-                action: 'merchant_issue',
+                order_id: validOrderId,
+                request_id: validReqId,
                 sender_id: uid,
                 sender_name: user?.displayName || 'Piloto',
                 sender_role: 'delivery',
+                text: `🚨 [NOVEDAD REPORTADA]: ${reason}`,
+                image_url: null,
+                audio_url: null,
+                action: 'merchant_issue',
+                chat_path: chatPath,
                 created_at: new Date().toISOString()
             });
             if (insIssueErr) throw insIssueErr;
@@ -515,13 +569,16 @@ export default function RideChat({
                 : '🚨 ¡EMERGENCIA / OBJETO OLVIDADO! El cliente ha reactivado el chat para coordinar la recuperación de un objeto o novedad del servicio.';
             
             await supabase.from('messages').insert({
-                order_id: requestId,
-                chat_path: chatPath,
-                text: emergencyText,
+                order_id: validOrderId,
+                request_id: validReqId,
                 sender_id: user?.uid || (user as any)?.id || 'client',
                 sender_name: isDriver ? 'Conductor' : (user?.displayName || 'Cliente'),
                 sender_role: isDriver ? 'driver' : 'client',
+                text: emergencyText,
+                image_url: null,
+                audio_url: null,
                 action: 'lost_item_emergency',
+                chat_path: chatPath,
                 created_at: new Date().toISOString()
             });
             toast.success("¡Chat reactivado por emergencia! Puedes enviar mensajes, audios o llamar.", { icon: '🚨' });
@@ -537,13 +594,16 @@ export default function RideChat({
         if (!window.confirm("¿Deseas finalizar la emergencia? Una vez finalizada, el chat se cerrará definitivamente en modo solo lectura.")) return;
         try {
             await supabase.from('messages').insert({
-                order_id: requestId,
-                chat_path: chatPath,
-                text: '✅ EMERGENCIA FINALIZADA. El caso ha sido resuelto y el chat ha quedado cerrado definitivamente.',
+                order_id: validOrderId,
+                request_id: validReqId,
                 sender_id: user?.uid || (user as any)?.id || 'client',
                 sender_name: isDriver ? 'Conductor' : (user?.displayName || 'Cliente'),
                 sender_role: isDriver ? 'driver' : 'client',
+                text: '✅ EMERGENCIA FINALIZADA. El caso ha sido resuelto y el chat ha quedado cerrado definitivamente.',
+                image_url: null,
+                audio_url: null,
                 action: 'lost_item_resolved',
+                chat_path: chatPath,
                 created_at: new Date().toISOString()
             });
             toast.success("Emergencia finalizada. Chat cerrado definitivamente.", { icon: '🔒' });

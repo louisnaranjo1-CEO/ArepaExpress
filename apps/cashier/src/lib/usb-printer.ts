@@ -19,6 +19,8 @@ export interface PrintItem {
     name: string;
     quantity: number;
     price?: number;
+    notes?: string;
+    category?: string;
 }
 
 export interface PrintOrder {
@@ -32,6 +34,34 @@ export interface PrintOrder {
     stationName: string;
     createdAt?: Date;
 }
+
+export interface PrinterTarget {
+    id?: string;
+    name?: string;
+    type?: string;
+    vendorId?: number | null;
+    productId?: number | null;
+    vendor_id?: number | null;
+    product_id?: number | null;
+    ipAddress?: string | null;
+    ip_address?: string | null;
+    categories?: string[];
+    is_active?: boolean;
+}
+
+// RFC4122 version 4 compliant UUID generator for Android WebViews & non-secure contexts
+export const generateUUID = (): string => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+        try {
+            return crypto.randomUUID();
+        } catch (_) {}
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
+};
 
 // ESC/POS Commands
 const CMD = {
@@ -70,10 +100,7 @@ class ESCPOSGenerator {
     }
 
     text(str: string) {
-        // En un entorno real idealmente se usa un encoder que soporte páginas de códigos de la impresora (ej. CP850).
-        // TextEncoder usa UTF-8, lo cual funciona para ASCII básico pero puede fallar con acentos dependiendo de la impresora.
-        // Un reemplazo simple de acentos a ASCII ayuda temporalmente:
-        const normalized = str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const normalized = (str || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         this.add(this.encoder.encode(normalized));
         return this;
     }
@@ -123,13 +150,13 @@ export const formatTicket = (order: PrintOrder): Uint8Array => {
     printer.align('center')
         .size('double')
         .bold(true)
-        .text(order.stationName)
+        .text(order.stationName || 'ESTACION DE COMANDA')
         .newline()
         .size('normal')
         .text('------------------------------------------')
         .newline()
         .size('double_height')
-        .text(`PEDIDO #${order.id.slice(-4).toUpperCase()}`)
+        .text(`PEDIDO #${(order.id || '').slice(-4).toUpperCase()}`)
         .newline()
         .size('normal');
 
@@ -163,8 +190,7 @@ export const formatTicket = (order: PrintOrder): Uint8Array => {
 
     // Items
     printer.size('double_height');
-    order.items.forEach(item => {
-        // Formato: [Q] x [Name]
+    (order.items || []).forEach(item => {
         printer.bold(true)
             .text(`${item.quantity} `)
             .bold(false)
@@ -182,7 +208,7 @@ export const formatTicket = (order: PrintOrder): Uint8Array => {
     // Footer
     printer.text('------------------------------------------').newline()
         .align('center')
-        .text('*** Comanda de Preparación ***')
+        .text('*** Comanda de Preparacion ***')
         .cut();
 
     return printer.generate();
@@ -190,9 +216,9 @@ export const formatTicket = (order: PrintOrder): Uint8Array => {
 
 export const formatTicketText = (order: PrintOrder): string => {
     let result = '';
-    result += `${order.stationName}\n`;
+    result += `${order.stationName || 'Comanda'}\n`;
     result += `------------------------------------------\n`;
-    result += `PEDIDO #${order.id.slice(-4).toUpperCase()}\n`;
+    result += `PEDIDO #${(order.id || '').slice(-4).toUpperCase()}\n`;
     
     if (order.tableNumber) {
         result += `MESA: ${order.tableNumber}\n`;
@@ -209,7 +235,7 @@ export const formatTicketText = (order: PrintOrder): string => {
     }
     result += `------------------------------------------\n`;
     
-    order.items.forEach(item => {
+    (order.items || []).forEach(item => {
         result += `${item.quantity} x ${item.name}\n`;
     });
     
@@ -219,159 +245,188 @@ export const formatTicketText = (order: PrintOrder): string => {
     }
     
     result += `------------------------------------------\n`;
-    result += `*** Comanda de Preparación ***\n`;
+    result += `*** Comanda de Preparacion ***\n`;
     
     return result;
 };
 
 export const downloadTicketText = (order: PrintOrder) => {
-    const textData = formatTicketText(order);
-    const blob = new Blob([textData], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Comanda-${order.stationName.replace(/\s+/g, '')}-${order.id.slice(-4).toUpperCase()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    try {
+        const textData = formatTicketText(order);
+        const blob = new Blob([textData], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Comanda-${(order.stationName || 'Cocina').replace(/\s+/g, '')}-${(order.id || '0000').slice(-4).toUpperCase()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (e) {
+        console.warn("[Printer] Error descargando comanda de texto:", e);
+    }
 };
 
 export const downloadTicketImage = (order: PrintOrder) => {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
 
-    const width = 450;
-    
-    // Estimate height dynamically based on content
-    let height = 320; 
-    height += order.items.length * 30; 
-    if (order.orderNote) height += 80 + order.orderNote.split('\n').length * 24;
-    
-    canvas.width = width;
-    canvas.height = height;
+        const width = 450;
+        let height = 320; 
+        height += (order.items || []).length * 30; 
+        if (order.orderNote) height += 80 + order.orderNote.split('\n').length * 24;
+        
+        canvas.width = width;
+        canvas.height = height;
 
-    // Draw white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, width, height);
-    
-    ctx.fillStyle = '#000000';
-    let y = 40;
-    let lineSpacing = 24;
-    
-    const drawText = (text: string, align: 'left' | 'center' = 'left', bold: boolean = false, size: number = 16) => {
-        ctx.font = `${bold ? '900 ' : '500 '}${size}px Courier New, monospace`;
-        if (align === 'center') {
-            const textWidth = ctx.measureText(text).width;
-            ctx.fillText(text, (width - textWidth) / 2, y);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+        
+        ctx.fillStyle = '#000000';
+        let y = 40;
+        let lineSpacing = 24;
+        
+        const drawText = (text: string, align: 'left' | 'center' = 'left', bold: boolean = false, size: number = 16) => {
+            ctx.font = `${bold ? '900 ' : '500 '}${size}px Courier New, monospace`;
+            if (align === 'center') {
+                const textWidth = ctx.measureText(text).width;
+                ctx.fillText(text, (width - textWidth) / 2, y);
+            } else {
+                ctx.fillText(text, 20, y);
+            }
+            y += lineSpacing;
+        };
+        
+        const drawDivider = () => {
+            drawText('------------------------------------', 'center', false, 18);
+        };
+
+        drawText(order.stationName || 'Comanda', 'center', true, 22);
+        drawDivider();
+        drawText(`PEDIDO #${(order.id || '').slice(-4).toUpperCase()}`, 'center', true, 26);
+        lineSpacing = 30;
+        
+        if (order.tableNumber) {
+            drawText(`MESA: ${order.tableNumber}`, 'center', true, 22);
         } else {
-            ctx.fillText(text, 20, y);
+            drawText(`PARA LLEVAR`, 'center', true, 22);
         }
-        y += lineSpacing;
-    };
-    
-    const drawDivider = () => {
-        drawText('------------------------------------', 'center', false, 18);
-    };
-
-    drawText(order.stationName, 'center', true, 22);
-    drawDivider();
-    drawText(`PEDIDO #${order.id.slice(-4).toUpperCase()}`, 'center', true, 26);
-    lineSpacing = 30;
-    
-    if (order.tableNumber) {
-        drawText(`MESA: ${order.tableNumber}`, 'center', true, 22);
-    } else {
-        drawText(`PARA LLEVAR`, 'center', true, 22);
-    }
-    
-    lineSpacing = 24;
-    const date = order.createdAt || new Date();
-    drawText(`${date.toLocaleDateString()} - ${date.toLocaleTimeString()}`, 'center', false, 14);
-    drawDivider();
-    
-    drawText(`CLIENTE: ${order.userName || 'Cliente General'}`, 'left', true, 16);
-    if (order.userPhone) {
-        drawText(`TEL: ${order.userPhone}`, 'left', false, 16);
-    }
-    drawDivider();
-    
-    lineSpacing = 30;
-    order.items.forEach(item => {
-        drawText(`${item.quantity} x ${item.name}`, 'left', true, 18);
-    });
-    
-    if (order.orderNote) {
+        
+        lineSpacing = 24;
+        const date = order.createdAt || new Date();
+        drawText(`${date.toLocaleDateString()} - ${date.toLocaleTimeString()}`, 'center', false, 14);
+        drawDivider();
+        
+        drawText(`CLIENTE: ${order.userName || 'Cliente General'}`, 'left', true, 16);
+        if (order.userPhone) {
+            drawText(`TEL: ${order.userPhone}`, 'left', false, 16);
+        }
+        drawDivider();
+        
+        lineSpacing = 30;
+        (order.items || []).forEach(item => {
+            drawText(`${item.quantity} x ${item.name}`, 'left', true, 18);
+        });
+        
+        if (order.orderNote) {
+            lineSpacing = 24;
+            drawDivider();
+            drawText('NOTAS:', 'left', true, 16);
+            const lines = order.orderNote.split('\n');
+            lines.forEach(line => {
+                drawText(line, 'left', false, 16);
+            });
+        }
+        
         lineSpacing = 24;
         drawDivider();
-        drawText('NOTAS:', 'left', true, 16);
-        const lines = order.orderNote.split('\n');
-        lines.forEach(line => {
-             drawText(line, 'left', false, 16);
-        });
+        drawText('*** Comanda de Preparacion ***', 'center', false, 16);
+        
+        const url = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Comanda-${(order.stationName || 'Cocina')}-${(order.id || '0000').slice(-4)}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    } catch (e) {
+        console.warn("[Printer] Error generando ticket de imagen:", e);
     }
-    
-    lineSpacing = 24;
-    drawDivider();
-    drawText('*** Comanda de Preparación ***', 'center', false, 16);
-    
-    const url = canvas.toDataURL('image/png');
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Comanda-${order.stationName}-${order.id.slice(-4)}.png`;
-    a.click();
 };
 
+/**
+ * Checks whether WebUSB is supported in the current environment / WebView.
+ * Native Android WebViews typically lack WebUSB support unless a native plugin is used.
+ */
+export const isUsbSupported = (): boolean => {
+    return typeof navigator !== 'undefined' && 'usb' in navigator && !!navigator.usb;
+};
+
+/**
+ * Requests access to a USB device via WebUSB.
+ * Fails safely returning null if WebUSB is unsupported or user rejects.
+ */
 export const requestUsbDevice = async (): Promise<PrinterDevice | null> => {
     try {
-        if (!navigator.usb) {
-            throw new Error('WebUSB no soportado en este navegador.');
+        if (!isUsbSupported()) {
+            console.warn("[Printer] WebUSB no soportado en este navegador/WebView nativo.");
+            return null;
         }
 
-        const device = await navigator.usb.requestDevice({ filters: [] });
+        const device = await navigator.usb!.requestDevice({ filters: [] });
         return {
             vendorId: device.vendorId,
             productId: device.productId,
-            name: device.productName || 'Impresora Térmica Desconocida'
+            name: device.productName || 'Impresora Termica Desconocida'
         };
     } catch (error) {
-        console.error("Error solicitando dispositivo USB:", error);
+        console.warn("[Printer] Solicitud de dispositivo USB cancelada o no permitida:", error);
         return null;
     }
 };
 
-export const getConnectedDevices = async (): Promise<USBDevice[]> => {
+/**
+ * Lists previously paired USB devices.
+ */
+export const getConnectedDevices = async (): Promise<any[]> => {
     try {
-        if (!navigator.usb) return [];
-        return await navigator.usb.getDevices();
+        if (!isUsbSupported()) return [];
+        return await navigator.usb!.getDevices();
     } catch (error) {
-        console.error("Error listando dispositivos:", error);
+        console.warn("[Printer] Error listando dispositivos USB:", error);
         return [];
     }
 };
 
+/**
+ * Prints raw ESC/POS byte array to a USB printer with robust error handling.
+ * Never throws unhandled exceptions; returns boolean and does not block checkout.
+ */
 export const printToUsbDevice = async (vendorId: number, productId: number, dataBytes: Uint8Array): Promise<boolean> => {
-    try {
-        if (!navigator.usb) throw new Error("WebUSB no soportado");
+    if (!isUsbSupported()) {
+        console.warn(`[Printer] WebUSB no disponible en este WebView de Android. Omitiendo impresion USB (VID: ${vendorId}, PID: ${productId}).`);
+        return false;
+    }
 
-        const devices = await navigator.usb.getDevices();
-        let device = devices.find(d => d.vendorId === vendorId && d.productId === productId);
+    let device: any = null;
+    try {
+        const devices = await navigator.usb!.getDevices();
+        device = devices.find(d => d.vendorId === vendorId && d.productId === productId);
 
         if (!device) {
             try {
-                // Request permission if not already granted.
-                // Note: This must be called from a user gesture.
-                device = await navigator.usb.requestDevice({
+                device = await navigator.usb!.requestDevice({
                     filters: [{ vendorId, productId }]
                 });
             } catch (err) {
-                console.error("Permiso denegado o no seleccionado por el usuario:", err);
+                console.warn("[Printer] Permiso USB denegado o dispositivo no seleccionado:", err);
             }
         }
 
         if (!device) {
-            console.error(`Dispositivo no encontrado (VID: ${vendorId}, PID: ${productId})`);
+            console.warn(`[Printer] Dispositivo USB no encontrado (VID: ${vendorId}, PID: ${productId})`);
             return false;
         }
 
@@ -381,26 +436,117 @@ export const printToUsbDevice = async (vendorId: number, productId: number, data
             await device.selectConfiguration(1);
         }
 
-        // Generalmente la interfaz 0 es la de la impresora
         await device.claimInterface(0);
 
-        // Buscar el endpoint de salida
         const interfaces = device.configuration?.interfaces;
-        if (!interfaces) throw new Error("No interfaces found");
+        if (!interfaces || interfaces.length === 0) {
+            throw new Error("No USB interfaces found");
+        }
 
         const endpoints = interfaces[0].alternates[0].endpoints;
-        const outEndpoint = endpoints.find(e => e.direction === 'out');
+        const outEndpoint = endpoints.find((e: any) => e.direction === 'out');
 
         if (!outEndpoint) {
-            throw new Error("No OUT endpoint found");
+            throw new Error("No OUT endpoint found on USB printer");
         }
 
         await device.transferOut(outEndpoint.endpointNumber, dataBytes);
-        await device.close();
         return true;
+    } catch (error: any) {
+        console.warn("[Printer] Error no bloqueante al imprimir en dispositivo USB:", error?.message || error);
+        return false;
+    } finally {
+        if (device && device.opened) {
+            try {
+                await device.close();
+            } catch (_) {}
+        }
+    }
+};
 
-    } catch (error) {
-        console.error("Error imprimiendo en dispositivo USB:", error);
+/**
+ * Prints raw ESC/POS byte array to a local network thermal printer (ESC/POS over IP)
+ * with a strict 4000ms timeout using AbortController.
+ * Does not block order closing if printer is offline, disconnected or unreachable.
+ */
+export const printToNetworkDevice = async (
+    ipAddress: string,
+    dataBytes: Uint8Array,
+    options: { port?: number; timeoutMs?: number } = {}
+): Promise<boolean> => {
+    const { port, timeoutMs = 4000 } = options;
+
+    if (!ipAddress || typeof ipAddress !== 'string' || !ipAddress.trim()) {
+        console.warn("[Printer] Direccion IP de impresora no especificada o invalida.");
         return false;
     }
+
+    const trimmed = ipAddress.trim();
+    const cleanHost = trimmed.replace(/^https?:\/\//, '').split('/')[0];
+    const targetPort = port || (cleanHost.includes(':') ? parseInt(cleanHost.split(':')[1], 10) : 9100);
+    const hostOnly = cleanHost.includes(':') ? cleanHost.split(':')[0] : cleanHost;
+
+    const controller = new AbortController();
+    const timeoutTimer = setTimeout(() => {
+        controller.abort();
+    }, timeoutMs);
+
+    try {
+        const targetUrl = `http://${hostOnly}:${targetPort}/`;
+        console.log(`[Printer] Conectando a impresora de red IP: ${targetUrl} (timeout: ${timeoutMs}ms)...`);
+
+        await fetch(targetUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+                'Content-Type': 'application/octet-stream'
+            },
+            body: dataBytes,
+            signal: controller.signal
+        });
+
+        clearTimeout(timeoutTimer);
+        console.log(`[Printer] Impresion de red enviada con exito a ${hostOnly}:${targetPort}`);
+        return true;
+    } catch (error: any) {
+        clearTimeout(timeoutTimer);
+        if (error.name === 'AbortError' || controller.signal.aborted) {
+            console.warn(`[Printer] Timeout de ${timeoutMs}ms agotado al comunicar con impresora IP (${hostOnly}). Se continua sin bloquear la orden.`);
+        } else {
+            console.warn(`[Printer] Fallo de comunicacion con impresora IP (${hostOnly}):`, error?.message || error);
+        }
+        return false;
+    }
+};
+
+/**
+ * Unified printer dispatcher that routes printing to Network (IP) or USB
+ * according to the printer configuration, ensuring failures never block checkout.
+ */
+export const printToPrinterDevice = async (
+    printer: PrinterTarget,
+    dataBytes: Uint8Array,
+    options: { timeoutMs?: number } = {}
+): Promise<boolean> => {
+    if (!printer) return false;
+
+    const ip = printer.ipAddress || printer.ip_address;
+    const vId = printer.vendorId ?? printer.vendor_id;
+    const pId = printer.productId ?? printer.product_id;
+
+    // 1. Prioritize network IP printing if configured
+    if (ip && typeof ip === 'string' && ip.trim()) {
+        const netSuccess = await printToNetworkDevice(ip, dataBytes, { timeoutMs: options.timeoutMs ?? 4000 });
+        if (netSuccess) return true;
+        // If IP fails, fall back to USB if device has VID/PID
+        if (!vId || !pId) return false;
+    }
+
+    // 2. Fall back or route to USB if VID/PID are present
+    if (vId != null && pId != null && vId > 0 && pId > 0) {
+        return await printToUsbDevice(Number(vId), Number(pId), dataBytes);
+    }
+
+    console.warn(`[Printer] Impresora '${printer.name || 'Sin nombre'}' no tiene IP valida ni VID/PID USB configurado.`);
+    return false;
 };

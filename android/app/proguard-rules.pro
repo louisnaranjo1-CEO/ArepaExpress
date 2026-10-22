@@ -5,17 +5,12 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Preserve Capacitor Plugin and Widget Provider classes
+-keep class com.un2x3.cliente.OrderLiveNotificationPlugin { *; }
+-keep class com.un2x3.cliente.OrderTrackerWidget { *; }
+-keep class com.un2x3.cliente.LocationHelperPlugin { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Preserve RemoteViews references in Widget
+-keepclassmembers class * extends android.appwidget.AppWidgetProvider {
+    public *;
+}

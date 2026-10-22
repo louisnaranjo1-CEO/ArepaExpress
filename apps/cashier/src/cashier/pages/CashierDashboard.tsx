@@ -3,7 +3,7 @@ import { LogOut, DollarSign, CheckCircle, Clock, X, Loader2, Store, CreditCard, 
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
 import { useBranding } from '../../context/BrandingContext';
-import { printToUsbDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
+import { printToUsbDevice, printToNetworkDevice, formatTicket, PrintOrder } from '../../lib/usb-printer';
 import ProductTicker from '../components/ProductTicker';
 import ReviewsModal from '../components/ReviewsModal';
 import ComandaPreview from '../../admin/components/ComandaPreview';
@@ -743,8 +743,9 @@ export default function CashierDashboard() {
                     for (const printer of printers) {
                         const vId = printer.vendor_id || printer.vendorId;
                         const pId = printer.product_id || printer.productId;
+                        const ip = printer.ip_address || printer.ipAddress;
                         const active = printer.is_active ?? printer.isActive ?? true;
-                        if (!vId || !pId || !active) continue;
+                        if ((!vId && !ip) || !active) continue;
 
                         const printerCategories = printer.categories || [];
                         const itemsForThisPrinter = selectedOrder.items.filter(item => {
@@ -764,7 +765,25 @@ export default function CashierDashboard() {
                             };
 
                             const buffer = formatTicket(printData);
-                            printPromises.push(printToUsbDevice(vId, pId, buffer));
+                            const printTask = async (): Promise<boolean> => {
+                                try {
+                                    if (ip && typeof ip === 'string' && ip.trim()) {
+                                        const netOk = await printToNetworkDevice(ip, buffer, { timeoutMs: 4000 });
+                                        if (netOk) return true;
+                                        if (vId && pId) {
+                                            return await printToUsbDevice(Number(vId), Number(pId), buffer);
+                                        }
+                                        return false;
+                                    } else if (vId && pId) {
+                                        return await printToUsbDevice(Number(vId), Number(pId), buffer);
+                                    }
+                                    return false;
+                                } catch (err) {
+                                    console.warn("[Printer] Fallo no bloqueante en impresora:", err);
+                                    return false;
+                                }
+                            };
+                            printPromises.push(printTask());
                         }
                     }
 
@@ -975,8 +994,9 @@ ESTADO: ${order.status.toUpperCase()}
             for (const printer of printers) {
                 const vId = printer.vendor_id || printer.vendorId;
                 const pId = printer.product_id || printer.productId;
+                const ip = printer.ip_address || printer.ipAddress;
                 const active = printer.is_active ?? printer.isActive ?? true;
-                if (!vId || !pId || !active) continue;
+                if ((!vId && !ip) || !active) continue;
 
                 const printerCategories = printer.categories || [];
                 const itemsForThisPrinter = orderData.items.filter(item => {
@@ -996,7 +1016,25 @@ ESTADO: ${order.status.toUpperCase()}
                     } as any;
 
                     const buffer = formatTicket(printData);
-                    printPromises.push(printToUsbDevice(vId, pId, buffer));
+                    const printTask = async (): Promise<boolean> => {
+                        try {
+                            if (ip && typeof ip === 'string' && ip.trim()) {
+                                const netOk = await printToNetworkDevice(ip, buffer, { timeoutMs: 4000 });
+                                if (netOk) return true;
+                                if (vId && pId) {
+                                    return await printToUsbDevice(Number(vId), Number(pId), buffer);
+                                }
+                                return false;
+                            } else if (vId && pId) {
+                                return await printToUsbDevice(Number(vId), Number(pId), buffer);
+                            }
+                            return false;
+                        } catch (err) {
+                            console.warn("[Printer] Fallo no bloqueante en comanda:", err);
+                            return false;
+                        }
+                    };
+                    printPromises.push(printTask());
                 }
             }
 
@@ -1544,7 +1582,7 @@ ESTADO: ${order.status.toUpperCase()}
                     waiter_id: selectedWaiter?.id || 'cashier',
                     waiter_name: selectedWaiter?.name || 'Caja/Admin',
                     table_id: posOrderType === 'local' ? (selectedTable?.id || '') : '',
-                    table_number: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    table_number: posOrderType === 'local' ? (selectedTable?.table_number || selectedTable?.number || '') : '',
                     updated_at: new Date().toISOString()
                 }).eq('id', posEditingOrderId);
                 targetOrderRefId = posEditingOrderId;
@@ -1555,7 +1593,7 @@ ESTADO: ${order.status.toUpperCase()}
                     .from('orders')
                     .insert({
                         restaurant_id: restaurantId,
-                        user_id: 'pos_customer',
+                        user_id: null,
                         user_name: posClientName || 'Cliente en mostrador',
                         client_dni: posClientDNI || '',
                         items,
@@ -1586,7 +1624,7 @@ ESTADO: ${order.status.toUpperCase()}
                     items, 
                     total, 
                     userName: posClientName || 'Cliente en mostrador',
-                    tableNumber: posOrderType === 'local' ? (selectedTable?.number || '') : '',
+                    tableNumber: posOrderType === 'local' ? (selectedTable?.table_number || selectedTable?.number || '') : '',
                     orderNote: '',
                     createdAt: new Date()
                 };
@@ -1598,8 +1636,10 @@ ESTADO: ${order.status.toUpperCase()}
                 await supabase.from('restaurant_tables').update({
                     status: 'occupied',
                     current_order_id: targetOrderRefId,
+                    last_order_id: targetOrderRefId,
                     waiter_id: selectedWaiter?.id || 'cashier',
-                    waiter_name: selectedWaiter?.name || 'Caja/Admin'
+                    waiter_name: selectedWaiter?.name || 'Caja/Admin',
+                    updated_at: new Date().toISOString()
                 }).eq('id', selectedTable.id);
             }
 

@@ -4,7 +4,7 @@ import {
   Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
-  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { compressImage } from '../../utils/mediaCompressor';
@@ -13,12 +13,18 @@ interface Message {
   id: string;
   text: string;
   imageUrl?: string;
+  audioUrl?: string;
   senderId: string;
   senderName: string;
   senderRole: 'client' | 'restaurant' | 'system' | 'delivery';
   createdAt: any;
   action?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note' | 'dispatch_requested';
 }
+
+const isValidUUID = (str?: string | null): boolean => {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+};
 
 interface OrderChatWindowProps {
   orderId: string;
@@ -218,16 +224,25 @@ export default function OrderChatWindow({
         const { data, error } = await queryBuilder.limit(100);
         if (error) throw error;
         if (data) {
-          setMessages(data.map((d: any) => ({
-            id: d.id,
-            text: d.text,
-            imageUrl: d.image_url || d.imageUrl,
-            senderId: d.sender_id || d.senderId,
-            senderName: d.sender_name || d.senderName,
-            senderRole: d.sender_role || d.senderRole,
-            createdAt: d.created_at,
-            action: d.action
-          })));
+          setMessages(() => {
+            const mapped: Message[] = data.map((d: any) => ({
+              id: d.id,
+              text: d.text,
+              imageUrl: d.image_url || d.imageUrl,
+              audioUrl: d.audio_url || d.audioUrl,
+              senderId: d.sender_id || d.senderId,
+              senderName: d.sender_name || d.senderName,
+              senderRole: d.sender_role || d.senderRole,
+              createdAt: d.created_at,
+              action: d.action
+            }));
+            const seen = new Set<string>();
+            return mapped.filter(m => {
+              if (seen.has(m.id)) return false;
+              seen.add(m.id);
+              return true;
+            });
+          });
           setTimeout(() => {
             if (messagesContainerRef.current) {
               messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
@@ -241,12 +256,49 @@ export default function OrderChatWindow({
 
     fetchMessages();
 
+    const handleIncomingMessage = (payload: any) => {
+      const newMsg = payload?.new as any;
+      if (!newMsg || !newMsg.id) return;
+
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === newMsg.id)) {
+          return prev;
+        }
+        const formatted: Message = {
+          id: newMsg.id,
+          text: newMsg.text || '',
+          imageUrl: newMsg.image_url || newMsg.imageUrl || undefined,
+          audioUrl: newMsg.audio_url || newMsg.audioUrl || undefined,
+          senderId: newMsg.sender_id || newMsg.senderId,
+          senderName: newMsg.sender_name || newMsg.senderName,
+          senderRole: newMsg.sender_role || newMsg.senderRole,
+          createdAt: newMsg.created_at || new Date().toISOString(),
+          action: newMsg.action || undefined
+        };
+        return [...prev, formatted];
+      });
+
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 50);
+    };
+
     const channelName = `chat_${orderId || customCollectionPath || 'default'}_${linkedTransportId || 'direct'}`;
     const channel = supabase.channel(channelName);
 
     if (customCollectionPath) {
       channel.on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `chat_path=eq.${customCollectionPath}`
+      }, (payload) => {
+        handleIncomingMessage(payload);
+      });
+      channel.on('postgres_changes', {
+        event: 'UPDATE',
         schema: 'public',
         table: 'messages',
         filter: `chat_path=eq.${customCollectionPath}`
@@ -255,24 +307,33 @@ export default function OrderChatWindow({
       });
     } else {
       channel.on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `order_id=eq.${orderId}`
+      }, (payload) => {
+        handleIncomingMessage(payload);
+      });
+
+      if (linkedTransportId) {
+        channel.on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `request_id=eq.${linkedTransportId}`
+        }, (payload) => {
+          handleIncomingMessage(payload);
+        });
+      }
+
+      channel.on('postgres_changes', {
+        event: 'UPDATE',
         schema: 'public',
         table: 'messages',
         filter: `order_id=eq.${orderId}`
       }, () => {
         fetchMessages();
       });
-
-      if (linkedTransportId) {
-        channel.on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'messages',
-          filter: `request_id=eq.${linkedTransportId}`
-        }, () => {
-          fetchMessages();
-        });
-      }
     }
 
     channel.subscribe();
@@ -302,23 +363,31 @@ export default function OrderChatWindow({
   const handleSendMessage = async (
     text: string, 
     actionUrl?: string, 
-    actionType?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note' | 'dispatch_requested'
+    actionType?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note' | 'dispatch_requested',
+    audioUrl?: string
   ) => {
-    if ((!text.trim() && !actionUrl && !actionType) || sending) return;
+    if ((!text.trim() && !actionUrl && !actionType && !audioUrl) || sending) return;
     setSending(true);
 
     try {
       const linkedTransportId = liveOrder?.transport_request_id || orderInfo?.transport_request_id;
+      const validReqId = isValidUUID(linkedTransportId) ? linkedTransportId : null;
+      const validOrderId = String(orderId || '');
+      const isVoice = actionType === 'voice_note' || Boolean(audioUrl);
+      const finalAudioUrl = audioUrl || (isVoice ? actionUrl : null) || null;
+      const finalImageUrl = (!isVoice && actionUrl) ? actionUrl : null;
+
       await supabase.from('messages').insert({
-        order_id: orderId,
-        request_id: linkedTransportId || null,
-        chat_path: customCollectionPath || null,
-        text: text.trim(),
-        image_url: actionUrl || null,
-        action: actionType || null,
+        order_id: validOrderId,
+        request_id: validReqId,
         sender_id: currentUserId,
         sender_name: currentUserName,
         sender_role: currentUserRole === 'cashier' ? 'restaurant' : currentUserRole,
+        text: text.trim(),
+        image_url: finalImageUrl,
+        audio_url: finalAudioUrl,
+        chat_path: customCollectionPath || null,
+        action: actionType || null,
         created_at: new Date().toISOString()
       });
       setNewMessage('');

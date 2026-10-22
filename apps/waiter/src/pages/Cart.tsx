@@ -6,6 +6,7 @@ import { useCurrency } from '../context/CurrencyContext';
 import { useBranding } from '../context/BrandingContext';
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
+import { generateUUID } from '../lib/usb-printer';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import AddressPicker from '../components/AddressPicker';
 import WaiterLayout from '../waiter/components/WaiterLayout';
@@ -263,7 +264,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
             .from('restaurant_tables')
             .select('id')
             .eq('restaurant_id', restaurantId)
-            .eq('number', tableNumber)
+            .or(`number.eq.${tableNumber},table_number.eq.${tableNumber}`)
             .maybeSingle();
           if (tData) {
             tableId = tData.id;
@@ -273,7 +274,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         }
       }
 
-      const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `order_${Date.now()}`;
+      const newOrderId = generateUUID();
 
       const isUUID = (str: any) => typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
       const validUserId = isUUID(waiterData?.id) ? waiterData.id : (isUUID(user?.uid) ? user.uid : null);
@@ -341,6 +342,9 @@ export default function Cart({ hideHeader = false }: CartProps) {
           await supabase.from('restaurant_tables').update({
             status: 'occupied',
             current_order_id: newOrderId,
+            last_order_id: newOrderId,
+            waiter_id: waiterData?.id || null,
+            waiter_name: waiterData?.name || null,
             updated_at: new Date().toISOString()
           }).eq('id', tableId);
         } catch (tableErr) {

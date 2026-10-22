@@ -5,7 +5,7 @@ import { db } from '../../lib/firebase';
 import { ArrowLeft, Plus, Minus, Trash2, ShoppingBag, CheckCircle, Loader2, Star, Clock, Store, Truck, X, Tag, MessageSquare, MapPin, Instagram, Youtube, Music2, ExternalLink, Search, LayoutGrid, List } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ReviewsModal from '../components/ReviewsModal';
-import { printToUsbDevice, formatTicket, downloadTicketImage, downloadTicketText, formatTicketText } from '../../lib/usb-printer';
+import { printToUsbDevice, printToNetworkDevice, formatTicket, downloadTicketImage, downloadTicketText, formatTicketText } from '../../lib/usb-printer';
 import AddressPicker from '../../components/AddressPicker';
 import DualPrice from '../../components/DualPrice';
 import toast from 'react-hot-toast';
@@ -280,13 +280,16 @@ export default function CashierPOS() {
                 paymentStatus: paymentStatus, // 'sold' or 'pending'
                 paymentMethod: paymentStatus === 'sold' ? paymentMethod : 'none',
                 updatedAt: serverTimestamp(),
-                table: selectedTable?.number || waiterOrderInfo?.table || 'Sin Mesa',
+                table: selectedTable?.table_number || selectedTable?.number || waiterOrderInfo?.table || 'Sin Mesa',
+                table_number: selectedTable?.table_number || selectedTable?.number || waiterOrderInfo?.table || null,
                 tableId: selectedTable?.id || '',
                 waiterId: waiterOrderInfo?.id || '',
                 waiterName: waiterOrderInfo?.name || '',
                 cashierName: cashierData.name || 'Cajera POS',
                 cashierId: cashierData.id || 'local'
             };
+
+            const tableNum = selectedTable?.table_number || selectedTable?.number || waiterOrderInfo?.table || null;
 
             if (isDelivery) {
                 if (!selectedAddress) {
@@ -305,15 +308,32 @@ export default function CashierPOS() {
 
             if (finalOrderId) {
                 // Update existing order
-                await updateDoc(doc(db, 'orders', finalOrderId), commonData);
+                await updateDoc(doc(db, 'orders', finalOrderId), {
+                    ...commonData,
+                    table_number: tableNum
+                });
+
+                if (selectedTable) {
+                    const tableRef = doc(db, 'restaurants', restaurantId, 'tables', selectedTable.id);
+                    await updateDoc(tableRef, {
+                        status: 'occupied',
+                        currentOrderId: finalOrderId,
+                        current_order_id: finalOrderId,
+                        lastOrderId: finalOrderId,
+                        last_order_id: finalOrderId,
+                        waiterId: waiterOrderInfo?.id || 'cashier',
+                        waiterName: waiterOrderInfo?.name || 'Caja/Admin'
+                    });
+                }
             } else {
                 // Create new order
                 const newOrderRef = doc(collection(db, 'orders'));
                 finalOrderId = newOrderRef.id;
                 await setDoc(newOrderRef, {
                     ...commonData,
-                    userId: 'local_walk_in',
-                    user_id: 'local_walk_in',
+                    userId: null,
+                    user_id: null,
+                    table_number: tableNum,
                     restaurantId,
                     restaurant_id: restaurantId,
                     userName: 'Cliente Local',
@@ -323,12 +343,15 @@ export default function CashierPOS() {
                     created_at: new Date().toISOString()
                 });
 
-                // Update Table status to occupied
+                // Update Table status to occupied and set current_order_id with real UUID
                 if (selectedTable) {
                     const tableRef = doc(db, 'restaurants', restaurantId, 'tables', selectedTable.id);
                     await updateDoc(tableRef, {
                         status: 'occupied',
+                        currentOrderId: finalOrderId,
+                        current_order_id: finalOrderId,
                         lastOrderId: finalOrderId,
+                        last_order_id: finalOrderId,
                         waiterId: waiterOrderInfo?.id || 'cashier',
                         waiterName: waiterOrderInfo?.name || 'Caja/Admin'
                     });
@@ -391,17 +414,34 @@ export default function CashierPOS() {
                         return true;
                     };
 
+                    const ip = (station as any).ip_address || (station as any).ipAddress;
                     if ((station as any).virtual) {
                         success = triggerDownload();
+                    } else if (ip && typeof ip === 'string' && ip.trim()) {
+                        try {
+                            const ticketData = formatTicket(printData);
+                            success = await printToNetworkDevice(ip, ticketData, { timeoutMs: 4000 });
+                            if (!success && station.vendorId && station.productId) {
+                                success = await printToUsbDevice(station.vendorId, station.productId, ticketData);
+                            }
+                            if (!success) {
+                                console.warn("[POS] Falló impresión en red/USB, procediendo con descarga virtual.");
+                                success = triggerDownload();
+                            }
+                        } catch (e) {
+                            console.warn("[POS] Error no bloqueante al imprimir en red:", e);
+                            success = triggerDownload();
+                        }
                     } else if (station.vendorId && station.productId) {
                         try {
                             const ticketData = formatTicket(printData);
                             success = await printToUsbDevice(station.vendorId, station.productId, ticketData);
                             if (!success) {
-                                console.warn("Physical print failed, falling back to virtual.");
+                                console.warn("[POS] Falló impresión USB, procediendo con descarga virtual.");
                                 success = triggerDownload();
                             }
                         } catch(e) {
+                            console.warn("[POS] Error no bloqueante al imprimir en USB:", e);
                             success = triggerDownload();
                         }
                     } else {

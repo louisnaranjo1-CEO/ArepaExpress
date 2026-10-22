@@ -175,6 +175,7 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
         return 'idle';
     });
     const [duration, setDuration] = useState(0);
+    const [isMuted, setIsMuted] = useState(false);
 
     const pcRef = useRef<RTCPeerConnection | null>(null);
     const localStreamRef = useRef<MediaStream | null>(null);
@@ -183,6 +184,7 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
     const channelRef = useRef<any>(null);
     const pendingOfferRef = useRef<any>(initialOffer || null);
     const audioEngineRef = useRef<CallAudioEngine>(new CallAudioEngine());
+    const isCleaningUpRef = useRef<boolean>(false);
 
     // Audio tones manager based on callStatus
     useEffect(() => {
@@ -214,70 +216,177 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
         }
     }, [initialOffer, role]);
 
-    // Cleanup everything
-    const cleanup = useCallback(async () => {
-        audioEngineRef.current.stop();
-        if (timerRef.current) clearInterval(timerRef.current);
-        if (pcRef.current) {
-            try {
-                pcRef.current.close();
-            } catch {}
-            pcRef.current = null;
-        }
+    /**
+     * Detiene físicamente el hardware del micrófono, cierra la conexión RTCPeerConnection,
+     * detiene el elemento de audio remoto y limpia el sintetizador de timbres.
+     */
+    const stopHardwareResources = useCallback(() => {
+        // 1. Detener todos los tracks del micrófono local (libera el hardware en Android)
         if (localStreamRef.current) {
-            localStreamRef.current.getTracks().forEach(track => track.stop());
+            try {
+                localStreamRef.current.getTracks().forEach((track) => {
+                    track.stop();
+                    track.enabled = false;
+                });
+            } catch (err) {
+                console.error("Error stopping local stream tracks:", err);
+            }
             localStreamRef.current = null;
         }
-        if (remoteAudioRef.current) {
-            remoteAudioRef.current.srcObject = null;
+
+        // 2. Cerrar y destruir RTCPeerConnection
+        if (pcRef.current) {
+            try {
+                pcRef.current.getSenders().forEach((sender) => {
+                    try {
+                        if (sender.track) {
+                            sender.track.stop();
+                            sender.track.enabled = false;
+                        }
+                    } catch {}
+                });
+                pcRef.current.ontrack = null;
+                pcRef.current.onicecandidate = null;
+                pcRef.current.onconnectionstatechange = null;
+                pcRef.current.close();
+            } catch (err) {
+                console.error("Error closing peer connection:", err);
+            }
+            pcRef.current = null;
         }
+
+        // 3. Pausar y desasociar el elemento de audio remoto
+        if (remoteAudioRef.current) {
+            try {
+                remoteAudioRef.current.pause();
+                remoteAudioRef.current.srcObject = null;
+            } catch {}
+            remoteAudioRef.current = null;
+        }
+
+        // 4. Detener contador de duración
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
+
+        // 5. Detener generador de tonos y vibración
+        audioEngineRef.current.stop();
+    }, []);
+
+    /**
+     * Limpieza completa de recursos WebRTC, streams y canal de señalización Supabase
+     */
+    const cleanup = useCallback(async () => {
+        if (isCleaningUpRef.current) return;
+        isCleaningUpRef.current = true;
+
+        stopHardwareResources();
+
+        // 6. Eliminar canal de señalización Supabase
+        if (channelRef.current) {
+            try {
+                supabase.removeChannel(channelRef.current);
+            } catch (err) {
+                console.error("Error removing call signaling channel:", err);
+            }
+            channelRef.current = null;
+        }
+
         setCallStatus('ended');
         setDuration(0);
+        setIsMuted(false);
         onCallEnded?.();
-    }, [onCallEnded]);
 
-    // Start duration timer when connected
+        setTimeout(() => {
+            isCleaningUpRef.current = false;
+        }, 300);
+    }, [stopHardwareResources, onCallEnded]);
+
+    /**
+     * Garantía de desmontaje: Si el usuario cierra el modal o cambia de pantalla,
+     * se detienen inmediatamente todos los tracks de audio y el canal para no dejar el mic tomado en Android.
+     */
+    useEffect(() => {
+        return () => {
+            stopHardwareResources();
+            if (channelRef.current) {
+                try {
+                    supabase.removeChannel(channelRef.current);
+                } catch {}
+                channelRef.current = null;
+            }
+        };
+    }, [stopHardwareResources]);
+
+    // Iniciar temporizador de llamada activa
     const startTimer = useCallback(() => {
+        if (timerRef.current) clearInterval(timerRef.current);
         timerRef.current = setInterval(() => {
             setDuration(d => d + 1);
         }, 1000);
     }, []);
 
-    // Create RTCPeerConnection and attach tracks
+    // Alternar silencio de micrófono (Mute/Unmute)
+    const toggleMute = useCallback(() => {
+        if (localStreamRef.current) {
+            const nextMuted = !isMuted;
+            localStreamRef.current.getAudioTracks().forEach((track) => {
+                track.enabled = !nextMuted;
+            });
+            setIsMuted(nextMuted);
+        }
+    }, [isMuted]);
+
+    // Crear RTCPeerConnection y capturar micrófono
     const createPC = useCallback(async (): Promise<RTCPeerConnection> => {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-        localStreamRef.current = stream;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                },
+                video: false,
+            });
+            localStreamRef.current = stream;
 
-        const pc = new RTCPeerConnection(ICE_SERVERS);
-        pcRef.current = pc;
+            const pc = new RTCPeerConnection(ICE_SERVERS);
+            pcRef.current = pc;
 
-        // Add local audio track
-        stream.getTracks().forEach(track => pc.addTrack(track, stream));
+            // Añadir pista de audio local al canal peer
+            stream.getTracks().forEach((track) => pc.addTrack(track, stream));
 
-        // When remote audio arrives, play it
-        pc.ontrack = (event) => {
-            if (!remoteAudioRef.current) {
-                remoteAudioRef.current = new Audio();
-                remoteAudioRef.current.autoplay = true;
-            }
-            remoteAudioRef.current.srcObject = event.streams[0];
-            remoteAudioRef.current.play().catch(() => {});
-        };
+            // Reproducir audio remoto tan pronto como llegue del interlocutor
+            pc.ontrack = (event) => {
+                if (!remoteAudioRef.current) {
+                    remoteAudioRef.current = new Audio();
+                    remoteAudioRef.current.autoplay = true;
+                }
+                remoteAudioRef.current.srcObject = event.streams[0];
+                remoteAudioRef.current.play().catch(() => {});
+            };
 
-        pc.onconnectionstatechange = () => {
-            if (pc.connectionState === 'connected') {
-                audioEngineRef.current.stop();
-                setCallStatus('connected');
-                startTimer();
-            }
-            if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
-                cleanup();
-            }
-        };
+            pc.onconnectionstatechange = () => {
+                if (pc.connectionState === 'connected') {
+                    audioEngineRef.current.stop();
+                    setCallStatus('connected');
+                    startTimer();
+                }
+                if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+                    cleanup();
+                }
+            };
 
-        return pc;
+            return pc;
+        } catch (err) {
+            console.error("Error accessing microphone or creating RTCPeerConnection:", err);
+            cleanup();
+            throw err;
+        }
     }, [cleanup, startTimer]);
 
+    // Suscripción al canal de señalización de Supabase
     useEffect(() => {
         if (!requestId) return;
 
@@ -321,16 +430,19 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
 
         return () => {
             audioEngineRef.current.stop();
-            supabase.removeChannel(channel);
+            if (channelRef.current === channel) {
+                supabase.removeChannel(channel);
+                channelRef.current = null;
+            }
         };
     }, [requestId, myId, role, cleanup]);
 
-    /** CALLER: start the call */
+    /** CALLER: Iniciar llamada */
     const startCall = useCallback(async () => {
         setCallStatus('calling');
         const pc = await createPC();
 
-        // Broadcast ICE candidates as they are generated
+        // Difundir candidatos ICE según se descubran
         pc.onicecandidate = (event) => {
             if (event.candidate && channelRef.current) {
                 channelRef.current.send({
@@ -341,7 +453,7 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
             }
         };
 
-        // Create SDP offer
+        // Generar oferta SDP
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
@@ -377,13 +489,13 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
         }
     }, [createPC, myId, requestId, remoteId]);
 
-    /** RECEIVER: answer the call */
+    /** RECEIVER: Responder llamada */
     const answerCall = useCallback(async () => {
         audioEngineRef.current.stop();
         setCallStatus('connected');
         const pc = await createPC();
 
-        // Broadcast ICE candidates
+        // Difundir candidatos ICE
         pc.onicecandidate = (event) => {
             if (event.candidate && channelRef.current) {
                 channelRef.current.send({
@@ -394,16 +506,12 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
             }
         };
 
-        const offer = pendingOfferRef.current;
-        if (offer) {
-            try {
-                await pc.setRemoteDescription(new RTCSessionDescription(offer));
-            } catch (err) {
-                console.error("Error setting remote offer in answerCall:", err);
-            }
+        // Si ya tenemos la oferta del llamante, establecerla como descripción remota
+        if (pendingOfferRef.current) {
+            await pc.setRemoteDescription(new RTCSessionDescription(pendingOfferRef.current));
         }
 
-        // Create & send answer
+        // Generar respuesta SDP
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
@@ -422,7 +530,7 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
         startTimer();
     }, [createPC, myId, startTimer]);
 
-    /** Hang up / reject from either side */
+    /** Colgar llamada */
     const hangUp = useCallback(async () => {
         audioEngineRef.current.playEndTone();
         if (channelRef.current) {
@@ -447,6 +555,7 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
         await cleanup();
     }, [cleanup, myId, remoteId]);
 
+    /** Rechazar llamada entrante */
     const rejectCall = useCallback(async () => {
         audioEngineRef.current.stop();
         if (channelRef.current) {
@@ -471,5 +580,15 @@ export function useWebRTCCall({ requestId, myId, remoteId, role, initialOffer, o
         await cleanup();
     }, [cleanup, myId, remoteId]);
 
-    return { callStatus, duration, startCall, answerCall, hangUp, rejectCall };
+    return {
+        callStatus,
+        duration,
+        isMuted,
+        toggleMute,
+        startCall,
+        answerCall,
+        hangUp,
+        rejectCall,
+        cleanup
+    };
 }

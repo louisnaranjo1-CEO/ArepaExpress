@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
-import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, Wallet, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users, Lock, Key, Shield, Copy, Check, Store, Utensils, Receipt } from 'lucide-react';
+import { User, ChevronRight, Mail, Phone, Calendar, ShoppingBag, Heart, X, MapPin, CheckCircle, XCircle, Search, Filter, Image as ImageIcon, Activity, Clock, ExternalLink, Gift, Users, Lock, Key, Shield, Copy, Check, Store, Utensils, Receipt } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DualPrice from '../../components/DualPrice';
@@ -19,7 +19,6 @@ interface UserProfile {
     roleCategory: 'client' | 'driver' | 'business' | 'waiter' | 'cashier';
     businessName?: string;
     photoURL?: string;
-    walletBalance?: number;
     favorites?: any[];
     address?: string;
     lastSeen?: any;
@@ -44,9 +43,7 @@ const parseDate = (d: any): Date | null => {
 };
 
 export default function UsersManager() {
-    const [activeTab, setActiveTab] = useState<'users' | 'funds'>('users');
     const [users, setUsers] = useState<UserProfile[]>([]);
-    const [recharges, setRecharges] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -281,7 +278,6 @@ export default function UsersManager() {
                     roleCategory,
                     businessName,
                     photoURL: resolvedPhoto,
-                    walletBalance: p.wallet_balance ?? p.walletBalance ?? 0,
                     createdAt: p.created_at || p.createdAt,
                     lastSeen: lastAct,
                     lastActiveAt: lastAct,
@@ -318,7 +314,6 @@ export default function UsersManager() {
                         lastActiveAt: w.updated_at || w.created_at,
                         activeMinutes: 0,
                         totalUsageMinutes: 0,
-                        walletBalance: 0,
                         totalReferrals: 0,
                         points: 0
                     });
@@ -344,7 +339,6 @@ export default function UsersManager() {
                         lastActiveAt: c.last_active_at || c.updated_at || c.created_at,
                         activeMinutes: 0,
                         totalUsageMinutes: 0,
-                        walletBalance: 0,
                         totalReferrals: 0,
                         points: 0
                     });
@@ -359,29 +353,11 @@ export default function UsersManager() {
         }
     };
 
-    const fetchRecharges = async () => {
-        try {
-            const { data, error } = await supabase
-                .from('wallet_recharges')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-            setRecharges(data || []);
-        } catch (error) {
-            console.error("Error fetching wallet recharges: ", error);
-        }
-    };
-
     useEffect(() => {
         fetchUsers();
-        fetchRecharges();
 
         const channel = supabase
             .channel('users_manager_realtime')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'wallet_recharges' }, () => {
-                fetchRecharges();
-            })
             .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
                 fetchUsers();
             })
@@ -559,57 +535,6 @@ export default function UsersManager() {
         }
     };
 
-    const handleApproveRecharge = async (rechargeId: string, userId: string, amount: number) => {
-        if (!window.confirm(`¿Aprobar recarga de $${amount} para este usuario?`)) return;
-
-        try {
-            const { data: userProfile } = await supabase
-                .from('profiles')
-                .select('wallet_balance, walletBalance')
-                .eq('id', userId)
-                .maybeSingle();
-
-            const currentBalance = (userProfile?.wallet_balance ?? userProfile?.walletBalance ?? 0) as number;
-            const newBalance = Number(currentBalance) + Number(amount);
-
-            await supabase.from('wallet_recharges').update({
-                status: 'approved',
-                review_date: new Date().toISOString(),
-                reviewDate: new Date().toISOString()
-            }).eq('id', rechargeId);
-
-            await supabase.from('profiles').update({
-                wallet_balance: newBalance,
-                walletBalance: newBalance
-            }).eq('id', userId);
-
-            toast.success("Recarga aprobada con éxito");
-            fetchUsers();
-            fetchRecharges();
-        } catch (error) {
-            console.error("Error approving recharge:", error);
-            toast.error("Error al procesar la aprobación");
-        }
-    };
-
-    const handleRejectRecharge = async (rechargeId: string) => {
-        if (!window.confirm("¿Rechazar esta recarga?")) return;
-
-        try {
-            await supabase.from('wallet_recharges').update({
-                status: 'rejected',
-                review_date: new Date().toISOString(),
-                reviewDate: new Date().toISOString()
-            }).eq('id', rechargeId);
-
-            toast.success("Recarga rechazada");
-            fetchRecharges();
-        } catch (error) {
-            console.error("Error rejecting recharge:", error);
-            toast.error("Error al procesar el rechazo");
-        }
-    };
-
     if (loading) {
         return <div className="animate-pulse space-y-4"><div className="h-8 bg-slate-200 rounded w-1/4"></div><div className="h-64 bg-slate-200 rounded"></div></div>;
     }
@@ -622,17 +547,6 @@ export default function UsersManager() {
                     <p className="text-slate-500 font-medium">Administra clientes, conductores y sus estadísticas.</p>
                 </div>
 
-                {/* Tabs */}
-                <div className="bg-white p-1 rounded-2xl border border-slate-200 shadow-sm flex items-center self-start overflow-x-auto w-full md:w-auto">
-                    <button
-                        onClick={() => setActiveTab('users')}
-                        className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold text-sm transition-all whitespace-nowrap bg-slate-900 text-white shadow-md`}
-                    >
-                        <User className="w-4 h-4" />
-                        Lista de Usuarios
-                    </button>
-                </div>
-
                 {/* Configure Referral Button */}
                 <button
                     onClick={() => setShowShareLinkModal(true)}
@@ -643,9 +557,7 @@ export default function UsersManager() {
                 </button>
             </div>
 
-            {activeTab === 'users' ? (
-                <>
-                    {/* Role Filter Tabs (5 Roles + Todos) */}
+            {/* Role Filter Tabs (5 Roles + Todos) */}
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
                         <button
                             type="button"
@@ -879,99 +791,6 @@ export default function UsersManager() {
                             </table>
                         </div>
                     </div>
-                </>
-            ) : (
-                <div className="bg-white rounded-[40px] border border-slate-100 shadow-xl shadow-slate-200/40 p-6 md:p-8">
-                    <h2 className="text-xl font-black text-slate-900 mb-6 flex items-center gap-3">
-                        <Wallet className="w-6 h-6 text-slate-900" />
-                        Solicitudes de Recarga
-                    </h2>
-
-                    {recharges.length === 0 ? (
-                        <div className="text-center py-12">
-                            <Wallet className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-                            <h3 className="text-lg font-bold text-slate-700">No hay solicitudes</h3>
-                            <p className="text-slate-500">Aún no se han recibido solicitudes de recarga de billetera.</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {recharges.map((recharge) => {
-                                const statusColors = {
-                                    pending: 'bg-amber-100 text-amber-700 border-amber-200',
-                                    approved: 'bg-emerald-100 text-emerald-700 border-emerald-200',
-                                    rejected: 'bg-rose-100 text-rose-700 border-rose-200'
-                                };
-                                const statusLabels = {
-                                    pending: 'Pendiente',
-                                    approved: 'Aprobada',
-                                    rejected: 'Rechazada'
-                                };
-
-                                const rechargeDate = parseDate(recharge.created_at || recharge.createdAt);
-
-                                return (
-                                    <div key={recharge.id} className="bg-white border-2 border-slate-100 rounded-3xl p-5 hover:border-slate-200 transition-all flex flex-col">
-                                        <div className="flex justify-between items-start mb-4">
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${statusColors[recharge.status as keyof typeof statusColors] || 'bg-slate-100 text-slate-600'}`}>
-                                                {statusLabels[recharge.status as keyof typeof statusLabels] || recharge.status}
-                                            </span>
-                                            <span className="text-xs font-bold text-slate-400">
-                                                {rechargeDate ? rechargeDate.toLocaleDateString() : '-'}
-                                            </span>
-                                        </div>
-
-                                        <div className="mb-4">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Monto Solicitado</p>
-                                            <DualPrice usdAmount={parseFloat(recharge.amount || 0)} usdClassName="text-3xl font-black text-slate-900" showDivider={false} className="flex flex-col" />
-                                        </div>
-
-                                        <div className="space-y-3 mb-6 bg-slate-50 p-4 rounded-2xl">
-                                            <div>
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Usuario</p>
-                                                <p className="font-bold text-slate-700">{recharge.userName || recharge.user_name || 'Usuario Desconocido'}</p>
-                                                <p className="text-xs text-slate-500">{recharge.userEmail || recharge.user_email}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Referencia</p>
-                                                <p className="font-medium text-slate-600 bg-white px-2 py-1 rounded border border-slate-200 font-mono text-sm">{recharge.reference}</p>
-                                            </div>
-                                            {(recharge.proofUrl || recharge.proof_url) && (
-                                                <a href={recharge.proofUrl || recharge.proof_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-slate-900 text-xs font-bold hover:underline bg-primary/5 px-3 py-1.5 rounded-lg mt-2 transition-colors">
-                                                    <ImageIcon className="w-3.5 h-3.5" />
-                                                    Ver Comprobante
-                                                </a>
-                                            )}
-                                        </div>
-
-                                        <div className="mt-auto">
-                                            {recharge.status === 'pending' ? (
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        onClick={() => handleRejectRecharge(recharge.id)}
-                                                        className="flex-1 py-3 bg-white border border-rose-200 text-rose-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-rose-50 transition-colors flex items-center justify-center gap-1"
-                                                    >
-                                                        <XCircle className="w-4 h-4" /> Rechazar
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleApproveRecharge(recharge.id, recharge.userId || recharge.user_id, parseFloat(recharge.amount || 0))}
-                                                        className="flex-1 py-3 bg-emerald-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest shadow-lg shadow-emerald-500/30 hover:bg-emerald-600 transition-colors flex items-center justify-center gap-1"
-                                                    >
-                                                        <CheckCircle className="w-4 h-4" /> Aprobar
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="w-full py-3 bg-slate-50 border border-slate-100 text-slate-400 rounded-xl font-bold text-xs uppercase tracking-widest text-center">
-                                                    Solicitud Procesada
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
-            )}
 
             {/* Configurar Referidos Modal */}
             {showShareLinkModal && (
@@ -1226,7 +1045,7 @@ export default function UsersManager() {
                                     <div className="grid grid-cols-2 gap-4">
                                         <ActivityStat icon={ShoppingBag} label="Pedidos" value={userOrders.length.toString()} color="text-emerald-500" bg="bg-emerald-50" />
                                         <ActivityStat 
-                                            icon={Wallet} 
+                                            icon={Receipt} 
                                             label="Total Gastado" 
                                             value={
                                                 <DualPrice 

@@ -555,48 +555,33 @@ export default function ActiveTasksWidget() {
         setAcceptingBidId(bid.id);
         try {
             vibrate(30);
-            // 1. Accept this bid
-            const { error: err1 } = await supabase
-                .from('transport_bids')
-                .update({ status: 'accepted' })
-                .eq('id', bid.id);
-            if (err1) throw err1;
+            const p_user_id = authUUID || (bid as any).user_id || '00000000-0000-0000-0000-000000000000';
 
-            // 2. Reject all other bids for this request
-            await supabase
-                .from('transport_bids')
-                .update({ status: 'rejected' })
-                .or(`transport_request_id.eq.${taskId},request_id.eq.${taskId}`)
-                .neq('id', bid.id);
+            // 1. Llamada atómica mediante RPC con FOR UPDATE SKIP LOCKED
+            const { data, error } = await supabase.rpc('accept_transport_bid', {
+                p_bid_id: bid.id,
+                p_request_id: taskId,
+                p_user_id
+            });
 
-            // 3. Assign driver to the request
-            const { error: err3 } = await supabase
-                .from('transport_requests')
-                .update({
-                    status: 'accepted',
-                    driver_id: bid.driver_id,
-                    driver_name: bid.driver_name,
-                    driver_phone: bid.driver_phone,
-                    driver_photo: bid.driver_photo,
-                    driver_payment_info: bid.driver_payment_info || null,
-                    driver_vehicle_details: {
-                        type: bid.vehicle_type,
-                        plate: bid.vehicle_plate,
-                        model: bid.vehicle_model,
-                        brand: bid.vehicle_brand,
-                        year: bid.vehicle_year,
-                        color: bid.vehicle_color,
-                        has_ac: bid.has_ac,
-                        has_thermal_bag: bid.has_thermal_bag
-                    },
-                    driver_assigned_at: new Date().toISOString(),
-                    price: Number(bid.amount),
-                    total: Number(bid.amount),
-                    commission_amount: 0.70
-                })
-                .eq('id', taskId);
+            if (error) {
+                console.error("Error al ejecutar accept_transport_bid:", error);
+                throw error;
+            }
 
-            if (err3) throw err3;
+            if (data?.success === false) {
+                toast.error(data.error || 'El viaje ya fue asignado o cancelado');
+                fetchActiveTasks();
+                return;
+            }
+
+            // Sincronizar datos adicionales si existen
+            if (bid.driver_payment_info || bid.driver_photo) {
+                await supabase.from('transport_requests').update({
+                    ...(bid.driver_payment_info ? { driver_payment_info: bid.driver_payment_info } : {}),
+                    ...(bid.driver_photo ? { driver_photo: bid.driver_photo } : {})
+                }).eq('id', taskId);
+            }
 
             toast.success(`¡Oferta de ${bid.driver_name} aceptada!`, { icon: '🤝' });
             navigate(`/taxi/track/${taskId}`);

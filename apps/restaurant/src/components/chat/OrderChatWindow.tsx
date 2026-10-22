@@ -4,7 +4,7 @@ import {
   Send, Image as ImageIcon, CheckCircle, Receipt, Clock, CreditCard, Gift, Phone, Store, Bike, 
   Paperclip, AlertTriangle, RefreshCw, Plus, X, MessageCircle, Copy, ChevronDown, ChevronUp, 
   Loader2, Mic, MicOff, Square, Play, Video, UserCheck, ShieldCheck, UploadCloud, Check, 
-  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Wallet, Lock,
+  Car, Sparkles, Navigation, MapPin, User, ArrowRight, ArrowLeft, Eye, ExternalLink, ChevronRight, Lock,
   Scale, Trash2, Search
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -14,12 +14,18 @@ interface Message {
   id: string;
   text: string;
   imageUrl?: string;
+  audioUrl?: string;
   senderId: string;
   senderName: string;
   senderRole: 'client' | 'restaurant' | 'system' | 'delivery';
   createdAt: any;
   action?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note' | 'dispatch_requested';
 }
+
+const isValidUUID = (str?: string | null): boolean => {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+};
 
 interface OrderChatWindowProps {
   orderId: string;
@@ -317,16 +323,25 @@ export default function OrderChatWindow({
         const { data, error } = await queryBuilder.limit(100);
         if (error) throw error;
         if (data) {
-          setMessages(data.map((d: any) => ({
-            id: d.id,
-            text: d.text,
-            imageUrl: d.image_url || d.imageUrl,
-            senderId: d.sender_id || d.senderId,
-            senderName: d.sender_name || d.senderName,
-            senderRole: d.sender_role || d.senderRole,
-            createdAt: d.created_at,
-            action: d.action
-          })));
+          setMessages(() => {
+            const mapped: Message[] = data.map((d: any) => ({
+              id: d.id,
+              text: d.text,
+              imageUrl: d.image_url || d.imageUrl,
+              audioUrl: d.audio_url || d.audioUrl,
+              senderId: d.sender_id || d.senderId,
+              senderName: d.sender_name || d.senderName,
+              senderRole: d.sender_role || d.senderRole,
+              createdAt: d.created_at,
+              action: d.action
+            }));
+            const seen = new Set<string>();
+            return mapped.filter(m => {
+              if (seen.has(m.id)) return false;
+              seen.add(m.id);
+              return true;
+            });
+          });
           setTimeout(() => {
             if (messagesContainerRef.current) {
               messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
@@ -341,56 +356,88 @@ export default function OrderChatWindow({
     fetchMessages();
     playNotificationChime('enter');
 
+    const handleIncomingMessage = (payload: any) => {
+      const newMsg = payload?.new as any;
+      if (!newMsg || !newMsg.id) return;
+
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === newMsg.id)) {
+          return prev;
+        }
+        const formatted: Message = {
+          id: newMsg.id,
+          text: newMsg.text || '',
+          imageUrl: newMsg.image_url || newMsg.imageUrl || undefined,
+          audioUrl: newMsg.audio_url || newMsg.audioUrl || undefined,
+          senderId: newMsg.sender_id || newMsg.senderId,
+          senderName: newMsg.sender_name || newMsg.senderName,
+          senderRole: newMsg.sender_role || newMsg.senderRole,
+          createdAt: newMsg.created_at || new Date().toISOString(),
+          action: newMsg.action || undefined
+        };
+        return [...prev, formatted];
+      });
+
+      if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
+        playNotificationChime('message');
+      }
+
+      setTimeout(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      }, 50);
+    };
+
     const channelName = `chat_${orderId || customCollectionPath || 'default'}_${linkedTransportId || 'direct'}`;
     const channel = supabase.channel(channelName);
 
     if (customCollectionPath) {
       channel.on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'messages',
         filter: `chat_path=eq.${customCollectionPath}`
       }, (payload) => {
+        handleIncomingMessage(payload);
+      });
+      channel.on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `chat_path=eq.${customCollectionPath}`
+      }, () => {
         fetchMessages();
-        if (payload?.new) {
-          const newMsg = payload.new as any;
-          if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
-            playNotificationChime('message');
-          }
-        }
       });
     } else {
       channel.on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'messages',
         filter: `order_id=eq.${orderId}`
       }, (payload) => {
-        fetchMessages();
-        if (payload?.new) {
-          const newMsg = payload.new as any;
-          if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
-            playNotificationChime('message');
-          }
-        }
+        handleIncomingMessage(payload);
       });
 
       if (linkedTransportId) {
         channel.on('postgres_changes', {
-          event: '*',
+          event: 'INSERT',
           schema: 'public',
           table: 'messages',
           filter: `request_id=eq.${linkedTransportId}`
         }, (payload) => {
-          fetchMessages();
-          if (payload?.new) {
-            const newMsg = payload.new as any;
-            if (newMsg.sender_id && newMsg.sender_id !== currentUserId) {
-              playNotificationChime('message');
-            }
-          }
+          handleIncomingMessage(payload);
         });
       }
+
+      channel.on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'messages',
+        filter: `order_id=eq.${orderId}`
+      }, () => {
+        fetchMessages();
+      });
     }
 
     channel.subscribe();
@@ -437,23 +484,31 @@ export default function OrderChatWindow({
   const handleSendMessage = async (
     text: string, 
     actionUrl?: string, 
-    actionType?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note' | 'dispatch_requested'
+    actionType?: 'payment_confirmed' | 'payment_reminder' | 'items_modified' | 'voice_note' | 'dispatch_requested',
+    audioUrl?: string
   ) => {
-    if ((!text.trim() && !actionUrl && !actionType) || sending) return;
+    if ((!text.trim() && !actionUrl && !actionType && !audioUrl) || sending) return;
     setSending(true);
 
     try {
       const linkedTransportId = liveOrder?.transport_request_id || orderInfo?.transport_request_id;
+      const validReqId = isValidUUID(linkedTransportId) ? linkedTransportId : null;
+      const validOrderId = String(orderId || '');
+      const isVoice = actionType === 'voice_note' || Boolean(audioUrl);
+      const finalAudioUrl = audioUrl || (isVoice ? actionUrl : null) || null;
+      const finalImageUrl = (!isVoice && actionUrl) ? actionUrl : null;
+
       await supabase.from('messages').insert({
-        order_id: orderId,
-        request_id: linkedTransportId || null,
-        chat_path: customCollectionPath || null,
-        text: text.trim(),
-        image_url: actionUrl || null,
-        action: actionType || null,
+        order_id: validOrderId,
+        request_id: validReqId,
         sender_id: currentUserId,
         sender_name: currentUserName,
         sender_role: currentUserRole === 'cashier' ? 'restaurant' : currentUserRole,
+        text: text.trim(),
+        image_url: finalImageUrl,
+        audio_url: finalAudioUrl,
+        chat_path: customCollectionPath || null,
+        action: actionType || null,
         created_at: new Date().toISOString()
       });
       setNewMessage('');
@@ -619,11 +674,13 @@ export default function OrderChatWindow({
         }
       }
 
+      const method = liveOrder?.payment_method || orderInfo?.payment_method || 'pago_movil';
       await supabase.from('orders').update({
         status: 'pending_verification',
         payment_status: 'verifying',
         payment_reference: payReferenceCode.trim() || null,
         payment_proof_url: proofUrl || null,
+        payment_method: method,
         updated_at: new Date().toISOString()
       }).eq('id', orderId);
 
@@ -632,7 +689,8 @@ export default function OrderChatWindow({
         status: 'pending_verification',
         payment_status: 'verifying',
         payment_reference: payReferenceCode.trim() || null,
-        payment_proof_url: proofUrl || null
+        payment_proof_url: proofUrl || null,
+        payment_method: method
       }));
 
       const refText = payReferenceCode.trim() ? `• Referencia: #${payReferenceCode.trim()}` : '';
@@ -1471,7 +1529,7 @@ export default function OrderChatWindow({
     }
 
     const isMe = msg.senderRole === currentUserRole || (isStoreRole && msg.senderRole === 'restaurant');
-    const isVoiceNote = msg.action === 'voice_note' || (msg.imageUrl && (msg.imageUrl.includes('voice_') || msg.imageUrl.endsWith('.webm') || msg.imageUrl.endsWith('.ogg') || msg.imageUrl.endsWith('.mp3')));
+    const isVoiceNote = msg.action === 'voice_note' || Boolean(msg.audioUrl) || (msg.imageUrl && (msg.imageUrl.includes('voice_') || msg.imageUrl.endsWith('.webm') || msg.imageUrl.endsWith('.ogg') || msg.imageUrl.endsWith('.mp3')));
     const isVideo = msg.imageUrl && (msg.imageUrl.includes('video_') || msg.imageUrl.endsWith('.mp4') || msg.imageUrl.endsWith('.mov'));
 
     return (
@@ -1482,11 +1540,11 @@ export default function OrderChatWindow({
       }`}>
         <p className="text-[10px] font-black opacity-60 mb-1 uppercase tracking-wider">{msg.senderName}</p>
         <p className="text-sm font-bold leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-        {msg.imageUrl && (
+        {(msg.imageUrl || msg.audioUrl) && (
           <div className="mt-2">
             {isVoiceNote ? (
               <div className="bg-black/5 p-2 rounded-xl flex items-center gap-2">
-                <audio controls src={msg.imageUrl} className="w-full max-w-[260px] h-9 rounded-lg" />
+                <audio controls src={msg.audioUrl || msg.imageUrl} className="w-full max-w-[260px] h-9 rounded-lg" />
               </div>
             ) : isVideo ? (
               <video controls src={msg.imageUrl} className="max-w-full rounded-xl max-h-56 bg-black border border-slate-200 shadow-sm" />

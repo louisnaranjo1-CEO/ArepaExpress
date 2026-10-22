@@ -1,11 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect } from 'react';
 import { Phone, PhoneOff, Mic, MicOff } from 'lucide-react';
 import { useWebRTCCall, CallStatus } from '../hooks/useWebRTCCall';
 
 interface InAppCallProps {
     requestId: string;
-    myId: string;
-    remoteId: string;
+    myId: string;       // userId or driverId
+    remoteId: string;   // the other party's id
     remoteDisplayName: string;
     remotePhotoUrl?: string;
     role: 'caller' | 'receiver';
@@ -39,11 +39,18 @@ export default function InAppCall({
     remotePhone,
     onClose,
 }: InAppCallProps) {
-    const [muted, setMuted] = React.useState(false);
     const [isUnanswered, setIsUnanswered] = React.useState(false);
-    const localStreamRef = useRef<MediaStream | null>(null);
 
-    const { callStatus, duration, startCall, answerCall, hangUp, rejectCall } = useWebRTCCall({
+    const {
+        callStatus,
+        duration,
+        isMuted,
+        toggleMute,
+        startCall,
+        answerCall,
+        hangUp,
+        rejectCall
+    } = useWebRTCCall({
         requestId,
         myId,
         remoteId,
@@ -80,6 +87,15 @@ export default function InAppCall({
         }
     }, [role, callStatus, hangUp, remotePhone, onClose]);
 
+    // Ensure hangup if component unmounts during active call
+    useEffect(() => {
+        return () => {
+            if (callStatus === 'calling' || callStatus === 'ringing' || callStatus === 'connected') {
+                hangUp().catch(() => {});
+            }
+        };
+    }, [callStatus, hangUp]);
+
     const handleHangUp = async () => {
         await hangUp();
         if (role === 'caller' && duration === 0 && remotePhone) {
@@ -100,15 +116,6 @@ export default function InAppCall({
 
     const handleAnswer = async () => {
         await answerCall();
-    };
-
-    const toggleMute = () => {
-        if (localStreamRef.current) {
-            localStreamRef.current.getAudioTracks().forEach(track => {
-                track.enabled = muted;
-            });
-        }
-        setMuted(m => !m);
     };
 
     const isConnected = callStatus === 'connected';
@@ -210,10 +217,10 @@ export default function InAppCall({
                         <button
                             type="button"
                             onClick={toggleMute}
-                            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 ${muted ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/40' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
-                            title={muted ? 'Activar micrófono' : 'Silenciar'}
+                            className={`w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-95 ${isMuted ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/40' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
+                            title={isMuted ? 'Activar micrófono' : 'Silenciar'}
                         >
-                            {muted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                            {isMuted ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                         </button>
                     )}
 

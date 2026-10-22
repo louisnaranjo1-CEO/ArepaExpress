@@ -12,14 +12,9 @@ export interface DeliveryDriver {
     cedula: string;
     rif: string;
     age: number;
-    birthdate?: string;
     phone: string;
     vehicleType: VehicleType;
-    vehicleBrand?: string;
-    vehicleModel?: string;
-    vehicleYear?: string;
     vehiclePlate: string;
-    isVehicleOwner?: boolean;
     status: DeliveryStatus;
     isOnline: boolean;
     availability?: AvailabilityStatus;
@@ -30,15 +25,15 @@ export interface DeliveryDriver {
         state: string;
         city: string;
         coords?: { lat: number; lng: number };
-        reference?: string;
-        name?: string;
     };
-    registeredHomeAddress?: any;
     documents: {
         selfieUrl: string;
         vehicleUrl: string;
         licenseUrl: string;
     };
+    vehicleBrand?: string;
+    vehicleModel?: string;
+    vehicleYear?: string;
     vehicleColor?: string;
     hasAc?: boolean;
     has_thermal_bag?: boolean;
@@ -50,6 +45,8 @@ export interface DeliveryDriver {
         new_data?: any;
         changed_at?: string;
     }>;
+    commission_debt?: number;
+    commission_status?: string;
     createdAt: any;
     updatedAt: any;
 }
@@ -129,6 +126,7 @@ export const registerDriver = async (
             vehicleUrl,
             licenseUrl
         },
+        commission_debt: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
     };
@@ -187,5 +185,181 @@ export const setDriverAvailability = async (uid: string, availability: Availabil
         await driversApi.updateStatus(uid, availability !== 'offline', availability);
     } catch (apiErr) {
         console.error("Error updating driver availability in Supabase:", apiErr);
+    }
+};
+
+/**
+ * Acepta atómicamente una puja de transporte usando el RPC con FOR UPDATE SKIP LOCKED
+ */
+export const acceptTransportBid = async (
+    bidId: string,
+    requestId: string,
+    userId: string
+): Promise<{ success: boolean; driver_id?: string; error?: string }> => {
+    try {
+        const { data, error } = await supabase.rpc('accept_transport_bid', {
+            p_bid_id: bidId,
+            p_request_id: requestId,
+            p_user_id: userId
+        });
+
+        if (error) {
+            console.error("Error al ejecutar RPC accept_transport_bid:", error);
+            return { success: false, error: error.message };
+        }
+
+        if (data && typeof data === 'object' && data.success === false) {
+            return {
+                success: false,
+                error: data.error || 'El viaje ya fue asignado o cancelado.'
+            };
+        }
+
+        return data || { success: true };
+    } catch (err: any) {
+        console.error("Excepción al aceptar oferta de transporte:", err);
+        return { success: false, error: err?.message || 'Error de comunicación al procesar la oferta.' };
+    }
+};
+
+/**
+ * Solicita delivery externo para una orden de comercio, enlazando mutuamente:
+ * - order_id en transport_requests
+ * - transport_request_id en orders
+ */
+export const requestExternalDeliveryForOrder = async (
+    order: {
+        id: string;
+        userId?: string;
+        userName?: string;
+        userPhone?: string;
+        clientDNI?: string;
+        items?: any[];
+        deliveryCoords?: any;
+        deliveryAddress?: string;
+        restaurantId?: string;
+        restaurantName?: string;
+        transport_request_id?: string;
+    },
+    options?: {
+        driver?: {
+            id: string;
+            full_name?: string;
+            phone?: string;
+            photo_url?: string;
+            vehicle_type?: string;
+        } | null;
+        restaurantConfig?: {
+            name?: string;
+            address?: string;
+            location?: { lat: number; lng: number };
+        };
+        payout?: number;
+        vehicleCategory?: string;
+    }
+): Promise<{ success: boolean; transportRequestId?: string; error?: string }> => {
+    try {
+        const itemsSummary = order.items?.map((i: any) => `${i.quantity}x ${i.name}`).join(', ') || 'Productos del comercio';
+        const payout = options?.payout || 1.50;
+        const driverObj = options?.driver;
+
+        // 1. Verificar si ya existe solicitud previa de transporte para esta orden
+        const { data: existingTr } = await supabase
+            .from('transport_requests')
+            .select('id, status')
+            .eq('order_id', order.id)
+            .maybeSingle();
+
+        const trData: any = {
+            order_id: order.id,
+            restaurant_id: order.restaurantId,
+            restaurant_name: order.restaurantName || options?.restaurantConfig?.name || 'Comercio',
+            user_id: order.userId,
+            user_name: order.userName || 'Cliente',
+            user_phone: order.userPhone || '',
+            user_cedula: order.clientDNI || '',
+            type: 'transport',
+            service_category: 'food_delivery',
+            price: payout,
+            total: payout,
+            fare: payout,
+            driver_payout: payout,
+            items_summary: itemsSummary,
+            flete_pagado_por: 'negocio',
+            notes: `🎁 Flete de la orden #${order.id.slice(0, 8)}. Entregar a: ${order.userName || 'Cliente'} (Tlf: ${order.userPhone || 'N/A'}). Ítems: ${itemsSummary}`,
+            origin: {
+                address: options?.restaurantConfig?.address || options?.restaurantConfig?.name || 'Local',
+                lat: options?.restaurantConfig?.location?.lat,
+                lng: options?.restaurantConfig?.location?.lng
+            },
+            destination: order.deliveryCoords || { address: order.deliveryAddress },
+            updated_at: new Date().toISOString()
+        };
+
+        if (driverObj) {
+            trData.status = 'accepted';
+            trData.driver_id = driverObj.id;
+            trData.assigned_driver_id = driverObj.id;
+            trData.driver_name = driverObj.full_name || 'Conductor';
+            trData.driver_phone = driverObj.phone || '';
+            trData.driver_photo = driverObj.photo_url || null;
+            trData.vehicle_type = driverObj.vehicle_type || options?.vehicleCategory || 'moto';
+            trData.driver_assigned_at = new Date().toISOString();
+        } else {
+            trData.status = 'searching';
+            trData.vehicle_type = options?.vehicleCategory || 'moto';
+        }
+
+        let transportRequestId = existingTr?.id;
+
+        if (existingTr?.id) {
+            const { error: updTrErr } = await supabase
+                .from('transport_requests')
+                .update(trData)
+                .eq('id', existingTr.id);
+            if (updTrErr) throw updTrErr;
+        } else {
+            trData.created_at = new Date().toISOString();
+            const { data: newTr, error: insTrErr } = await supabase
+                .from('transport_requests')
+                .insert(trData)
+                .select('id')
+                .single();
+            if (insTrErr) throw insTrErr;
+            transportRequestId = newTr.id;
+        }
+
+        // 2. Enlazar transport_request_id en orders
+        const orderUpdates: any = {
+            transport_request_id: transportRequestId,
+            status: driverObj ? 'delivering' : 'buscando_piloto',
+            dispatched_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+        };
+
+        if (driverObj) {
+            orderUpdates.driver_id = driverObj.id;
+            orderUpdates.delivery_driver_id = driverObj.id;
+            orderUpdates.driver_name = driverObj.full_name;
+            orderUpdates.driver_photo = driverObj.photo_url || null;
+            orderUpdates.preferred_driver_id = driverObj.id;
+            orderUpdates.eligible_drivers = [driverObj.id];
+            orderUpdates.driver_payout = payout;
+        } else {
+            orderUpdates.preferred_driver_id = null;
+            orderUpdates.eligible_drivers = null;
+        }
+
+        const { error: ordErr } = await supabase
+            .from('orders')
+            .update(orderUpdates)
+            .eq('id', order.id);
+
+        if (ordErr) throw ordErr;
+
+        return { success: true, transportRequestId };
+    } catch (err: any) {
+        console.error("Error al solicitar delivery externo para la orden:", err);
+        return { success: false, error: err?.message || 'Error enlazando delivery y orden.' };
     }
 };

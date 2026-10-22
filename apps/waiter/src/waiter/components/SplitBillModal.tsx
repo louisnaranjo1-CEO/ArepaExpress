@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Users, ListFilter, Plus, Minus, Receipt, CheckCircle } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { generateUUID } from '../../lib/usb-printer';
 import DualPrice from '../../components/DualPrice';
 
 interface OrderItem {
@@ -86,7 +87,7 @@ export default function SplitBillModal({
                 const splitTotal = grandTotal / numParts;
                 const newOrders = [];
                 for (let i = 0; i < numParts; i++) {
-                    const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `split_${Date.now()}_${i}`;
+                    const newOrderId = generateUUID();
                     newOrders.push({
                         id: newOrderId,
                         restaurant_id: restaurantId,
@@ -134,7 +135,7 @@ export default function SplitBillModal({
                         return accArr;
                     }, []);
 
-                    const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `split_${Date.now()}_${i}`;
+                    const newOrderId = generateUUID();
                     newOrders.push({
                         id: newOrderId,
                         restaurant_id: restaurantId,

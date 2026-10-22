@@ -20,6 +20,7 @@ import { Toaster } from 'react-hot-toast';
 import { CartProvider } from './context/CartContext';
 import { useGlobalAudioAlerts } from './hooks/useGlobalAudioAlerts';
 import { usePushCampaigns } from './hooks/usePushCampaigns';
+import { useActiveOrderLiveTracker } from './hooks/useActiveOrderLiveTracker';
 import { App as CapApp } from '@capacitor/app';
 import { Browser } from '@capacitor/browser';
 import { Capacitor } from '@capacitor/core';
@@ -40,6 +41,7 @@ function RedirectHandler({ children }: { children: React.ReactNode }) {
     
     useGlobalAudioAlerts('user', user?.uid);
     usePushCampaigns(userData, user?.uid);
+    useActiveOrderLiveTracker();
     useRealtimeResilience();
 
     // Android physical back button handler

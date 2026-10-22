@@ -706,7 +706,7 @@ export default function Achievements() {
                 </div>
             )}
 
-            {/* Tab 3: Raffle Tickets Wallet & Points Exchange */}
+            {/* Tab 3: Raffle Tickets & Points Exchange */}
             {activeTab === 'raffle' && (
                 <div className="px-4 space-y-4 relative z-20">
                     {/* Active Raffle Showcase */}
@@ -763,7 +763,7 @@ export default function Achievements() {
                         <div className="flex items-center justify-between">
                             <div>
                                 <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
-                                    Billetera de Puntos de Conductor
+                                    Balance de Puntos de Conductor
                                 </span>
                                 <div className="flex items-baseline gap-1.5 mt-0.5">
                                     <span className="text-3xl font-black text-white">{points}</span>
@@ -817,7 +817,7 @@ export default function Achievements() {
                         )}
                     </div>
 
-                    {/* User Tickets Wallet */}
+                    {/* User Tickets / Rewards */}
                     <div className="space-y-3">
                         <h3 className="text-sm font-black text-slate-300 px-1 flex items-center gap-2">
                             <Gift className="w-4 h-4 text-amber-400" />

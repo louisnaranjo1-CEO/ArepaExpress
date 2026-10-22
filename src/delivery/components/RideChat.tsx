@@ -32,6 +32,7 @@ interface ChatProps {
     driverPhone?: string;
     clientPhone?: string;
     isDriver?: boolean;
+    allowChatOnCompleted?: boolean;
 }
 
 // In-Bubble Audio Player Component
@@ -130,6 +131,11 @@ function AudioPlayerBubble({ src, isMine }: { src: string; isMine: boolean }) {
     );
 }
 
+const isValidUUID = (str?: string | null): boolean => {
+    if (!str || typeof str !== 'string') return false;
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+};
+
 export default function RideChat({ 
     requestId, 
     onClose, 
@@ -140,7 +146,8 @@ export default function RideChat({
     onStartCall,
     driverPhone,
     clientPhone,
-    isDriver = false
+    isDriver = false,
+    allowChatOnCompleted = false
 }: ChatProps) {
     const { user } = useAuth();
     const [messages, setMessages] = useState<any[]>([]);
@@ -161,14 +168,23 @@ export default function RideChat({
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const chatPath = `transport_requests/${requestId}`;
+    const validReqId = isValidUUID(requestId) ? requestId : null;
+    const validOrderId = String(requestId || '');
 
-    // 48-Hour Retention Logic
-    const isCompleted = requestStatus === 'completed';
+    // Emergency / Lost Item Chat State (Audio 3)
+    const emergencyActivatedMsg = messages.find(m => m.action === 'lost_item_emergency');
+    const emergencyResolvedMsg = messages.find(m => m.action === 'lost_item_resolved');
+    const isEmergencyActive = Boolean(emergencyActivatedMsg && !emergencyResolvedMsg);
+    const isEmergencyExhausted = Boolean(emergencyResolvedMsg);
+
+    // Audio 3: En viajes/pedidos completados el chat está cerrado por defecto (modo solo lectura),
+    // a menos que se active la emergencia por objeto olvidado (que solo puede usarse 1 vez),
+    // o que se esté en proceso de pago/conciliación (allowChatOnCompleted).
+    const isCompleted = requestStatus === 'completed' || requestStatus === 'delivered';
     const completedTimestamp = completedAt ? new Date(completedAt).getTime() : Date.now();
     const hoursSinceCompletion = isCompleted ? (Date.now() - completedTimestamp) / (1000 * 60 * 60) : 0;
     const isExpired = isCompleted && hoursSinceCompletion > 48;
-    const isChatLocked = readOnly || isCompleted || isExpired;
-    const hoursRemaining = Math.max(0, Math.ceil(48 - hoursSinceCompletion));
+    const isChatLocked = readOnly || (isCompleted && !isEmergencyActive && !allowChatOnCompleted);
 
     // Vehicle Category Meta
     const getVehicleMeta = () => {
@@ -198,7 +214,8 @@ export default function RideChat({
                     .from('messages')
                     .select('*')
                     .or(`chat_path.eq.${chatPath},order_id.eq.${requestId}`)
-                    .order('created_at', { ascending: true });
+                    .order('created_at', { ascending: true })
+                    .limit(100);
 
                 if (error) throw error;
                 if (data) {
@@ -233,12 +250,52 @@ export default function RideChat({
         const channel = supabase
             .channel(`ride_chat_unified_${requestId}`)
             .on('postgres_changes', {
-                event: '*',
+                event: 'INSERT',
                 schema: 'public',
-                table: 'messages',
-                filter: `chat_path=eq.${chatPath}`
-            }, () => {
-                fetchMessages();
+                table: 'messages'
+            }, (payload) => {
+                if (!payload?.new) return;
+                const d = payload.new as any;
+                if (!d.id) return;
+
+                const matches = d.chat_path === chatPath || 
+                    d.order_id === requestId || 
+                    d.request_id === requestId;
+                if (!matches) return;
+
+                setMessages((prev) => {
+                    if (prev.some((m) => m.id === d.id)) {
+                        return prev;
+                    }
+                    const cDate = d.created_at ? new Date(d.created_at) : new Date();
+                    return [...prev, {
+                        id: d.id,
+                        text: d.text,
+                        imageUrl: d.image_url || d.imageUrl,
+                        videoUrl: d.video_url || d.videoUrl,
+                        audioUrl: d.audio_url || d.audioUrl,
+                        action: d.action,
+                        senderId: d.sender_id || d.senderId,
+                        senderName: d.sender_name || d.senderName,
+                        senderRole: d.sender_role || d.senderRole,
+                        createdAt: {
+                            toDate: () => cDate,
+                            toLocaleTimeString: (...args: any[]) => cDate.toLocaleTimeString(...args)
+                        }
+                    }];
+                });
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'messages'
+            }, (payload) => {
+                const d = payload?.new as any;
+                if (!d) return;
+                const matches = d.chat_path === chatPath || d.order_id === requestId || d.request_id === requestId;
+                if (matches) {
+                    fetchMessages();
+                }
             })
             .subscribe();
 
@@ -252,6 +309,38 @@ export default function RideChat({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    // Cleanup expired media from Supabase storage after 48h active window
+    useEffect(() => {
+        if (!isExpired || !requestId || messages.length === 0) return;
+        const cleanupKey = `cleanup_done_${requestId}`;
+        if (sessionStorage.getItem(cleanupKey)) return;
+
+        const cleanupExpiredMedia = async () => {
+            try {
+                const mediaUrls = messages
+                    .flatMap((m) => [m.imageUrl, m.videoUrl, m.audioUrl])
+                    .filter(Boolean) as string[];
+
+                const pathsToDelete: string[] = [];
+                mediaUrls.forEach((url) => {
+                    const match = url.match(/\/store_assets\/(.+)$/);
+                    if (match && match[1]) {
+                        pathsToDelete.push(decodeURIComponent(match[1]));
+                    }
+                });
+
+                if (pathsToDelete.length > 0) {
+                    await supabase.storage.from('store_assets').remove(pathsToDelete);
+                }
+                sessionStorage.setItem(cleanupKey, 'true');
+            } catch (err) {
+                console.warn('Silent storage cleanup on expired chat:', err);
+            }
+        };
+
+        cleanupExpiredMedia();
+    }, [isExpired, requestId, messages]);
+
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newMessage.trim() || sending || isChatLocked) return;
@@ -264,12 +353,15 @@ export default function RideChat({
             const defaultName = isDriver ? 'Piloto' : 'Pasajero';
 
             const { error } = await supabase.from('messages').insert({
-                chat_path: chatPath,
-                order_id: requestId,
-                text: newMessage.trim(),
+                order_id: validOrderId,
+                request_id: validReqId,
                 sender_id: uid,
                 sender_name: user?.displayName || defaultName,
                 sender_role: role,
+                text: newMessage.trim(),
+                image_url: null,
+                audio_url: null,
+                chat_path: chatPath,
                 created_at: new Date().toISOString()
             });
 
@@ -289,21 +381,22 @@ export default function RideChat({
         const file = e.target.files[0];
         setUploadingMedia(true);
         const isVideo = file.type.startsWith('video/');
-        const tId = toast.loading(isVideo ? 'Subiendo video...' : 'Optimizando y subiendo comprobante / foto...');
+        const isAudio = file.type.startsWith('audio/');
+        const tId = toast.loading(isVideo ? 'Subiendo video...' : (isAudio ? 'Subiendo audio...' : 'Optimizando y subiendo comprobante / foto...'));
 
         try {
             const uid = user?.id || (user as any)?.uid || (isDriver ? 'driver' : 'passenger');
             let uploadBlob: Blob = file;
 
             // Compress images automatically before uploading
-            if (!isVideo && file.type.startsWith('image/')) {
+            if (!isVideo && !isAudio && file.type.startsWith('image/')) {
                 uploadBlob = await compressImage(file, 1280, 0.8);
             }
 
-            const ext = isVideo ? (file.name.split('.').pop() || 'mp4') : 'jpg';
+            const ext = isVideo ? (file.name.split('.').pop() || 'mp4') : (isAudio ? (file.name.split('.').pop() || 'webm') : 'jpg');
             const filePath = `chat_attachments/${requestId}_${Date.now()}.${ext}`;
             const { error: upErr } = await supabase.storage.from('store_assets').upload(filePath, uploadBlob, { 
-                contentType: isVideo ? file.type : 'image/jpeg',
+                contentType: isVideo ? file.type : (isAudio ? file.type : 'image/jpeg'),
                 upsert: true 
             });
 
@@ -312,20 +405,18 @@ export default function RideChat({
             const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(filePath);
 
             const insertPayload: any = {
-                chat_path: chatPath,
-                order_id: requestId,
-                text: isVideo ? '🎥 [Video adjunto]' : '📷 [Comprobante de compra o foto adjunta]',
+                order_id: validOrderId,
+                request_id: validReqId,
                 sender_id: uid,
                 sender_name: user?.displayName || (isDriver ? 'Piloto' : 'Pasajero'),
                 sender_role: isDriver ? 'delivery' : 'client',
+                text: isVideo ? '🎥 [Video adjunto]' : (isAudio ? '🎤 [Nota de voz]' : '📷 [Comprobante de compra o foto adjunta]'),
+                image_url: (!isVideo && !isAudio) ? publicUrl : null,
+                audio_url: isAudio ? publicUrl : null,
+                video_url: isVideo ? publicUrl : null,
+                chat_path: chatPath,
                 created_at: new Date().toISOString()
             };
-
-            if (isVideo) {
-                insertPayload.video_url = publicUrl;
-            } else {
-                insertPayload.image_url = publicUrl;
-            }
 
             const { error: insMediaErr } = await supabase.from('messages').insert(insertPayload);
             if (insMediaErr) throw insMediaErr;
@@ -390,13 +481,15 @@ export default function RideChat({
                     const { data: { publicUrl } } = supabase.storage.from('store_assets').getPublicUrl(audioPath);
 
                     const { error: insVoiceErr } = await supabase.from('messages').insert({
-                        chat_path: chatPath,
-                        order_id: requestId,
-                        text: '🎤 [Nota de voz]',
-                        audio_url: publicUrl,
+                        order_id: validOrderId,
+                        request_id: validReqId,
                         sender_id: uid,
                         sender_name: user?.displayName || (isDriver ? 'Piloto' : 'Pasajero'),
                         sender_role: isDriver ? 'delivery' : 'client',
+                        text: '🎤 [Nota de voz]',
+                        image_url: null,
+                        audio_url: publicUrl,
+                        chat_path: chatPath,
                         created_at: new Date().toISOString()
                     });
 
@@ -446,13 +539,16 @@ export default function RideChat({
         try {
             const uid = user?.id || (user as any)?.uid || 'driver';
             const { error: insIssueErr } = await supabase.from('messages').insert({
-                chat_path: chatPath,
-                order_id: requestId,
-                text: `🚨 [NOVEDAD REPORTADA]: ${reason}`,
-                action: 'merchant_issue',
+                order_id: validOrderId,
+                request_id: validReqId,
                 sender_id: uid,
                 sender_name: user?.displayName || 'Piloto',
                 sender_role: 'delivery',
+                text: `🚨 [NOVEDAD REPORTADA]: ${reason}`,
+                image_url: null,
+                audio_url: null,
+                action: 'merchant_issue',
+                chat_path: chatPath,
                 created_at: new Date().toISOString()
             });
             if (insIssueErr) throw insIssueErr;
@@ -461,6 +557,59 @@ export default function RideChat({
         } catch (err) {
             console.error("Error reporting issue:", err);
             toast.error('No se pudo enviar la novedad');
+        }
+    };
+
+    // Reactivar chat temporal por objeto olvidado o emergencia (Audio 3)
+    const handleReactivateEmergency = async () => {
+        if (!requestId) return;
+        try {
+            const emergencyText = isDriver
+                ? '🚨 ¡EMERGENCIA ACTIVADA! El piloto ha reabierto el chat para coordinar un objeto olvidado o novedad.'
+                : '🚨 ¡EMERGENCIA / OBJETO OLVIDADO! El cliente ha reactivado el chat para coordinar la recuperación de un objeto o novedad del servicio.';
+            
+            await supabase.from('messages').insert({
+                order_id: validOrderId,
+                request_id: validReqId,
+                sender_id: user?.uid || (user as any)?.id || 'client',
+                sender_name: isDriver ? 'Conductor' : (user?.displayName || 'Cliente'),
+                sender_role: isDriver ? 'driver' : 'client',
+                text: emergencyText,
+                image_url: null,
+                audio_url: null,
+                action: 'lost_item_emergency',
+                chat_path: chatPath,
+                created_at: new Date().toISOString()
+            });
+            toast.success("¡Chat reactivado por emergencia! Puedes enviar mensajes, audios o llamar.", { icon: '🚨' });
+        } catch (e) {
+            console.error(e);
+            toast.error("No se pudo reactivar la emergencia");
+        }
+    };
+
+    // Finalizar emergencia definitivamente (Audio 3)
+    const handleResolveEmergency = async () => {
+        if (!requestId) return;
+        if (!window.confirm("¿Deseas finalizar la emergencia? Una vez finalizada, el chat se cerrará definitivamente en modo solo lectura.")) return;
+        try {
+            await supabase.from('messages').insert({
+                order_id: validOrderId,
+                request_id: validReqId,
+                sender_id: user?.uid || (user as any)?.id || 'client',
+                sender_name: isDriver ? 'Conductor' : (user?.displayName || 'Cliente'),
+                sender_role: isDriver ? 'driver' : 'client',
+                text: '✅ EMERGENCIA FINALIZADA. El caso ha sido resuelto y el chat ha quedado cerrado definitivamente.',
+                image_url: null,
+                audio_url: null,
+                action: 'lost_item_resolved',
+                chat_path: chatPath,
+                created_at: new Date().toISOString()
+            });
+            toast.success("Emergencia finalizada. Chat cerrado definitivamente.", { icon: '🔒' });
+        } catch (e) {
+            console.error(e);
+            toast.error("Error al finalizar emergencia");
         }
     };
 
@@ -519,8 +668,8 @@ export default function RideChat({
                         </button>
                     )}
 
-                    {/* Green Call Button */}
-                    {!isCompleted && (
+                    {/* Green Call Button (Active during trip and 48h retention) */}
+                    {!isChatLocked && (
                         <button
                             type="button"
                             onClick={handleCallAction}
@@ -625,21 +774,32 @@ export default function RideChat({
                 </div>
             </div>
 
-            {/* 48-Hour Retention Banner */}
-            {isCompleted && (
-                <div className={`p-2.5 px-3 border-b text-xs flex items-center gap-2 ${
-                    isExpired 
-                        ? 'bg-rose-50 border-rose-200 text-rose-800' 
-                        : 'bg-amber-50 border-amber-200 text-amber-900'
-                }`}>
-                    <Clock className="w-4 h-4 shrink-0" />
+            {/* Banner de Emergencia / Objeto Olvidado o Modo Solo Lectura (Audio 3) */}
+            {isEmergencyActive ? (
+                <div className="bg-red-600 text-white p-3 px-4 flex items-center justify-between gap-3 shadow-md border-b-2 border-red-700 animate-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full bg-white animate-ping shrink-0" />
+                        <div className="truncate">
+                            <p className="text-xs font-black uppercase tracking-wider truncate">🚨 Emergencia Activa: Objeto Olvidado</p>
+                            <p className="text-[10px] text-white/90 font-medium leading-tight">Chat, audios y llamadas habilitados</p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleResolveEmergency}
+                        className="px-3 py-1.5 bg-white hover:bg-slate-100 text-red-700 font-black text-xs rounded-xl shadow-sm shrink-0 active:scale-95 transition-all"
+                    >
+                        Finalizar emergencia
+                    </button>
+                </div>
+            ) : isCompleted && (
+                <div className="p-2.5 px-3 border-b text-xs flex items-center gap-2 bg-slate-100 border-slate-200 text-slate-700">
+                    <Lock className="w-4 h-4 shrink-0 text-slate-500" />
                     <p className="text-[11px] font-medium leading-tight">
-                        {isExpired ? (
-                            <span>El periodo de respaldo de 48 horas ha expirado.</span>
+                        {isEmergencyExhausted ? (
+                            <span>Caso cerrado definitivamente tras resolver la emergencia reportada.</span>
                         ) : (
-                            <span>
-                                <strong>Respaldo de 48 horas:</strong> Chat disponible para consulta de comprobantes por <strong>{hoursRemaining} horas más</strong>.
-                            </span>
+                            <span>Servicio completado. El chat está cerrado en modo solo lectura de respaldo.</span>
                         )}
                     </p>
                 </div>
@@ -731,9 +891,24 @@ export default function RideChat({
 
             {/* Input Bar - Mobile Safe */}
             {isChatLocked ? (
-                <div className="p-3 bg-slate-200/80 border-t border-slate-300 text-center flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
-                    <Lock className="w-3.5 h-3.5 text-slate-500" />
-                    <span>Chat cerrado por servicio completado (Modo lectura de respaldo por 48h)</span>
+                <div className="p-3 bg-slate-100 border-t border-slate-200 text-center space-y-2">
+                    <div className="flex items-center justify-center gap-2 text-slate-600 text-xs font-bold">
+                        <Lock className="w-3.5 h-3.5 text-slate-500" />
+                        <span>
+                            {isEmergencyExhausted 
+                                ? "La emergencia ha sido finalizada y el chat ha concluido definitivamente." 
+                                : "Este viaje ha concluido. El chat está cerrado."}
+                        </span>
+                    </div>
+                    {!isEmergencyExhausted && (
+                        <button
+                            type="button"
+                            onClick={handleReactivateEmergency}
+                            className="w-full py-2.5 bg-amber-400 hover:bg-amber-500 active:scale-95 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
+                        >
+                            <span>📦 ¿Olvidaste algo? Reactivar chat de emergencia</span>
+                        </button>
+                    )}
                 </div>
             ) : (
                 <div className="p-2 sm:p-3 bg-white border-t border-slate-200 sticky bottom-0 z-20">
@@ -829,7 +1004,7 @@ export default function RideChat({
                                 "Producto no disponible o sin stock",
                                 "Precio diferente al esperado",
                                 "Cola larga / Tiempo de espera mayor",
-                                "Falta nÃºmero de referencia de Pago MÃ³vil"
+                                "Falta número de referencia de Pago Móvil"
                             ].map((issue) => (
                                 <button
                                     key={issue}

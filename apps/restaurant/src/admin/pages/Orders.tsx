@@ -972,9 +972,13 @@ export default function Orders() {
 
                     if (existingTr?.id) {
                         await supabase.from('transport_requests').update(trData).eq('id', existingTr.id);
+                        updates.transport_request_id = existingTr.id;
                     } else {
                         trData.created_at = new Date().toISOString();
-                        await supabase.from('transport_requests').insert(trData);
+                        const { data: newTr } = await supabase.from('transport_requests').insert(trData).select('id').single();
+                        if (newTr?.id) {
+                            updates.transport_request_id = newTr.id;
+                        }
                     }
                 } catch (trErr) {
                     console.warn("Transport request link err:", trErr);
@@ -984,18 +988,73 @@ export default function Orders() {
                 try {
                     await supabase.from('messages').insert({
                         order_id: selectedOrderForDispatch.id,
+                        request_id: updates.transport_request_id || null,
                         sender_id: user?.uid,
                         sender_name: 'Restaurante',
                         sender_role: 'restaurant',
                         text: `🛵 *¡Pedido despachado!* El repartidor *${realDriverName}* ya va en camino con tu comida a tu dirección.`,
+                        image_url: null,
+                        audio_url: null,
                         created_at: new Date().toISOString()
                     });
                 } catch (mErr) {
                     console.warn("Message err:", mErr);
                 }
             } else {
+                // Caso 3: Sin conductor asignado -> Abrir solicitud al radar general de conductores
                 updates.status = 'buscando_piloto';
                 setRadarOrderId(selectedOrderForDispatch.id);
+
+                try {
+                    const itemsSummary = selectedOrderForDispatch.items?.map((i: any) => `${i.quantity}x ${i.name}`).join(', ') || 'Productos del comercio';
+                    
+                    const { data: existingTr } = await supabase
+                        .from('transport_requests')
+                        .select('id, status')
+                        .eq('order_id', selectedOrderForDispatch.id)
+                        .maybeSingle();
+
+                    const trData: any = {
+                        order_id: selectedOrderForDispatch.id,
+                        restaurant_id: rid,
+                        restaurant_name: (selectedOrderForDispatch as any).restaurantName || restaurantConfig?.name || 'Comercio',
+                        user_id: selectedOrderForDispatch.userId,
+                        user_name: selectedOrderForDispatch.userName || 'Cliente',
+                        user_phone: selectedOrderForDispatch.userPhone || '',
+                        user_cedula: selectedOrderForDispatch.clientDNI || '',
+                        vehicle_type: selectedVehicleCategory || 'moto',
+                        type: 'transport',
+                        service_category: 'food_delivery',
+                        status: 'searching',
+                        price: payout,
+                        total: payout,
+                        fare: payout,
+                        driver_payout: payout,
+                        items_summary: itemsSummary,
+                        flete_pagado_por: 'negocio',
+                        notes: `🎁 Flete al radar. Entregar a: ${selectedOrderForDispatch.userName || 'Cliente'} (Tlf: ${selectedOrderForDispatch.userPhone || 'N/A'}). Ítems: ${itemsSummary}`,
+                        origin: {
+                            address: restaurantConfig?.address || restaurantConfig?.name || 'Local',
+                            lat: restaurantConfig?.location?.lat,
+                            lng: restaurantConfig?.location?.lng
+                        },
+                        destination: selectedOrderForDispatch.deliveryCoords || { address: selectedOrderForDispatch.deliveryAddress },
+                        updated_at: new Date().toISOString()
+                    };
+
+                    if (existingTr?.id) {
+                        await supabase.from('transport_requests').update(trData).eq('id', existingTr.id);
+                        updates.transport_request_id = existingTr.id;
+                    } else {
+                        trData.created_at = new Date().toISOString();
+                        const { data: newTr } = await supabase.from('transport_requests').insert(trData).select('id').single();
+                        if (newTr?.id) {
+                            updates.transport_request_id = newTr.id;
+                        }
+                    }
+                } catch (trErr) {
+                    console.warn("Transport request radar link err:", trErr);
+                }
             }
 
             const { error: ordUpdateErr } = await supabase.from('orders').update(updates).eq('id', selectedOrderForDispatch.id);
@@ -1705,10 +1764,13 @@ export default function Orders() {
 
                 await supabase.from('messages').insert({
                     order_id: selectedOrderForVerify.id,
+                    request_id: (selectedOrderForVerify as any).transport_request_id || null,
                     sender_id: user?.uid,
                     sender_name: 'Restaurante',
                     sender_role: 'restaurant',
                     text: msgText,
+                    image_url: null,
+                    audio_url: null,
                     action: 'payment_confirmed',
                     created_at: new Date().toISOString()
                 });

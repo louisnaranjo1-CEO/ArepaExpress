@@ -151,14 +151,24 @@ export default function AppOrders() {
                 p_order_id: orderId
             });
 
-            if (error) throw error;
+            if (error) {
+                // Fallback direct update to orders
+                const { error: updErr } = await supabase.from('orders').update({
+                    payment_status: 'paid',
+                    points_credited: true,
+                    updated_at: new Date().toISOString()
+                }).eq('id', orderId);
 
-            if (data && data.success === false) {
-                toast.error(data.message || "Error al verificar");
-                return;
+                if (updErr) throw updErr;
+                toast.success(`Pago Móvil verificado para ${userName}`);
+            } else {
+                if (data && data.success === false) {
+                    toast.error(data.message || "Error al verificar");
+                    return;
+                }
+                toast.success(`Pago Móvil verificado y ${data?.points_credited || 0} puntos otorgados a ${userName}`);
             }
 
-            toast.success(`Pago Móvil verificado y ${data.points_credited || 0} puntos otorgados a ${userName}`);
             fetchOrders();
         } catch (err: any) {
             console.error("Error verifying pago movil:", err);
@@ -169,7 +179,7 @@ export default function AppOrders() {
     };
 
     const getStatusBadge = (status: string, paymentStatus?: string, whatsappOrder?: boolean) => {
-        if (paymentStatus === 'pending_verification') {
+        if (paymentStatus === 'pending_verification' || paymentStatus === 'verifying') {
             return <span className="px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 animate-pulse flex items-center gap-1 shrink-0"><ShieldAlert className="w-3 h-3" /> PAGO MÓVIL POR VERIFICAR</span>;
         }
 
@@ -222,7 +232,7 @@ export default function AppOrders() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {orders.map(order => {
-                        const isPendingPagoMovil = order.paymentStatus === 'pending_verification';
+                        const isPendingPagoMovil = order.paymentStatus === 'pending_verification' || order.paymentStatus === 'verifying';
                         const receiptUrl = order.paymentProofUrl;
 
                         return (

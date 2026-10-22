@@ -57,6 +57,37 @@ export default function TransportRequests() {
         }
     };
 
+    const handleAdminAcceptBid = async (bid: any) => {
+        if (!selectedMandadoAudit) return;
+        if (!window.confirm(`¿Confirmas asignar y aceptar la oferta de ${bid.driver_name} ($${Number(bid.amount).toFixed(2)} USD)?`)) return;
+
+        try {
+            const { data, error } = await supabase.rpc('accept_transport_bid', {
+                p_bid_id: bid.id,
+                p_request_id: selectedMandadoAudit.id,
+                p_user_id: selectedMandadoAudit.userId || selectedMandadoAudit.user_id || '00000000-0000-0000-0000-000000000000'
+            });
+
+            if (error) {
+                console.error("Error en accept_transport_bid:", error);
+                toast.error("Error al asignar oferta: " + error.message);
+                return;
+            }
+
+            if (data?.success === false) {
+                toast.error(data.error || "El viaje ya fue asignado o cancelado");
+                return;
+            }
+
+            toast.success(`¡Oferta aceptada y conductor ${bid.driver_name} asignado!`);
+            setSelectedMandadoAudit(null);
+            fetchRequests();
+        } catch (e: any) {
+            console.error("Error accepting bid in admin:", e);
+            toast.error(e?.message || "Error al procesar la solicitud.");
+        }
+    };
+
     
     const lastRequestTimestamp = useRef<number>(Date.now());
 
@@ -190,7 +221,9 @@ export default function TransportRequests() {
             if (req.orderId) {
                 await supabase.from('orders').update({
                     status: isApproved ? 'buscando_piloto' : 'pendiente_pago_delivery',
-                    delivery_payment_status: isApproved ? 'approved' : 'rejected'
+                    delivery_payment_status: isApproved ? 'approved' : 'rejected',
+                    transport_request_id: id,
+                    updated_at: new Date().toISOString()
                 }).eq('id', req.orderId);
             }
 
@@ -1050,6 +1083,17 @@ export default function TransportRequests() {
                                                         }`}>
                                                             {isAccepted ? 'Aceptada por Cliente' : bid.status === 'rejected' ? 'Rechazada' : 'Pendiente'}
                                                         </span>
+                                                        {!isAccepted && bid.status !== 'rejected' && (
+                                                            <div className="mt-1">
+                                                                <button
+                                                                    onClick={() => handleAdminAcceptBid(bid)}
+                                                                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black transition-all shadow-sm flex items-center gap-1 cursor-pointer"
+                                                                >
+                                                                    <CheckCircle2 className="w-3 h-3" />
+                                                                    Aceptar Oferta
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             );

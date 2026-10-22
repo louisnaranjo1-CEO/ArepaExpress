@@ -6,6 +6,7 @@ import TableOptionsModal from '../components/TableOptionsModal';
 import MergeTransferModal from '../components/MergeTransferModal';
 import SplitBillModal from '../components/SplitBillModal';
 import { supabase } from '../../lib/supabase';
+import { generateUUID } from '../../lib/usb-printer';
 import { UN2X3_LOGO } from '../../lib/env';
 import { useBranding } from '../../context/BrandingContext';
 import { useNavigate } from 'react-router-dom';
@@ -407,7 +408,7 @@ export default function WaiterDashboard() {
             
             const subtotal = consolidatedItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             
-            const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `order_${Date.now()}`;
+            const newOrderId = generateUUID();
 
             // 2. Create the merged order in Supabase
             const { error: insertErr } = await supabase
@@ -415,7 +416,7 @@ export default function WaiterDashboard() {
                 .insert({
                     id: newOrderId,
                     items: consolidatedItems,
-                    table_number: selectedTable.number,
+                    table_number: selectedTable.table_number || selectedTable.number,
                     table_id: selectedTable.id,
                     status: 'delivered', // Delivered to effectively remove it from kitchen displays
                     payment_status: 'not_sold', // Needs payment 
@@ -449,6 +450,7 @@ export default function WaiterDashboard() {
                 .update({
                     status: 'billing',
                     current_order_id: newOrderId,
+                    last_order_id: newOrderId,
                     updated_at: new Date().toISOString()
                 })
                 .eq('id', selectedTable.id);

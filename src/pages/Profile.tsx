@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, ChevronDown, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Wallet, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle, Ticket, Sparkles } from 'lucide-react';
+import { User, Mail, MapPin, CreditCard, LogOut, ShoppingBag, Settings, ChevronRight, ChevronDown, Clock, FileText, Bell, Navigation, X, Shield, UploadCloud, Star, Gift, Award, MessageSquareWarning, Plus, Send, AlertCircle, CheckCircle, Store, Handshake, Fingerprint, Calendar, Trash2, AlertTriangle, Ticket, Sparkles } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { Capacitor } from '@capacitor/core';
 import { isDemoMode, UN2X3_LOGO } from '../lib/env';
@@ -1754,8 +1754,7 @@ export default function Profile() {
                                             const actDate = activity.created_at ? new Date(activity.created_at) : (activity.createdAt?.toDate ? activity.createdAt.toDate() : (activity.createdAt ? new Date(activity.createdAt) : null));
                                             const isTransport = activity.type === 'transport';
                                             const isOrder = activity.type === 'order';
-                                            const isRecharge = activity.type === 'wallet_recharge';
-                                            const amountUsd = isRecharge ? (activity.amount || 0) : isTransport ? (parseFloat((activity as any).price || activity.fare || 0)) : (parseFloat(activity.total || 0) + parseFloat((activity as any).deliveryFee || (activity as any).delivery_fee || 0));
+                                            const amountUsd = isTransport ? (parseFloat((activity as any).price || activity.fare || 0)) : (parseFloat(activity.total || 0) + parseFloat((activity as any).deliveryFee || (activity as any).delivery_fee || 0));
                                             const amountBs = bcvRate > 0 ? (amountUsd * bcvRate).toFixed(2) : null;
 
                                             return (
@@ -1773,9 +1772,7 @@ export default function Profile() {
                                                             <p className="font-extrabold text-sm text-[#0F172A] truncate">
                                                                 {isTransport 
                                                                     ? ((activity as any).destination_address || activity.destination?.address || 'Viaje Un 2x3')
-                                                                    : isOrder 
-                                                                    ? (activity.restaurantName || (activity as any).restaurant_name || 'Pedido en Tienda')
-                                                                    : 'Recarga de Saldo'}
+                                                                    : (activity.restaurantName || (activity as any).restaurant_name || 'Pedido en Tienda')}
                                                             </p>
                                                             <p className="text-[11px] text-slate-500 mt-0.5 truncate">
                                                                 <span className="font-mono font-bold">#{activity.id.slice(-5).toUpperCase()}</span>

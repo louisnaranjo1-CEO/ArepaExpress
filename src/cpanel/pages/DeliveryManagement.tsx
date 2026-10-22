@@ -1192,7 +1192,7 @@ _Enviado desde Un 2x3 App_`,
                                 </div>
                                 <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Comisiones de Plataforma Un 2x3</h3>
                                 <p className="text-xs text-slate-500 max-w-2xl font-medium leading-relaxed">
-                                    Monto fijo exacto en dólares ($ USD) que se debita automáticamente del saldo y acumula a la deuda del conductor por cada servicio completado, sin importar el monto que el conductor cobre al usuario.
+                                    Monto fijo exacto en dólares ($ USD) que se acumula a la deuda de comisiones del conductor (commission_debt) por cada servicio completado, liquidable mediante Pago Móvil a Un 2x3.
                                 </p>
                             </div>
                             <button
@@ -1625,7 +1625,7 @@ _Enviado desde Un 2x3 App_`,
                                 </div>
                                 <h3 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight">Cuenta Oficial Pago Móvil Un 2x3</h3>
                                 <p className="text-xs text-slate-500 max-w-2xl font-medium leading-relaxed">
-                                    Datos bancarios oficiales donde los conductores transfieren en Bolívares (a tasa BCV) para liquidar sus comisiones adeudadas.
+                                    Datos bancarios oficiales donde los conductores transfieren en Bolívares (a tasa BCV) para liquidar sus comisiones adeudadas (commission_debt) registradas en driver_commission_payments.
                                 </p>
                             </div>
                         </div>

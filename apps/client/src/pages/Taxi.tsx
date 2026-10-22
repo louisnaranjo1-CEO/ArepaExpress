@@ -17,7 +17,6 @@ import {
     Package,
     Search,
     Loader2,
-    Wallet,
     Upload,
     Copy,
     Sparkles,
@@ -1378,39 +1377,31 @@ export default function Taxi() {
             const realPhoto = bid.driver_photo || driverData?.documents?.selfieUrl || null;
             const paymentMobile = driverData?.payment_mobile || bid.driver_payment_info || null;
 
-            // 1. Aceptar puja seleccionada
-            await supabase.from('transport_bids').update({ status: 'accepted' }).eq('id', bid.id);
-            // 2. Rechazar otras pujas de esta solicitud
-            await supabase.from('transport_bids').update({ status: 'rejected' })
-                .or(`transport_request_id.eq.${reqId},request_id.eq.${reqId}`)
-                .neq('id', bid.id);
-            // 3. Asignar conductor al viaje
-            const { error: updErr } = await supabase.from('transport_requests').update({
-                status: 'accepted',
-                driver_id: bid.driver_id,
-                driver_name: bid.driver_name || driverData?.full_name || 'Conductor',
-                driver_phone: bid.driver_phone || driverData?.phone || '',
-                driver_photo: realPhoto,
-                driver_assigned_at: new Date().toISOString(),
-                driver_payment_info: paymentMobile,
-                driver_vehicle_details: {
-                    type: bid.vehicle_type || driverData?.vehicle_type,
-                    brand: bid.vehicle_brand || driverData?.vehicle_brand,
-                    model: bid.vehicle_model || driverData?.vehicle_model,
-                    year: bid.vehicle_year || driverData?.vehicle_year,
-                    color: bid.vehicle_color || driverData?.vehicle_color,
-                    plate: bid.vehicle_plate || driverData?.vehicle_plate,
-                    has_ac: bid.has_ac ?? driverData?.has_ac ?? false,
-                    has_thermal_bag: bid.has_thermal_bag ?? driverData?.has_thermal_bag ?? false
-                },
-                price: finalPrice,
-                total: finalPrice,
-                commission_amount: 0.70
-            }).eq('id', reqId);
+            const p_user_id = user?.id || user?.uid || bid.user_id || '00000000-0000-0000-0000-000000000000';
 
-            if (updErr) {
-                console.error("Error al actualizar transport_requests:", updErr);
-                throw updErr;
+            // 1. Aceptar puja atómicamente mediante RPC con FOR UPDATE SKIP LOCKED
+            const { data, error } = await supabase.rpc('accept_transport_bid', {
+                p_bid_id: bid.id,
+                p_request_id: reqId,
+                p_user_id
+            });
+
+            if (error) {
+                console.error("Error al ejecutar accept_transport_bid:", error);
+                throw error;
+            }
+
+            if (data?.success === false) {
+                toast.error(data.error || 'El viaje ya fue asignado o cancelado');
+                return;
+            }
+
+            // Sincronizar datos adicionales si existen
+            if (paymentMobile || realPhoto) {
+                await supabase.from('transport_requests').update({
+                    ...(paymentMobile ? { driver_payment_info: paymentMobile } : {}),
+                    ...(realPhoto ? { driver_photo: realPhoto } : {})
+                }).eq('id', reqId);
             }
 
             toast.success(`¡Oferta de ${bid.driver_name} aceptada!`);

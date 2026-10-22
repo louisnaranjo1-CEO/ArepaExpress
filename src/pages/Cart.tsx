@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCurrency } from '../context/CurrencyContext';
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabase';
+import { generateUUID } from '../lib/usb-printer';
 import { calculateDistance, formatDistance } from '../lib/geo';
 import AddressPicker from '../components/AddressPicker';
 import { isDemoMode } from '../lib/env';
@@ -363,7 +364,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         }
       }
 
-      const newOrderId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `order_${Date.now()}`;
+      const newOrderId = generateUUID();
 
       let storeCommission = 0.30;
       if (cartSubtotalUSD > 20) {
@@ -541,6 +542,7 @@ export default function Cart({ hideHeader = false }: CartProps) {
         try {
           await supabase.from('restaurant_tables').update({
             status: 'occupied',
+            current_order_id: newOrderId,
             last_order_id: newOrderId,
             updated_at: new Date().toISOString()
           }).eq('id', tableId);
